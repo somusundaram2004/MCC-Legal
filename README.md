@@ -62,19 +62,6 @@ npm install
 npm run dev
 ```
 
-Application running at **`http://localhost:5175`**.
-
----
-
-## 🔐 Default Test Credentials
-
-| Role | Email | Password | Access Level |
-|---|---|---|---|
-| **Super Admin** | `superadmin@college.edu` | `AdminPass123!` | Full System Access + Folder Permission Overrides |
-| **Admin / Lawyer** | `admin@college.edu` | `AdminPass123!` | MOU Creation, Verification, Approvals & Renewals |
-| **Department User** | `user@college.edu` | `UserPass123!` | Department Shared Folders & Signed Document Uploads |
-
----
 
 ## 📝 License
 Distributed under the MIT License. Developed for higher education institutions.
