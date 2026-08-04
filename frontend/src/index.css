@@ -52,6 +52,40 @@ body { margin: 0; min-width: 320px; min-height: 100vh; -webkit-font-smoothing: a
    KEYFRAMES
 ═══════════════════════════════════════════════════════════ */
 
+@keyframes toastIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(4px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toastOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.95);
+  }
+}
+
+.animate-toast-in {
+  animation: toastIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.animate-toast-out {
+  animation: toastOut 0.25s ease-in forwards;
+}
+
 @keyframes fadeSlideUp   { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 @keyframes slideUp       { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
 @keyframes slideInRight  { from{opacity:0;transform:translateX(28px)} to{opacity:1;transform:translateX(0)} }
@@ -276,6 +310,80 @@ body { margin: 0; min-width: 320px; min-height: 100vh; -webkit-font-smoothing: a
 .avatar-ring-amber   { box-shadow:0 0 0 3px #F59E0B!important; }
 .avatar-ring-rose    { box-shadow:0 0 0 3px #F43F5E!important; }
 
+/* ── Browser Autofill Reset & Seamless Input Integration ────────────── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus,
+select:-webkit-autofill:active {
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: inherit !important;
+  transition: background-color 50000s ease-in-out 0s !important;
+  box-shadow: 0 0 0px 1000px transparent inset !important;
+}
+
+/* ── Text Input Field Clean & Neat Animations ────────────────────────── */
+@keyframes shakeError {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+@keyframes checkPop {
+  0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+  70% { transform: scale(1.25) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes helperSlideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.input-field-shake {
+  animation: shakeError 0.4s var(--ease-spring);
+}
+
+.helper-text-animated {
+  animation: helperSlideIn 0.25s var(--ease-out);
+}
+
+.valid-icon-pop {
+  animation: checkPop 0.35s var(--ease-bounce);
+}
+
+/* MUI OutlinedInput custom clean styling & autofill overrides */
+.MuiOutlinedInput-root {
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease !important;
+  border-radius: 14px !important;
+}
+
+.MuiOutlinedInput-root.Mui-focused {
+  box-shadow: 0 0 0 4px rgba(var(--indigo-rgb), 0.15) !important;
+}
+
+.MuiOutlinedInput-root.Mui-error.Mui-focused {
+  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.18) !important;
+}
+
+.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-width: 2px !important;
+}
+
+.MuiFormHelperText-root {
+  margin-left: 4px !important;
+  font-weight: 600 !important;
+  font-size: 0.78rem !important;
+  animation: helperSlideIn 0.2s var(--ease-out) !important;
+}
+
 /* ── prefers-reduced-motion ───────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -284,3 +392,4 @@ body { margin: 0; min-width: 320px; min-height: 100vh; -webkit-font-smoothing: a
     transition-duration: 0.01ms!important;
   }
 }
+

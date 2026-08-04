@@ -35,8 +35,17 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     
+    // Do not attempt token refresh for login/auth endpoints
+    const isAuthEndpoint = originalRequest && originalRequest.url && (
+      originalRequest.url.includes('/auth/login/') ||
+      originalRequest.url.includes('/auth/google/') ||
+      originalRequest.url.includes('/auth/refresh/') ||
+      originalRequest.url.includes('/auth/forgot-password/') ||
+      originalRequest.url.includes('/auth/reset-password/')
+    );
+
     // Check if error is 401 (Unauthorized) and we haven't already retried
-    if (error.response && error.response.status === 401 && !originalRequest._retry) {
+    if (error.response && error.response.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
       const refreshToken = localStorage.getItem('refresh_token');
       

@@ -1,44 +1,92 @@
-# Node & Frontend
-node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+# ==============================================================================
+# SAFE & SECURE .GITIGNORE
+# Protects sensitive API keys, OAuth credentials, DBs, and local build artifacts
+# ==============================================================================
 
-# Python & Backend
+# ------------------------------------------------------------------------------
+# 1. Environment & Secret Credentials (CRITICAL - NEVER COMMIT)
+# ------------------------------------------------------------------------------
+.env
+.env.local
+.env.*
+*.env
+backend/.env
+frontend/.env
+
+# Google OAuth Credentials & Service Account Keys
+credentials.json
+login_credentials.json
+login_crendels.json
+token.json
+token.pickle
+credentials/
+backend/credentials.json
+backend/login_credentials.json
+backend/login_crendels.json
+backend/token.json
+backend/credentials/
+backend/backend/credentials/
+
+# ------------------------------------------------------------------------------
+# 2. Python Backend & Virtual Environments
+# ------------------------------------------------------------------------------
 .venv/
 venv/
 ENV/
 env/
+env.bak/
+venv.bak/
+
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.sqlite3
+*.py[cod]
+*$py.class
 backend/__pycache__/
 backend/*/__pycache__/
+backend/*/*/__pycache__/
 
-# Secrets & credentials — NEVER commit these
-backend/credentials.json
-backend/token.json
-backend/.env
-backend/credentials/
-.env
+# Django Local Database & Cache
+*.sqlite3
+db.sqlite3
+backend/db.sqlite3
+.cache/
+*.log
 
-# Media & Uploads
+# ------------------------------------------------------------------------------
+# 3. Node.js & Frontend Build Artifacts
+# ------------------------------------------------------------------------------
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+.eslintcache
+
+# ------------------------------------------------------------------------------
+# 4. Media Uploads & User Files
+# ------------------------------------------------------------------------------
+media/
 backend/media/*
 !backend/media/.gitkeep
+uploads/
 
-# IDE & OS
-.vscode/
-.idea/
+# ------------------------------------------------------------------------------
+# 5. Operating System & IDE Files
+# ------------------------------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-*.log
-# Environment & Secret Credentials
-.env
-.env.local
-.env.*
-backend/.env
-credentials/
-backend/credentials/
-backend/backend/credentials/
+
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates

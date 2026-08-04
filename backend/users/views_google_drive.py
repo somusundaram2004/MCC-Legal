@@ -29,31 +29,28 @@ import os
 import json
 
 def get_oauth_credentials():
-    client_id = getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', '')
-    client_secret = getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', '')
+    client_id = ''
+    client_secret = ''
     
-    # If settings values match default service account credentials or are purely numeric, ignore them
-    default_sa_id = getattr(settings, 'GOOGLE_DRIVE_CLIENT_ID', '')
-    if client_id == default_sa_id or (client_id and client_id.isdigit()):
-        client_id = ''
-        client_secret = ''
-
-    # 1. Fall back to credentials.json if settings not configured
-    if not client_id or not client_secret:
-        cred_path = os.path.join(settings.BASE_DIR, 'credentials.json')
-        if os.path.exists(cred_path):
-            try:
-                with open(cred_path, 'r') as f:
-                    data = json.load(f)
-                    web_data = data.get('web') or data.get('installed') or {}
-                    if not client_id:
-                        client_id = web_data.get('client_id', '')
-                    if not client_secret:
-                        client_secret = web_data.get('client_secret', '')
-            except Exception as e:
-                logger.error(f"Error reading credentials.json: {e}")
+    # 1. Check credentials.json first
+    cred_path = os.path.join(settings.BASE_DIR, 'credentials.json')
+    if os.path.exists(cred_path):
+        try:
+            with open(cred_path, 'r') as f:
+                data = json.load(f)
+                web_data = data.get('web') or data.get('installed') or {}
+                client_id = web_data.get('client_id', '')
+                client_secret = web_data.get('client_secret', '')
+        except Exception as e:
+            logger.error(f"Error reading credentials.json: {e}")
                 
-    # 2. Fall back to database
+    # 2. Fall back to settings / environment variables
+    if not client_id:
+        client_id = getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', '')
+    if not client_secret:
+        client_secret = getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', '')
+
+    # 3. Fall back to database setting
     if not client_id or not client_secret:
         db_setting = GoogleDriveSetting.objects.first()
         if db_setting:
@@ -139,12 +136,8 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             'scope': 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email openid',
             'access_type': 'offline',
             'include_granted_scopes': 'true',
+            'prompt': 'select_account consent'
         }
-
-        if force_select:
-            params['prompt'] = 'consent select_account'
-        else:
-            params['prompt'] = 'consent select_account'
 
         url = 'https://accounts.google.com/o/oauth2/auth?' + urllib.parse.urlencode(params)
         return Response({'url': url})
@@ -219,11 +212,10 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             if not setting:
                 setting = GoogleDriveSetting()
 
-            # If switching to a new account, handle refresh_token
+            # If switching to a new account, ensure refresh_token matches the new account
             if setting.connected_email and connected_email and setting.connected_email != connected_email:
                 logger.info(f"Switching Google Drive account from '{setting.connected_email}' to '{connected_email}'")
-                if refresh_token:
-                    setting.refresh_token = refresh_token
+                setting.refresh_token = refresh_token
             elif refresh_token:
                 setting.refresh_token = refresh_token
 
@@ -280,6 +272,9 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         if setting:
             setting.oauth_connected = False
             setting.connection_status = 'Disconnected'
+            setting.connected_email = ''
+            setting.access_token = None
+            setting.refresh_token = None
             setting.is_active = False
             setting.save()
             log_activity(request.user, "Disconnected Google Drive organization account", "drive")

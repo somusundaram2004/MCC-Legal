@@ -45,6 +45,12 @@ const Register = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // Touch tracking for real-time error displays
+  const [nameTouched, setNameTouched] = useState(false);
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
+
   const deptCategories = [
     { id: 'aided', name: 'Aided' },
     { id: 'sfs', name: 'Self-Financed (SFS)' }
@@ -121,6 +127,36 @@ const Register = () => {
       });
   }, [token, navigate]);
 
+  // Field validation helpers
+  const validateName = (val) => {
+    if (!val || !val.trim()) return 'Full Name is required.';
+    if (val.trim().length < 2) return 'Full Name must be at least 2 characters.';
+    return '';
+  };
+
+  const validatePhone = (val) => {
+    if (!val || !val.trim()) return '';
+    const phoneRegex = /^[0-9+\s\-()]{7,15}$/;
+    if (!phoneRegex.test(val.trim())) return 'Please enter a valid phone number (7-15 digits).';
+    return '';
+  };
+
+  const validatePasswordVal = (val) => {
+    if (!val) return 'Password is required.';
+    if (val.length < 8) return 'Password must be at least 8 characters long.';
+    if (!/[A-Z]/.test(val)) return 'Password must include at least one uppercase letter.';
+    if (!/[a-z]/.test(val)) return 'Password must include at least one lowercase letter.';
+    if (!/[0-9]/.test(val)) return 'Password must include at least one digit.';
+    if (!/[^A-Za-z0-9]/.test(val)) return 'Password must include at least one special character.';
+    return '';
+  };
+
+  const validateConfirmPasswordVal = (val, pwd) => {
+    if (!val) return 'Please confirm your password.';
+    if (val !== pwd) return 'Passwords do not match.';
+    return '';
+  };
+
   // Live password validation checks
   const checks = {
     length: password.length >= 8,
@@ -133,6 +169,11 @@ const Register = () => {
 
   const checkCount = Object.values(checks).filter(Boolean).length;
   const strengthPercentage = (checkCount / 6) * 100;
+
+  const nameError = nameTouched ? validateName(name) : '';
+  const phoneError = phoneTouched ? validatePhone(phone) : '';
+  const passwordError = passwordTouched ? validatePasswordVal(password) : '';
+  const confirmPasswordError = confirmPasswordTouched ? validateConfirmPasswordVal(confirmPassword, password) : '';
   
   const getStrengthColor = () => {
     if (checkCount <= 2) return 'error';
@@ -147,11 +188,19 @@ const Register = () => {
     return 'Passwords match & all rules satisfied!';
   };
 
-  const isFormValid = name.trim() && checkCount === 6;
+  const isFormValid = !validateName(name) && !validatePhone(phone) && checkCount === 6;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isFormValid) return;
+    setNameTouched(true);
+    setPhoneTouched(true);
+    setPasswordTouched(true);
+    setConfirmPasswordTouched(true);
+
+    if (!isFormValid) {
+      setFormError('Please resolve all highlighted errors before submitting.');
+      return;
+    }
 
     setSubmitting(true);
     setFormError('');
@@ -323,15 +372,34 @@ const Register = () => {
                 placeholder="Enter your name..."
                 value={name}
                 onChange={e => setName(e.target.value)}
+                onBlur={() => setNameTouched(true)}
+                error={Boolean(nameError)}
+                helperText={nameError}
                 required
                 fullWidth
+                className={nameError ? 'input-field-shake' : ''}
                 slotProps={{
                   input: {
                     startAdornment: (
                       <InputAdornment position="start">
-                        <PersonIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                        <PersonIcon sx={{ color: nameError ? 'error.main' : nameTouched && !nameError ? 'success.main' : 'text.secondary', fontSize: 20, transition: 'color 0.2s ease' }} />
                       </InputAdornment>
-                    )
+                    ),
+                    endAdornment: nameTouched && !nameError && name.trim() ? (
+                      <InputAdornment position="end">
+                        <CheckCircleIcon fontSize="small" className="valid-icon-pop" sx={{ color: 'success.main' }} />
+                      </InputAdornment>
+                    ) : null
+                  }
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '14px',
+                    '& input:-webkit-autofill': {
+                      WebkitBoxShadow: '0 0 0 100px #ffffff inset !important',
+                      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87) !important',
+                      borderRadius: '14px',
+                    }
                   }
                 }}
               />
@@ -352,6 +420,16 @@ const Register = () => {
                     )
                   }
                 }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '14px',
+                    '& input:-webkit-autofill': {
+                      WebkitBoxShadow: '0 0 0 100px #ffffff inset !important',
+                      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87) !important',
+                      borderRadius: '14px',
+                    }
+                  }
+                }}
               />
 
               {/* Phone */}
@@ -360,14 +438,33 @@ const Register = () => {
                 placeholder="Enter contact number..."
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
+                onBlur={() => setPhoneTouched(true)}
+                error={Boolean(phoneError)}
+                helperText={phoneError}
                 fullWidth
+                className={phoneError ? 'input-field-shake' : ''}
                 slotProps={{
                   input: {
                     startAdornment: (
                       <InputAdornment position="start">
-                        <PhoneIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                        <PhoneIcon sx={{ color: phoneError ? 'error.main' : phoneTouched && !phoneError && phone ? 'success.main' : 'text.secondary', fontSize: 20, transition: 'color 0.2s ease' }} />
                       </InputAdornment>
-                    )
+                    ),
+                    endAdornment: phoneTouched && !phoneError && phone.trim() ? (
+                      <InputAdornment position="end">
+                        <CheckCircleIcon fontSize="small" className="valid-icon-pop" sx={{ color: 'success.main' }} />
+                      </InputAdornment>
+                    ) : null
+                  }
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '14px',
+                    '& input:-webkit-autofill': {
+                      WebkitBoxShadow: '0 0 0 100px #ffffff inset !important',
+                      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87) !important',
+                      borderRadius: '14px',
+                    }
                   }
                 }}
               />
@@ -388,6 +485,16 @@ const Register = () => {
                     )
                   }
                 }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '14px',
+                    '& input:-webkit-autofill': {
+                      WebkitBoxShadow: '0 0 0 100px #ffffff inset !important',
+                      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87) !important',
+                      borderRadius: '14px',
+                    }
+                  }
+                }}
               />
 
               {/* Dynamic Stream and Department selectors (if not pre-defined in invitation) */}
@@ -399,7 +506,7 @@ const Register = () => {
                       value={stream}
                       label="Stream"
                       onChange={handleStreamChange}
-                      sx={{ borderRadius: '10px' }}
+                      sx={{ borderRadius: '14px' }}
                     >
                       {deptCategories.map(c => (
                         <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
@@ -413,7 +520,7 @@ const Register = () => {
                       value={department}
                       label="Department"
                       onChange={e => setDepartment(e.target.value)}
-                      sx={{ borderRadius: '10px' }}
+                      sx={{ borderRadius: '14px' }}
                     >
                       {filteredDepts.map(d => (
                         <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
@@ -429,22 +536,39 @@ const Register = () => {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                onBlur={() => setPasswordTouched(true)}
+                error={Boolean(passwordError)}
+                helperText={passwordError}
                 required
                 fullWidth
+                className={passwordError ? 'input-field-shake' : ''}
                 slotProps={{
                   input: {
                     startAdornment: (
                       <InputAdornment position="start">
-                        <LockIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                        <LockIcon sx={{ color: passwordError ? 'error.main' : passwordTouched && !passwordError ? 'success.main' : 'text.secondary', fontSize: 20, transition: 'color 0.2s ease' }} />
                       </InputAdornment>
                     ),
                     endAdornment: (
-                      <InputAdornment position="end">
+                      <InputAdornment position="end" sx={{ gap: 0.5 }}>
+                        {passwordTouched && !passwordError && password && (
+                          <CheckCircleIcon fontSize="small" className="valid-icon-pop" sx={{ color: 'success.main' }} />
+                        )}
                         <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
                           {showPassword ? <VisibilityOff /> : <Visibility />}
                         </IconButton>
                       </InputAdornment>
                     )
+                  }
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '14px',
+                    '& input:-webkit-autofill': {
+                      WebkitBoxShadow: '0 0 0 100px #ffffff inset !important',
+                      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87) !important',
+                      borderRadius: '14px',
+                    }
                   }
                 }}
               />
@@ -455,15 +579,34 @@ const Register = () => {
                 type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
+                onBlur={() => setConfirmPasswordTouched(true)}
+                error={Boolean(confirmPasswordError)}
+                helperText={confirmPasswordError}
                 required
                 fullWidth
+                className={confirmPasswordError ? 'input-field-shake' : ''}
                 slotProps={{
                   input: {
                     startAdornment: (
                       <InputAdornment position="start">
-                        <LockIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                        <LockIcon sx={{ color: confirmPasswordError ? 'error.main' : confirmPasswordTouched && !confirmPasswordError ? 'success.main' : 'text.secondary', fontSize: 20, transition: 'color 0.2s ease' }} />
                       </InputAdornment>
-                    )
+                    ),
+                    endAdornment: confirmPasswordTouched && !confirmPasswordError && confirmPassword ? (
+                      <InputAdornment position="end">
+                        <CheckCircleIcon fontSize="small" className="valid-icon-pop" sx={{ color: 'success.main' }} />
+                      </InputAdornment>
+                    ) : null
+                  }
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '14px',
+                    '& input:-webkit-autofill': {
+                      WebkitBoxShadow: '0 0 0 100px #ffffff inset !important',
+                      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87) !important',
+                      borderRadius: '14px',
+                    }
                   }
                 }}
               />

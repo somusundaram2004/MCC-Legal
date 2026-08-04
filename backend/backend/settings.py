@@ -61,10 +61,14 @@ GOOGLE_DRIVE_UNIVERSE_DOMAIN = env('GOOGLE_DRIVE_UNIVERSE_DOMAIN', default='goog
 GOOGLE_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, env('GOOGLE_SERVICE_ACCOUNT_FILE', default='credentials/google-drive.json'))
 GOOGLE_DRIVE_ROOT_FOLDER_ID = env('GOOGLE_DRIVE_ROOT_FOLDER_ID', default='')
 
-# Google OAuth 2.0 Web flow Configuration
-GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default=GOOGLE_DRIVE_CLIENT_ID)
-GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default=GOOGLE_DRIVE_CLIENT_SECRET)
-GOOGLE_OAUTH_REDIRECT_URI = env('GOOGLE_OAUTH_REDIRECT_URI', default='http://localhost:8000/api/google-drive/oauth/callback/')
+# Dedicated Google Login OAuth Configuration (login_credentials.json)
+GOOGLE_LOGIN_CLIENT_ID = env('GOOGLE_LOGIN_CLIENT_ID', default='')
+GOOGLE_LOGIN_CLIENT_SECRET = env('GOOGLE_LOGIN_CLIENT_SECRET', default='')
+
+# Google Drive OAuth Web flow Configuration (Unchanged & Isolated)
+GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default='')
+GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default='')
+GOOGLE_OAUTH_REDIRECT_URI = env('GOOGLE_OAUTH_REDIRECT_URI', default='http://localhost:5173/settings')
 
 # Upload & File Constraints
 MAX_UPLOAD_SIZE = env.int('MAX_UPLOAD_SIZE', default=52428800)
@@ -287,7 +291,9 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='MCC LEGAL DOCUMENT <no-r
 COMPANY_LOGO_URL = env('COMPANY_LOGO_URL', default='https://example.com/logo.png')
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 
-# Google OAuth 2.0 Settings
-GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default='')
-GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default='')
-GOOGLE_OAUTH_REDIRECT_URI = env('GOOGLE_OAUTH_REDIRECT_URI', default='http://localhost:8000/api/google-drive/oauth/callback/')
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+])

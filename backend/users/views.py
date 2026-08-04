@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status, permissions, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
@@ -12,7 +13,7 @@ from permissions.models import Permission
 from permissions.custom_permissions import HasDynamicPermission
 from activity_logs.utils import log_activity
 from notifications.utils import create_notification, notify_admins
-from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting
+from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting, PasswordResetOTP
 from .serializers import (
     CustomUserSerializer, 
     CustomUserCreateSerializer, 
@@ -23,7 +24,7 @@ from .serializers import (
     GoogleDriveSettingSerializer
 )
 from .invitation_services import InvitationService, TokenService
-from services.email_service import send_invitation_email
+from services.email_service import send_invitation_email, send_password_reset_otp_email
 from django.conf import settings
 import logging
 
@@ -33,8 +34,16 @@ User = get_user_model()
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        data = super().validate(attrs)
-        
+        try:
+            data = super().validate(attrs)
+        except Exception:
+            email = attrs.get('email', '') or attrs.get('username', '')
+            user_exists = User.objects.filter(email__iexact=email).exists()
+            if not user_exists:
+                raise serializers.ValidationError({"detail": "No account found with this email address. Please check your email or register."})
+            else:
+                raise serializers.ValidationError({"detail": "Incorrect password. If you don't know your password, please click Forgot Password."})
+
         # Check user status
         if self.user.status == 'Disabled':
             raise serializers.ValidationError({"detail": "This user account has been disabled."})
@@ -56,11 +65,106 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
 
-from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
-from google.oauth2 import id_token as google_id_token
-from google.auth.transport import requests as google_requests
-import requests as py_requests
+import hashlib
+import random
+from datetime import timedelta
+
+class ForgotPasswordView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        if not email:
+            return Response({"detail": "Email address is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Lookup user
+        user = User.objects.filter(email__iexact=email).first()
+
+        if user and user.status != 'Disabled':
+            # Generate 6-digit OTP
+            otp_code = f"{random.randint(100000, 999999)}"
+            otp_hash = hashlib.sha256(otp_code.encode('utf-8')).hexdigest()
+
+            # Invalidate previous unused reset OTPs for this user
+            PasswordResetOTP.objects.filter(user=user, is_used=False).update(is_used=True)
+
+            # Create new OTP record valid for 30 minutes
+            expires_at = timezone.now() + timedelta(minutes=30)
+            PasswordResetOTP.objects.create(
+                user=user,
+                otp_hash=otp_hash,
+                expires_at=expires_at,
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT')
+            )
+
+            # Send OTP Email
+            send_password_reset_otp_email(user, otp_code)
+            log_activity(user, "Requested password reset OTP", "authentication", request)
+
+        # ALWAYS return identical generic success message to prevent account enumeration
+        return Response({
+            "detail": "If an account with this email exists, a password reset OTP code has been sent to your email."
+        }, status=status.HTTP_200_OK)
+
+
+class ResetPasswordView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        otp = request.data.get('otp', '').strip()
+        new_password = request.data.get('new_password', '')
+        confirm_password = request.data.get('confirm_password', '')
+
+        if not email or not otp:
+            return Response({"detail": "Email address and OTP verification code are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not new_password or not confirm_password:
+            return Response({"detail": "New password and confirm password are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if new_password != confirm_password:
+            return Response({"detail": "New password and confirm password do not match."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(new_password) < 8:
+            return Response({"detail": "Password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user or user.status == 'Disabled':
+            return Response({"detail": "Invalid OTP code or email address."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Verify OTP
+        otp_hash = hashlib.sha256(otp.encode('utf-8')).hexdigest()
+        otp_record = PasswordResetOTP.objects.filter(
+            user=user,
+            otp_hash=otp_hash,
+            is_used=False
+        ).order_by('-created_at').first()
+
+        if not otp_record:
+            return Response({"detail": "Invalid OTP code. Please check the 6-digit code sent to your email."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if otp_record.is_expired:
+            return Response({"detail": "This OTP code has expired. Please request a new password reset code."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update password securely using Django's set_password
+        user.set_password(new_password)
+        user.password_changed_at = timezone.now()
+        user.save()
+
+        # Mark OTP as used
+        otp_record.is_used = True
+        otp_record.used_at = timezone.now()
+        otp_record.save(update_fields=['is_used', 'used_at'])
+
+        # Log activity & notify
+        log_activity(user, "Password reset successfully via OTP", "authentication", request)
+        create_notification(user, "Password Changed Successfully", "Your account password was recently changed. If you did not make this change, please contact support immediately.")
+
+        return Response({
+            "detail": "Password has been reset successfully. You can now sign in with your new password."
+        }, status=status.HTTP_200_OK)
+
 
 class GoogleLoginView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -72,10 +176,8 @@ class GoogleLoginView(APIView):
         if not credential and not access_token:
             return Response({"detail": "Google credential or token is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        client_id = getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', '')
-        if not client_id:
-            from .views_google_drive import get_oauth_credentials
-            client_id, _ = get_oauth_credentials()
+        from backend.login_oauth import get_google_login_credentials
+        client_id, _ = get_google_login_credentials()
 
         email = None
         name = None

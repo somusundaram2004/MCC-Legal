@@ -24,15 +24,23 @@ import Departments from './pages/Departments';
 import NotificationsPage from './pages/NotificationsPage';
 import Settings from './pages/Settings';
 import Register from './pages/Register';
+import ResetPassword from './pages/ResetPassword';
 
 import { SiteTimeProvider } from './context/SiteTimeContext';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { Toaster } from 'react-hot-toast';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "866710282157-aincjobm1nnsfaj9g4sl8eihvhoai365.apps.googleusercontent.com";
+const GOOGLE_LOGIN_CLIENT_ID = (import.meta.env.VITE_GOOGLE_LOGIN_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim() 
+  || "866710282157-csj1nb61f10tstlkjog2gm7uvf0gnm4i.apps.googleusercontent.com";
+
+console.log("[Google Login Audit] Dedicated Google Login Client ID:", GOOGLE_LOGIN_CLIENT_ID);
+console.log("[Google Login Audit] Current Origin:", window.location.origin);
+console.log("[Google Login Audit] Current URL:", window.location.href);
 
 function App() {
   return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    <GoogleOAuthProvider clientId={GOOGLE_LOGIN_CLIENT_ID}>
+      <Toaster position="top-center" reverseOrder={false} />
       <Router>
         <ThemeModeProvider>
           <SiteTimeProvider>
@@ -41,6 +49,7 @@ function App() {
             {/* Public Login & Register Pages */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Protected Application Routes */}
             <Route
