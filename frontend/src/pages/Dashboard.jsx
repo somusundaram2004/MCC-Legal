@@ -505,11 +505,16 @@ const AdminDashboard = ({ stats, user, navigate, setPreviewFile }) => {
                         <stop offset="5%" stopColor="#10B981" stopOpacity={0.35}/>
                         <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
                       </linearGradient>
+                      <linearGradient id="colorPendingAdmin" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.35}/>
+                        <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                      </linearGradient>
                     </defs>
                     <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
                     <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
                     <RechartsTooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: '0.8rem' }} />
-                    <Area type="monotone" dataKey="Active" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorActiveAdmin)" />
+                    <Area type="monotone" name="Active Agreements" dataKey="Active" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorActiveAdmin)" />
+                    <Area type="monotone" name="Pending Verifications" dataKey="Pending" stroke="#F59E0B" strokeWidth={2} fillOpacity={1} fill="url(#colorPendingAdmin)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </Box>

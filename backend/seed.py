@@ -246,45 +246,6 @@ def seed_data():
         )
         tmpl_objs[tname] = tmpl
 
-    # Sample MOUs
-    sample_mous = [
-        ("MOU-2026-0001", "ABC Technologies Internship Agreement", "Internship", "ABC Tech Corp", "Computer Science (SFS)", "Active", 12, date(2026, 1, 15)),
-        ("MOU-2026-0002", "IIT Bombay Joint Research Initiative", "Research", "IIT Bombay", "Physics (Aided)", "Active", 24, date(2025, 8, 10)),
-        ("MOU-2026-0003", "Infosys Placement & Recruitment Drive", "Placement", "Infosys Ltd", "Computer Science (SFS)", "Pending Verification", 12, date(2026, 7, 1)),
-        ("MOU-2026-0004", "TATA Motors Industrial Training", "Industry Collaboration", "TATA Motors", "Commerce (Aided)", "Expiring Soon", 6, date(2026, 2, 1)),
-    ]
-
-    admin_user = User.objects.filter(email="admin@college.edu").first()
-
-    for mnum, mtitle, mtype_name, partner, dept, mstatus, duration, signed_dt in sample_mous:
-        if not MOU.objects.filter(mou_number=mnum).exists():
-            tmpl = tmpl_objs.get(mtype_name)
-            m = MOU(
-                mou_number=mnum,
-                title=mtitle,
-                mou_type=tmpl,
-                partner_organization=partner,
-                department_name=dept,
-                status=mstatus,
-                duration_months=duration,
-                signed_date=signed_dt,
-                created_by=admin_user,
-                summary=f"Strategic partnership agreement with {partner} for {mtype_name.lower()} opportunities.",
-                purpose=f"To enhance student exposure and practical training in {dept}.",
-                beneficiaries=["Students", "Faculty", "Institution"],
-                opportunities=["Internship", "Placement", "Training"],
-                coordinator_name="Dr. Robert Smith",
-                coordinator_email="r.smith@college.edu",
-                partner_name="Sarah Jenkins",
-                partner_email=f"contact@{partner.lower().replace(' ', '')}.com"
-            )
-            m.expiry_date = m.calculate_expiry(signed_dt, duration)
-            if mstatus == "Expiring Soon":
-                m.expiry_date = date.today() + timedelta(days=14)
-                m.status = "Active" # will be reported as expiring in UI
-            m.save()
-            print(f"Created sample MOU: {mnum} - {mtitle}")
-
     print("Seeding completed successfully.")
 
 if __name__ == "__main__":

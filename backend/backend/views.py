@@ -27,33 +27,46 @@ class DashboardStatsView(APIView):
         user = request.user
         role_name = user.role.name if user.role else 'User'
 
+        # Auto-check expiries to ensure DB status is up-to-date
+        try:
+            from backend.middleware import check_mou_expiries
+            check_mou_expiries()
+        except Exception:
+            pass
+
         # User counts
-        if role_name == "Super Admin":
+        if role_name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]:
             total_users = User.objects.count()
             active_users = User.objects.filter(status='Active').count()
-        elif role_name == "Admin":
-            total_users = User.objects.exclude(role__name="Super Admin").count()
-            active_users = User.objects.exclude(role__name="Super Admin").filter(status='Active').count()
         else:
-            total_users = 0
-            active_users = 0
+            user_dept = getattr(user, 'department', None)
+            if user_dept:
+                total_users = User.objects.filter(department=user_dept).count()
+                active_users = User.objects.filter(department=user_dept, status='Active').count()
+            else:
+                total_users = 0
+                active_users = 0
 
-        # Folder, File and MOU counts / querysets
-        if role_name == "Super Admin":
+        # Folder, File and MOU querysets based on role
+        if role_name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]:
             mous_qs = MOU.objects.all()
             folders_qs = Folder.objects.all()
             files_qs = File.objects.all()
-        elif role_name == "Admin":
-            mous_qs = MOU.objects.filter(created_by=user)
-            folders_qs = Folder.objects.filter(Q(created_by=user) | Q(mous__in=mous_qs)).distinct()
-            files_qs = File.objects.filter(Q(uploaded_by=user) | Q(folder__in=folders_qs)).distinct()
         else:
             # Standard User
             all_folders = Folder.objects.all()
             accessible_ids = [f.id for f in all_folders if f.has_access(user)]
             folders_qs = Folder.objects.filter(id__in=accessible_ids)
             files_qs = File.objects.filter(folder_id__in=accessible_ids)
-            mous_qs = MOU.objects.filter(department__in=folders_qs).distinct()
+            
+            user_dept_name = getattr(user, 'department', '') or ''
+            mous_qs = MOU.objects.filter(
+                Q(department__in=folders_qs) | 
+                Q(created_by=user) | 
+                Q(department_name__iexact=user_dept_name) |
+                Q(shares__department__name=user_dept_name) | 
+                Q(shares__user=user)
+            ).distinct()
 
         total_folders = folders_qs.count()
         total_files = files_qs.count()
@@ -64,13 +77,13 @@ class DashboardStatsView(APIView):
         my_recent_files = my_files_qs.order_by('-created_at')[:5]
         my_recent_files_serializer = FileSerializer(my_recent_files, many=True, context={'request': request})
 
-        # Recent uploads (general / accessible)
+        # Recent uploads
         recent_files = files_qs.order_by('-created_at')[:5]
         recent_files_serializer = FileSerializer(recent_files, many=True, context={'request': request})
 
         # Recent activities (Admins & Super Admins)
         activities_data = []
-        is_admin = role_name in ["Super Admin", "Admin"]
+        is_admin = role_name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]
         if is_admin:
             recent_activities = ActivityLog.objects.all().order_by('-created_at')[:6]
             recent_activities_serializer = ActivityLogSerializer(recent_activities, many=True)
@@ -80,7 +93,7 @@ class DashboardStatsView(APIView):
         latest_notifications = Notification.objects.filter(user=user, is_read=False).order_by('-created_at')[:5]
         notifications_serializer = NotificationSerializer(latest_notifications, many=True)
 
-        # --- Real System Storage Stats ---
+        # Real System Storage Stats
         import shutil
         from django.conf import settings
         from django.db.models import Sum
@@ -109,7 +122,6 @@ class DashboardStatsView(APIView):
             except Exception:
                 pass
 
-        # Per file-type breakdown from DB (in bytes)
         def bytes_for_types(qs, types):
             result = qs.filter(file_type__in=types).aggregate(total=Sum('size'))
             return result['total'] or 0
@@ -135,47 +147,70 @@ class DashboardStatsView(APIView):
         recent_folders = folders_qs.order_by('-created_at')[:4]
         recent_folders_serializer = FolderSerializer(recent_folders, many=True)
 
-        # Real MOU stats from database
+        # Real MOU & Folder status counts from database
         from django.db.models import Count
-        active_mous = mous_qs.filter(status='Active').count()
-        pending_approval = mous_qs.filter(status='Pending Verification').count()
-        
         today = datetime.date.today()
-        expiring_30 = mous_qs.filter(
-            status='Active', 
-            expiry_date__lte=today + datetime.timedelta(days=30), 
-            expiry_date__gte=today
-        ).count()
 
-        # Real Department/Folder distribution
-        mou_depts = mous_qs.values('department_name').annotate(value=Count('id')).order_by('-value')
+        # Active MOUs: Active or Renewed status and not expired
+        active_mous = mous_qs.filter(
+            Q(status__in=['Active', 'Renewed']),
+            Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+        ).count()
+        if active_mous == 0 and mous_qs.count() == 0:
+            active_mous = folders_qs.filter(status='Active').count()
+
+        # Pending Verification MOUs: Pending Verification, Signed, or Pending Review status
+        pending_approval = mous_qs.filter(
+            status__in=['Pending Verification', 'Signed', 'Pending Review']
+        ).count()
+        if pending_approval == 0 and mous_qs.count() == 0:
+            pending_approval = folders_qs.filter(status__in=['Pending Review', 'Signed']).count()
+
+        # Expiring in 30 Days: Active/Renewed status with expiry_date within 30 days from today
+        expiring_30 = mous_qs.filter(
+            status__in=['Active', 'Renewed'],
+            expiry_date__gte=today,
+            expiry_date__lte=today + datetime.timedelta(days=30)
+        ).count()
+        if expiring_30 == 0 and mous_qs.count() == 0:
+            expiring_30 = folders_qs.filter(
+                status='Active',
+                expiry_date__gte=today,
+                expiry_date__lte=today + datetime.timedelta(days=30)
+            ).count()
+
+        # Real Department/Folder distribution from database
         dept_colors = {
             'Engineering': '#3B82F6',
             'Medical': '#14B8A6',
             'Commerce': '#F59E0B',
             'Arts': '#EC4899',
+            'Science': '#8B5CF6',
+            'Law': '#F97316',
         }
-        
-        mou_distribution_data = []
-        for item in mou_depts:
-            name = item['department_name'] or 'General'
-            mou_distribution_data.append({
-                'name': name,
-                'value': item['value'],
-                'color': dept_colors.get(name, '#8B5CF6')
-            })
 
-        # Fallback if no MOUs exist
-        if not mou_distribution_data:
-            for folder in folders_qs.filter(parent=None):
-                file_count = files_qs.filter(folder=folder).count()
+        mou_distribution_data = []
+        mou_depts = mous_qs.values('department_name').annotate(value=Count('id')).order_by('-value')
+        for item in mou_depts:
+            name = item['department_name']
+            if name:
                 mou_distribution_data.append({
-                    'name': folder.name,
-                    'value': file_count if file_count > 0 else 1,
-                    'color': dept_colors.get(folder.name, '#8B5CF6')
+                    'name': name,
+                    'value': item['value'],
+                    'color': dept_colors.get(name, '#8B5CF6')
                 })
 
-        # Trend Data (Last 6 Months)
+        if not mou_distribution_data:
+            for folder in folders_qs.filter(parent=None):
+                cnt = files_qs.filter(folder=folder).count()
+                if cnt > 0:
+                    mou_distribution_data.append({
+                        'name': folder.name,
+                        'value': cnt,
+                        'color': dept_colors.get(folder.name, '#8B5CF6')
+                    })
+
+        # Real Monthly Trend Data (Last 6 Months)
         trend_months = []
         for i in range(5, -1, -1):
             m = today.month - i
@@ -183,46 +218,41 @@ class DashboardStatsView(APIView):
             while m <= 0:
                 m += 12
                 y -= 1
-            month_date = datetime.date(y, m, 1)
-            month_name = month_date.strftime('%b')
-            trend_months.append({
-                'month_date': month_date,
-                'month': month_name,
-                'year': y,
-                'Active': 0,
-                'Pending': 0,
-                'Expiring': 0
-            })
-            
-        for month_bucket in trend_months:
-            start_date = month_bucket['month_date']
-            next_m = start_date.month + 1
-            next_y = start_date.year
+            start_date = datetime.date(y, m, 1)
+            month_name = start_date.strftime('%b')
+            next_m = m + 1
+            next_y = y
             if next_m > 12:
                 next_m = 1
                 next_y += 1
             end_date = datetime.date(next_y, next_m, 1)
-            
-            month_bucket['Active'] = mous_qs.filter(
-                status='Active',
-                created_at__gte=datetime.datetime.combine(start_date, datetime.time.min),
-                created_at__lt=datetime.datetime.combine(end_date, datetime.time.min)
+
+            # Cumulative Active count for this month
+            active_cnt = mous_qs.filter(
+                Q(created_at__lt=datetime.datetime.combine(end_date, datetime.time.min)),
+                Q(status__in=['Active', 'Renewed', 'Signed']),
+                Q(expiry_date__isnull=True) | Q(expiry_date__gte=start_date)
             ).count()
-            
-            month_bucket['Pending'] = mous_qs.filter(
-                status='Pending Verification',
-                created_at__gte=datetime.datetime.combine(start_date, datetime.time.min),
-                created_at__lt=datetime.datetime.combine(end_date, datetime.time.min)
+
+            # Pending count for this month
+            pending_cnt = mous_qs.filter(
+                Q(created_at__lt=datetime.datetime.combine(end_date, datetime.time.min)),
+                Q(status__in=['Pending Verification', 'Pending Review'])
             ).count()
-            
-            month_bucket['Expiring'] = mous_qs.filter(
-                status='Active',
+
+            # Expiring count for this month
+            expiring_cnt = mous_qs.filter(
                 expiry_date__gte=start_date,
                 expiry_date__lt=end_date
             ).count()
-            
-        for mb in trend_months:
-            mb.pop('month_date')
+
+            trend_months.append({
+                'month': month_name,
+                'year': y,
+                'Active': active_cnt,
+                'Pending': pending_cnt,
+                'Expiring': expiring_cnt
+            })
 
         return Response({
             "total_users": total_users,

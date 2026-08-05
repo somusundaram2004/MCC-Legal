@@ -36,6 +36,10 @@ def sync_drive_directory(parent_google_id=None, parent_folder_obj=None, user=Non
             item_name = item.get('name')
             mime_type = item.get('mimeType')
             
+            # Skip deleted legacy drive folders that cannot be removed from Google Drive root due to permissions
+            if item_id in ['1bsme27EZ04QwaaHwWxPlaoHQWxA7iAUk', '1tgwbp0b9aYOnmXSUvIo8rRz69wmpYbf5'] or item_name in ['MCA (Comuputer Application)', 'Jeff2']:
+                continue
+            
             if mime_type == 'application/vnd.google-apps.folder':
                 folder_obj, created = Folder.objects.get_or_create(
                     google_folder_id=item_id,
@@ -485,6 +489,10 @@ class FolderViewSet(viewsets.ModelViewSet):
                 mime_type = item.get('mimeType')
                 item_id = item.get('id')
                 item_name = item.get('name')
+                
+                # Skip deleted legacy drive folders
+                if item_id in ['1bsme27EZ04QwaaHwWxPlaoHQWxA7iAUk', '1tgwbp0b9aYOnmXSUvIo8rRz69wmpYbf5'] or item_name in ['MCA (Comuputer Application)', 'Jeff2']:
+                    continue
                 
                 if mime_type == 'application/vnd.google-apps.folder':
                     # Folder synchronization

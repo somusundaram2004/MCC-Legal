@@ -63,7 +63,7 @@ const LABEL_SX = {
 const MENU_ITEM_SX = { fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' };
 
 // ─── Custom Portal Department Select ─────────────────────────────────────────
-const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Department', required, saveAttempted }) => {
+const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Department / Company', required, saveAttempted }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [highlightIdx, setHighlightIdx] = useState(-1);
@@ -972,16 +972,16 @@ const UserManagement = () => {
                 </Select>
               </FormControl>
 
-              {/* Department */}
-              <FormControl size="small" sx={{ minWidth: 160 }}>
-                <InputLabel>Department</InputLabel>
+              {/* Department / Company */}
+              <FormControl size="small" sx={{ minWidth: 175 }}>
+                <InputLabel>Department / Company</InputLabel>
                 <Select
                   value={filterDept}
-                  label="Department"
+                  label="Department / Company"
                   onChange={(e) => setFilterDept(e.target.value)}
                   sx={{ borderRadius: '8px', bgcolor: '#fff' }}
                 >
-                  <MenuItem value="">Department</MenuItem>
+                  <MenuItem value="">All Depts / Companies</MenuItem>
                   {(filterCategory ? departments.filter(d => d.category === filterCategory) : departments).map(d => (
                     <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
                   ))}
@@ -1065,7 +1065,7 @@ const UserManagement = () => {
                 </colgroup>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'action.hover' }}>
-                    {['Name', 'Email', 'Role', 'Department', 'Status', 'Last Login'].map(h => (
+                    {['Name', 'Email', 'Role', 'Department / Company', 'Status', 'Last Login'].map(h => (
                       <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.75rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'text.secondary', py: 1.5, px: 2, verticalAlign: 'middle' }}>{h}</TableCell>
                     ))}
                     <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'text.secondary', py: 1.5, px: 2, verticalAlign: 'middle' }} align="center">Actions</TableCell>
@@ -1196,16 +1196,16 @@ const UserManagement = () => {
                 </Select>
               </FormControl>
 
-              {/* Department */}
-              <FormControl size="small" sx={{ minWidth: 160 }}>
-                <InputLabel>Department</InputLabel>
+              {/* Department / Company */}
+              <FormControl size="small" sx={{ minWidth: 175 }}>
+                <InputLabel>Department / Company</InputLabel>
                 <Select
                   value={invitationFilterDept}
-                  label="Department"
+                  label="Department / Company"
                   onChange={(e) => setInvitationFilterDept(e.target.value)}
                   sx={{ borderRadius: '8px', bgcolor: '#fff' }}
                 >
-                  <MenuItem value="">All Depts</MenuItem>
+                  <MenuItem value="">All Depts / Companies</MenuItem>
                   {departments.map(d => (
                     <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
                   ))}
@@ -1256,7 +1256,7 @@ const UserManagement = () => {
                   <TableRow sx={{ bgcolor: 'action.hover' }}>
                     <TableCell sx={{ fontWeight: 700 }}>Invited Email</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Stream</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Department</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Department / Company</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>System Role</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Created By</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Sent Date</TableCell>
