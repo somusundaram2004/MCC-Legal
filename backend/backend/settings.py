@@ -291,6 +291,11 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='MCC LEGAL DOCUMENT <no-r
 COMPANY_LOGO_URL = env('COMPANY_LOGO_URL', default='https://example.com/logo.png')
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 
+# Google OAuth 2.0 Settings
+GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default='')
+GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default='')
+GOOGLE_OAUTH_REDIRECT_URI = env('GOOGLE_OAUTH_REDIRECT_URI', default='http://localhost:8000/api/google-drive/oauth/callback/')
+
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[
     'http://localhost:5173',
     'http://127.0.0.1:5173',

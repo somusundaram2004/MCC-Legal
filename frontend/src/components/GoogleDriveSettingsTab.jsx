@@ -39,36 +39,8 @@ const GoogleDriveSettingsTab = () => {
     const params = new URLSearchParams(window.location.search);
     const driveStatus = params.get('drive');
     const driveError = params.get('error');
-    const code = params.get('code');
 
-    const handleOAuthCodeExchange = async (authCode) => {
-      setConnecting(true);
-      setError(null);
-      setSuccess(null);
-      try {
-        const redirectUri = `${window.location.origin}/settings`;
-        const response = await api.post('/api/google-drive/oauth/callback/', {
-          code: authCode,
-          redirect_uri: redirectUri
-        });
-        setSuccess(response.data.detail || 'Google Drive connected successfully!');
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-        fetchStatus();
-      } catch (err) {
-        console.error("Google Drive Code Exchange Failed:", err);
-        setError(err.response?.data?.detail || 'Failed to exchange authorization code with Google Drive server.');
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-        fetchStatus();
-      } finally {
-        setConnecting(false);
-      }
-    };
-
-    if (code) {
-      handleOAuthCodeExchange(code);
-    } else if (driveStatus === 'connected') {
+    if (driveStatus === 'connected') {
       setSuccess('Google Drive connected successfully!');
       // Clean query parameters from address bar
       const newUrl = window.location.pathname;
@@ -90,8 +62,7 @@ const GoogleDriveSettingsTab = () => {
     setError(null);
     setSuccess(null);
     try {
-      const redirectUri = `${window.location.origin}/settings`;
-      const response = await api.get(`/api/google-drive/oauth-url/?redirect_uri=${encodeURIComponent(redirectUri)}&force_select=${forceSelect}`);
+      const response = await api.get(`/api/google-drive/oauth-url/?force_select=${forceSelect}`);
       if (response.data.url) {
         window.location.href = response.data.url;
       } else {
@@ -525,7 +496,7 @@ const GoogleDriveSettingsTab = () => {
         </Typography>
         <Box component="ol" sx={{ pl: 2.5, m: 0, '& li': { mb: 1.5, fontSize: '0.82rem', lineHeight: 1.6, color: 'text.secondary' } }}>
           <li>
-            <strong>Register Redirect URI:</strong> Ensure that your Google Cloud Console project lists <code>http://localhost:5173/settings</code> (or your staging/production host domain) under <em>"Authorized redirect URIs"</em>.
+            <strong>Register Redirect URI:</strong> Ensure that your Google Cloud Console project lists <code>http://localhost:8000/api/google-drive/oauth/callback/</code> (or your server backend domain callback) under <em>"Authorized redirect URIs"</em>.
           </li>
           <li>
             <strong>Add Test Users:</strong> While the project is in publishing status "Testing", ensure that the target Gmail or Workspace account is explicitly added under the <strong>Test users</strong> section in the GCP OAuth consent screen configuration.
