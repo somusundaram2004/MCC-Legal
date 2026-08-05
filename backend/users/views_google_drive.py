@@ -137,26 +137,37 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         url = 'https://accounts.google.com/o/oauth2/auth?' + urllib.parse.urlencode(params)
         return Response({'url': url})
 
-    @action(detail=False, methods=['get'], url_path='oauth/callback', permission_classes=[permissions.AllowAny])
+    @action(detail=False, methods=['get', 'post'], url_path='oauth/callback', permission_classes=[permissions.AllowAny])
     def oauth_callback(self, request):
         from django.http import HttpResponseRedirect
         
         frontend_base = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
 
-        code = request.query_params.get('code')
-        error_param = request.query_params.get('error')
+        code = request.data.get('code') if hasattr(request, 'data') and request.data.get('code') else request.query_params.get('code')
+        error_param = request.data.get('error') if hasattr(request, 'data') and request.data.get('error') else request.query_params.get('error')
+        req_redirect_uri = request.data.get('redirect_uri') if hasattr(request, 'data') and request.data.get('redirect_uri') else request.query_params.get('redirect_uri')
+        
+        is_json_req = (
+            request.content_type == 'application/json' or
+            'application/json' in request.headers.get('Accept', '') or
+            (hasattr(request, 'data') and request.data.get('code') is not None)
+        )
 
         if not code:
             error_reason = error_param or 'No authorization code received'
             logger.warning(f"Google OAuth callback received without code: {error_reason}")
+            if is_json_req:
+                return Response({"detail": error_reason}, status=status.HTTP_400_BAD_REQUEST)
             frontend_url = f"{frontend_base}/settings?drive=failed&error={urllib.parse.quote(error_reason)}"
             return HttpResponseRedirect(frontend_url)
 
         client_id, client_secret = get_oauth_credentials()
-        redirect_uri = get_oauth_redirect_uri(request.query_params.get('redirect_uri'))
+        redirect_uri = get_oauth_redirect_uri(req_redirect_uri)
 
         if not client_id or not client_secret or not redirect_uri:
             logger.error("Google OAuth credentials or redirect_uri missing on server during callback exchange")
+            if is_json_req:
+                return Response({"detail": "Google OAuth credentials or redirect_uri missing on server"}, status=status.HTTP_400_BAD_REQUEST)
             frontend_url = f"{frontend_base}/settings?drive=failed&error=credentials_missing"
             return HttpResponseRedirect(frontend_url)
 
@@ -173,6 +184,8 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             res = requests.post(token_url, data=payload)
             if res.status_code != 200:
                 logger.error(f"Failed to exchange OAuth code with Google: {res.text}")
+                if is_json_req:
+                    return Response({"detail": f"Failed to exchange code with Google: {res.text}"}, status=status.HTTP_400_BAD_REQUEST)
                 frontend_url = f"{frontend_base}/settings?drive=failed&error={urllib.parse.quote(res.text)}"
                 return HttpResponseRedirect(frontend_url)
 
@@ -237,6 +250,13 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             print(f"  Storage Limit     : {setting.storage_limit} bytes")
             print("=" * 70 + "\n")
 
+            if is_json_req:
+                return Response({
+                    "detail": "Google Drive connected successfully!",
+                    "connected_email": setting.connected_email,
+                    "connection_status": "Connected"
+                }, status=status.HTTP_200_OK)
+
             frontend_url = f"{frontend_base}/settings?drive=connected"
             return HttpResponseRedirect(frontend_url)
         except Exception as e:
@@ -244,6 +264,8 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             print("\n" + "=" * 70)
             print(f" [GOOGLE DRIVE ERROR] Google Drive OAuth Callback Failed: {e}")
             print("=" * 70 + "\n")
+            if is_json_req:
+                return Response({"detail": f"OAuth authorization failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             frontend_url = f"{frontend_base}/settings?drive=failed&error={urllib.parse.quote(str(e))}"
             return HttpResponseRedirect(frontend_url)
 
