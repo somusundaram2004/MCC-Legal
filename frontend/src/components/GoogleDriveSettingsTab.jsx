@@ -496,7 +496,7 @@ const GoogleDriveSettingsTab = () => {
         </Typography>
         <Box component="ol" sx={{ pl: 2.5, m: 0, '& li': { mb: 1.5, fontSize: '0.82rem', lineHeight: 1.6, color: 'text.secondary' } }}>
           <li>
-            <strong>Register Redirect URI:</strong> Ensure that your Google Cloud Console project lists <code>http://localhost:8000/api/google-drive/oauth/callback/</code> (or your server backend domain callback) under <em>"Authorized redirect URIs"</em>.
+            <strong>Register Redirect URI:</strong> Add <code>http://localhost:5173/settings</code> (or your staging/production host domain) under <em>"Authorized redirect URIs"</em> in your Google Cloud Console project.
           </li>
           <li>
             <strong>Add Test Users:</strong> While the project is in publishing status "Testing", ensure that the target Gmail or Workspace account is explicitly added under the <strong>Test users</strong> section in the GCP OAuth consent screen configuration.

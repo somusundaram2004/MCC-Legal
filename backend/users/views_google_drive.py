@@ -60,7 +60,20 @@ def get_oauth_credentials():
 def get_oauth_redirect_uri(request_redirect_uri=None):
     if request_redirect_uri:
         return request_redirect_uri
-    return getattr(settings, 'GOOGLE_OAUTH_REDIRECT_URI', 'http://localhost:8000/api/google-drive/oauth/callback/')
+
+    cred_path = os.path.join(settings.BASE_DIR, 'credentials.json')
+    if os.path.exists(cred_path):
+        try:
+            with open(cred_path, 'r') as f:
+                data = json.load(f)
+                web_data = data.get('web', {})
+                uris = web_data.get('redirect_uris', [])
+                if uris:
+                    return uris[0]
+        except Exception as e:
+            logger.error(f"Error parsing redirect_uris from credentials.json: {e}")
+
+    return getattr(settings, 'GOOGLE_OAUTH_REDIRECT_URI', 'http://localhost:5173/settings')
 
 
 class GoogleDriveViewSet(viewsets.ViewSet):
@@ -102,11 +115,6 @@ class GoogleDriveViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'], url_path='oauth-url')
     def oauth_url(self, request):
-        force_select = (
-            request.query_params.get('force_select', 'false').lower() == 'true' or
-            request.query_params.get('change_account', 'false').lower() == 'true'
-        )
-
         client_id, _ = get_oauth_credentials()
         if not client_id:
             return Response({"detail": "Google Client ID is not configured on the server"}, status=status.HTTP_400_BAD_REQUEST)
@@ -116,8 +124,6 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         if not redirect_uri:
             return Response({"detail": "GOOGLE_OAUTH_REDIRECT_URI settings is required"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        prompt_val = 'consent select_account' if force_select else 'consent'
-
         params = {
             'client_id': client_id,
             'redirect_uri': redirect_uri,
@@ -125,7 +131,7 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             'scope': 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email openid',
             'access_type': 'offline',
             'include_granted_scopes': 'true',
-            'prompt': prompt_val
+            'prompt': 'consent select_account'
         }
 
         url = 'https://accounts.google.com/o/oauth2/auth?' + urllib.parse.urlencode(params)
