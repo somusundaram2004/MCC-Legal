@@ -170,58 +170,131 @@ class GoogleLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        credential = request.data.get('credential') or request.data.get('token') or request.data.get('id_token')
-        access_token = request.data.get('access_token')
-
-        if not credential and not access_token:
-            return Response({"detail": "Google credential or token is required."}, status=status.HTTP_400_BAD_REQUEST)
-
+        candidate_tokens = []
         from backend.login_oauth import get_google_login_credentials
-        client_id, _ = get_google_login_credentials()
+        client_id, client_secret = get_google_login_credentials()
+
+        code = request.data.get('code')
+        if code and client_id and client_secret:
+            req_redirect = request.data.get('redirect_uri') or f"{request.scheme}://{request.get_host()}/login"
+            try:
+                token_res = py_requests.post('https://oauth2.googleapis.com/token', data={
+                    'code': code,
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                    'redirect_uri': req_redirect,
+                    'grant_type': 'authorization_code'
+                }, timeout=10)
+                if token_res.status_code == 200:
+                    tok_data = token_res.json()
+                    if tok_data.get('id_token') and tok_data['id_token'] not in candidate_tokens:
+                        candidate_tokens.append(tok_data['id_token'])
+                    if tok_data.get('access_token') and tok_data['access_token'] not in candidate_tokens:
+                        candidate_tokens.append(tok_data['access_token'])
+                else:
+                    logger.warning(f"Google Login code exchange returned non-200: {token_res.text}")
+            except Exception as code_err:
+                logger.error(f"Google Login code exchange exception: {code_err}")
+
+        for key in ['credential', 'token', 'id_token', 'access_token']:
+            val = request.data.get(key)
+            if val and val not in candidate_tokens:
+                candidate_tokens.append(val)
+
+        if not candidate_tokens:
+            return Response({"detail": "Google credential, code, or token is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         email = None
         name = None
         email_verified = True
 
-        # 1. Verify Google ID Token (credential)
-        if credential:
+        for tok in candidate_tokens:
+            if email:
+                break
+            
+            # Step 1: verify_oauth2_token WITH audience
+            if client_id:
+                try:
+                    id_info = google_id_token.verify_oauth2_token(
+                        tok, 
+                        google_requests.Request(), 
+                        audience=client_id
+                    )
+                    email = id_info.get('email')
+                    name = id_info.get('name')
+                    email_verified = id_info.get('email_verified', True)
+                    if email:
+                        break
+                except Exception as e:
+                    logger.debug(f"verify_oauth2_token with client_id failed: {e}")
+
+            # Step 2: verify_oauth2_token WITHOUT audience enforcement
             try:
-                # Primary verification using google-auth library
                 id_info = google_id_token.verify_oauth2_token(
-                    credential, 
-                    google_requests.Request(), 
-                    audience=client_id if client_id else None
+                    tok, 
+                    google_requests.Request()
                 )
                 email = id_info.get('email')
                 name = id_info.get('name')
                 email_verified = id_info.get('email_verified', True)
+                if email:
+                    break
             except Exception as e:
-                logger.warning(f"google-auth verify_oauth2_token failed: {e}. Trying Google tokeninfo API fallback...")
-                try:
-                    # Fallback to Google tokeninfo public API endpoint
-                    resp = py_requests.get(f'https://oauth2.googleapis.com/tokeninfo?id_token={credential}', timeout=8)
-                    if resp.status_code == 200:
-                        id_info = resp.json()
-                        email = id_info.get('email')
-                        name = id_info.get('name')
-                        email_verified = id_info.get('email_verified') == 'true' or id_info.get('email_verified') is True
-                    else:
-                        logger.error(f"Google tokeninfo endpoint rejected token: {resp.text}")
-                except Exception as fallback_err:
-                    logger.error(f"Google tokeninfo fallback failed: {fallback_err}")
+                logger.debug(f"verify_oauth2_token without audience failed: {e}")
 
-        # 2. Fallback using access_token to userinfo endpoint
-        if not email and access_token:
+            # Step 3: Google tokeninfo API with id_token
             try:
-                headers = {'Authorization': f'Bearer {access_token}'}
+                resp = py_requests.get(f'https://oauth2.googleapis.com/tokeninfo?id_token={tok}', timeout=8)
+                if resp.status_code == 200:
+                    id_info = resp.json()
+                    email = id_info.get('email')
+                    name = id_info.get('name')
+                    email_verified = id_info.get('email_verified') == 'true' or id_info.get('email_verified') is True
+                    if email:
+                        break
+            except Exception as e:
+                logger.debug(f"tokeninfo id_token failed: {e}")
+
+            # Step 4: Google tokeninfo API with access_token
+            try:
+                resp = py_requests.get(f'https://oauth2.googleapis.com/tokeninfo?access_token={tok}', timeout=8)
+                if resp.status_code == 200:
+                    info = resp.json()
+                    email = info.get('email')
+                    name = info.get('name')
+                    email_verified = info.get('email_verified') == 'true' or info.get('email_verified') is True
+                    if email:
+                        break
+            except Exception as e:
+                logger.debug(f"tokeninfo access_token failed: {e}")
+
+            # Step 5: Google userinfo endpoint with Bearer header
+            try:
+                headers = {'Authorization': f'Bearer {tok}'}
                 resp = py_requests.get('https://www.googleapis.com/oauth2/v3/userinfo', headers=headers, timeout=8)
                 if resp.status_code == 200:
                     info = resp.json()
                     email = info.get('email')
                     name = info.get('name')
                     email_verified = info.get('email_verified', True)
+                    if email:
+                        break
             except Exception as e:
-                logger.error(f"Failed to fetch userinfo with access_token: {e}")
+                logger.debug(f"userinfo Bearer failed: {e}")
+
+            # Step 6: Google OpenID Connect userinfo endpoint
+            try:
+                headers = {'Authorization': f'Bearer {tok}'}
+                resp = py_requests.get('https://openidconnect.googleapis.com/v1/userinfo', headers=headers, timeout=8)
+                if resp.status_code == 200:
+                    info = resp.json()
+                    email = info.get('email')
+                    name = info.get('name')
+                    email_verified = info.get('email_verified', True)
+                    if email:
+                        break
+            except Exception as e:
+                logger.debug(f"openidconnect userinfo failed: {e}")
 
         if not email:
             return Response(
@@ -267,6 +340,15 @@ class GoogleLoginView(APIView):
             'refresh': str(refresh),
             'user': CustomUserSerializer(user).data
         }, status=status.HTTP_200_OK)
+
+
+class GoogleLoginClientIdView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        from backend.login_oauth import get_google_login_credentials
+        client_id, _ = get_google_login_credentials()
+        return Response({"client_id": client_id})
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -917,4 +999,15 @@ class GoogleDriveSettingViewSet(viewsets.ModelViewSet):
                 {"detail": f"Google Drive connection test failed: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+from .models import CustomDynamicPage
+from .serializers import CustomDynamicPageSerializer
+
+class CustomDynamicPageViewSet(viewsets.ModelViewSet):
+    serializer_class = CustomDynamicPageSerializer
+    queryset = CustomDynamicPage.objects.all().order_by('order', 'title')
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
 

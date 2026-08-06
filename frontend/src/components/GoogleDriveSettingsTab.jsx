@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Card, CardContent, Typography, Grid, Button, TextField,
   Alert, Avatar, Chip, LinearProgress, CircularProgress, Paper
@@ -19,7 +19,12 @@ const GoogleDriveSettingsTab = () => {
   const [connecting, setConnecting] = useState(false);
   const [testing, setTesting] = useState(false);
   const [rootFolderId, setRootFolderId] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
   const [savingFolderId, setSavingFolderId] = useState(false);
+  const [savingCreds, setSavingCreds] = useState(false);
+
+  const codeExchangeRef = useRef(null);
 
   const fetchStatus = useCallback(async () => {
     setLoading(true);
@@ -28,6 +33,8 @@ const GoogleDriveSettingsTab = () => {
       const response = await api.get('/api/google-drive/status/');
       setStatusData(response.data);
       setRootFolderId(response.data.root_folder_id || '');
+      setClientId(response.data.client_id || '');
+      setClientSecret(response.data.client_secret || '');
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to fetch Google Drive status.');
     } finally {
@@ -67,6 +74,8 @@ const GoogleDriveSettingsTab = () => {
     };
 
     if (code) {
+      if (codeExchangeRef.current === code) return;
+      codeExchangeRef.current = code;
       handleOAuthCodeExchange(code);
     } else if (driveStatus === 'connected') {
       setSuccess('Google Drive connected successfully!');
@@ -117,6 +126,25 @@ const GoogleDriveSettingsTab = () => {
       setError(err.response?.data?.detail || 'Failed to update root folder ID.');
     } finally {
       setSavingFolderId(false);
+    }
+  };
+
+  const handleSaveCredentials = async () => {
+    setSavingCreds(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await api.patch('/api/google-drive/update-credentials/', {
+        client_id: clientId,
+        client_secret: clientSecret,
+        root_folder_id: rootFolderId
+      });
+      setSuccess(response.data.detail || 'Google Cloud credentials updated successfully!');
+      fetchStatus();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update Google Cloud credentials.');
+    } finally {
+      setSavingCreds(false);
     }
   };
 
@@ -183,7 +211,52 @@ const GoogleDriveSettingsTab = () => {
             Automatic Google OAuth 2.0 authentication for organization storage — no file uploads required.
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', flexShrink: 0 }}>
+          <Button
+            onClick={() => handleConnect(true)}
+            disabled={connecting}
+            variant="contained"
+            startIcon={<MenuOpenIcon />}
+            sx={{
+              background: 'linear-gradient(135deg, var(--indigo), var(--violet))',
+              color: '#fff',
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 700,
+              px: 2.5,
+              py: 1.2,
+              boxShadow: 'none',
+              '&:hover': {
+                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)',
+              }
+            }}
+          >
+            Change Google Account
+          </Button>
+
+          <Button
+            onClick={() => {
+              const el = document.getElementById('oauth-credentials-panel');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
+            variant="outlined"
+            startIcon={<SettingsSuggestIcon />}
+            sx={{
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 700,
+              px: 2.5,
+              py: 1.2,
+              borderColor: 'primary.main',
+              color: 'primary.main',
+              '&:hover': {
+                backgroundColor: 'rgba(79, 70, 229, 0.08)'
+              }
+            }}
+          >
+            Change Credentials for OAuth
+          </Button>
+
           <Button
             onClick={handleTestConnection}
             disabled={testing || !isConnected}
@@ -196,7 +269,7 @@ const GoogleDriveSettingsTab = () => {
               borderRadius: '12px',
               textTransform: 'none',
               fontWeight: 700,
-              px: 3,
+              px: 2.5,
               py: 1.2,
               boxShadow: 'none',
               '&:hover': {
@@ -212,34 +285,13 @@ const GoogleDriveSettingsTab = () => {
           >
             Test Connection
           </Button>
-          <Button
-            onClick={() => handleConnect(true)}
-            disabled={connecting}
-            variant="contained"
-            startIcon={<MenuOpenIcon />}
-            sx={{
-              background: 'linear-gradient(135deg, var(--indigo), var(--violet))',
-              color: '#fff',
-              borderRadius: '12px',
-              textTransform: 'none',
-              fontWeight: 700,
-              px: 3,
-              py: 1.2,
-              boxShadow: 'none',
-              '&:hover': {
-                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)',
-              }
-            }}
-          >
-            Change Google Account
-          </Button>
         </Box>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 3.5, borderRadius: '12px' }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 3.5, borderRadius: '12px' }}>{success}</Alert>}
 
-      {(!isConnected || !statusData?.connected_email) && !loading && !connecting && (
+      {(!isConnected && !statusData?.connected_email && (!statusData || statusData.connection_status === 'Disconnected')) && !loading && !connecting && (
         <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 3.5, borderRadius: '12px', fontWeight: 700 }}>
           No Google Drive Account Added: Click "Connect Google Drive" or "Change Google Account" below to authorize your Google Workspace storage.
         </Alert>
@@ -296,56 +348,120 @@ const GoogleDriveSettingsTab = () => {
                     <TextField
                       fullWidth
                       label="Connected Google Account"
-                      value={statusData.connected_email}
+                      value={statusData.connected_email || 'Not Connected'}
                       disabled
                       sx={{ '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: 'text.primary', fontWeight: 600 } }}
                     />
                   </Grid>
-                  <Grid xs={12} sm={6}>
-                    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-                      <TextField
-                        fullWidth
-                        label="Current Root Folder ID"
-                        value={rootFolderId}
-                        onChange={(e) => setRootFolderId(e.target.value)}
-                        placeholder="Paste folder ID or full Google Drive URL"
-                        disabled={savingFolderId || !isConnected}
-                        helperText="Subfolders/files will be created inside this folder. Paste URL or ID."
-                      />
-                      <Button
-                        variant="contained"
-                        onClick={handleSaveRootFolder}
-                        disabled={savingFolderId || !isConnected || rootFolderId === (statusData.root_folder_id || '')}
-                        sx={{
-                          backgroundColor: '#4F46E5',
-                          color: '#fff',
-                          height: '56px',
-                          px: 3,
-                          borderRadius: '10px',
-                          textTransform: 'none',
-                          fontWeight: 700,
-                          '&:hover': {
-                            backgroundColor: '#4338CA',
-                          }
-                        }}
-                      >
-                        {savingFolderId ? <CircularProgress size={24} color="inherit" /> : 'Save'}
-                      </Button>
-                    </Box>
+
+                  {/* Dynamic Google Cloud Credentials Section */}
+                  <Grid xs={12} id="oauth-credentials-panel">
+                    <Paper variant="outlined" sx={{ p: 3, borderRadius: '16px', bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.5, color: 'text.primary' }}>
+                        🔑 Google Cloud API Credentials (Change Project / Account)
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2.5 }}>
+                        Super Admins can update the Google Cloud OAuth Client ID, Client Secret, or Root Folder ID dynamically without restarting the server.
+                      </Typography>
+
+                      <Grid container spacing={2}>
+                        <Grid xs={12} md={6}>
+                          <TextField
+                            fullWidth
+                            label="Google OAuth Client ID"
+                            value={clientId}
+                            onChange={(e) => setClientId(e.target.value)}
+                            placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
+                            helperText="Obtained from Google Cloud Console > APIs & Services > Credentials"
+                          />
+                        </Grid>
+
+                        <Grid xs={12} md={6}>
+                          <TextField
+                            fullWidth
+                            type="password"
+                            label="Google OAuth Client Secret"
+                            value={clientSecret}
+                            onChange={(e) => setClientSecret(e.target.value)}
+                            placeholder="Paste new Client Secret or leave as ••••••••"
+                            helperText="Encrypted securely in server database"
+                          />
+                        </Grid>
+
+                        <Grid xs={12}>
+                          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                            <TextField
+                              fullWidth
+                              label="Root Repository Folder ID / URL"
+                              value={rootFolderId}
+                              onChange={(e) => setRootFolderId(e.target.value)}
+                              placeholder="Paste folder ID or full Google Drive folder URL"
+                              helperText="All subfolders/files will be stored inside this folder."
+                            />
+                            <Button
+                              variant="contained"
+                              onClick={handleSaveCredentials}
+                              disabled={savingCreds}
+                              sx={{
+                                backgroundColor: '#4F46E5',
+                                color: '#ffffff !important',
+                                height: '56px',
+                                px: 3.5,
+                                borderRadius: '10px',
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                flexShrink: 0,
+                                '&:hover': { backgroundColor: '#4338CA' }
+                              }}
+                            >
+                              {savingCreds ? <CircularProgress size={24} color="inherit" /> : 'Save Credentials'}
+                            </Button>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </Paper>
                   </Grid>
                   <Grid xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Default Upload Folder"
-                      value={statusData.default_upload_folder}
+                      value={statusData.default_upload_folder || 'Root Repository'}
                       disabled
                       sx={{ '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: 'text.primary', fontWeight: 600 } }}
                     />
                   </Grid>
                 </Grid>
 
+                {/* Storage usage details */}
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, mt: 1, mb: 1 }}>
+                  Storage Quota & Usage
+                </Typography>
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    Storage Used: <span style={{ color: 'text.secondary', fontWeight: 500 }}>{usageStr} / {limitStr}</span>
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                    {percentUsed}% Used
+                  </Typography>
+                </Box>
+
+                <LinearProgress
+                  variant="determinate"
+                  value={percentUsed}
+                  sx={{
+                    height: 8,
+                    borderRadius: 4,
+                    bgcolor: 'action.hover',
+                    '& .MuiLinearProgress-bar': {
+                      borderRadius: 4,
+                      background: 'linear-gradient(90deg, #10B981, #34D399)',
+                    }
+                  }}
+                />
+
                 {/* Buttons row */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3 }}>
                   <Box sx={{ display: 'flex', gap: 2 }}>
                     <Button
                       onClick={() => handleConnect(false)}
@@ -413,65 +529,6 @@ const GoogleDriveSettingsTab = () => {
               </CardContent>
             </Card>
           </Grid>
-
-          {/* Storage Quota Card */}
-          <Grid item xs={12} sm={6}>
-            <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
-              <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.primary' }}>
-                  Storage Quota & Usage
-                </Typography>
-                
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
-                    Storage Used
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: 'text.primary' }}>
-                    {usageStr} / {limitStr}
-                  </Typography>
-                </Box>
-
-                <LinearProgress
-                  variant="determinate"
-                  value={percentUsed}
-                  sx={{
-                    height: 8,
-                    borderRadius: 4,
-                    bgcolor: 'action.hover',
-                    '& .MuiLinearProgress-bar': {
-                      borderRadius: 4,
-                      background: 'linear-gradient(90deg, #10B981, #34D399)',
-                    }
-                  }}
-                />
-
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    p: 2.5,
-                    borderRadius: '14px',
-                    borderColor: 'divider',
-                    bgcolor: 'action.hover',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 0.5,
-                    mt: 1
-                  }}
-                >
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                    Available Drive Storage
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#10B981' }}>
-                    {availableStr}
-                  </Typography>
-                </Paper>
-
-                <Typography variant="caption" color="text.disabled" sx={{ mt: 1 }}>
-                  Last Verified: {formattedDate}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
         </Grid>
       ) : (
         <Paper
@@ -515,23 +572,35 @@ const GoogleDriveSettingsTab = () => {
         </Paper>
       )}
 
-      {/* Guidelines Setup */}
+      {/* Guidelines & Step-by-Step Setup Guide */}
       <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', bgcolor: 'action.hover', p: 4, mt: 4 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <SettingsSuggestIcon color="primary" /> Google Drive OAuth 2.0 Setup Guide
+        <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: 'text.primary' }}>
+          <SettingsSuggestIcon color="primary" /> Steps to Follow for Google Account & Cloud Switch
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.6 }}>
-          Authentication uses Google's secure Web OAuth 2.0 protocol. Follow these configuration guidelines:
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.6 }}>
+          Follow these 5 clear steps whenever you want to connect a new Google Account or switch Google Cloud projects:
         </Typography>
-        <Box component="ol" sx={{ pl: 2.5, m: 0, '& li': { mb: 1.5, fontSize: '0.82rem', lineHeight: 1.6, color: 'text.secondary' } }}>
+        <Box component="ol" sx={{ pl: 2.5, m: 0, '& li': { mb: 2, fontSize: '0.86rem', lineHeight: 1.6, color: 'text.primary' } }}>
           <li>
-            <strong>Register Redirect URI:</strong> Add <code>http://localhost:5173/settings</code> (or your staging/production host domain) under <em>"Authorized redirect URIs"</em> in your Google Cloud Console project.
+            <strong>Step 1: Open Google Cloud Console & Enable Drive API</strong><br />
+            Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer">Google Cloud Console</a> with your target Google Account. Select or create your project, go to <em>APIs & Services &gt; Library</em>, search for <strong>Google Drive API</strong>, and click <strong>Enable</strong>.
           </li>
           <li>
-            <strong>Add Test Users:</strong> While the project is in publishing status "Testing", ensure that the target Gmail or Workspace account is explicitly added under the <strong>Test users</strong> section in the GCP OAuth consent screen configuration.
+            <strong>Step 2: Create OAuth 2.0 Credentials</strong><br />
+            Go to <em>APIs & Services &gt; Credentials &gt; Create Credentials &gt; OAuth client ID</em> (Web application). Add your redirect URI:<br />
+            <code>http://localhost:5173/settings</code> (and <code>http://localhost:8000/api/google-drive/oauth/callback/</code>).
           </li>
           <li>
-            <strong>Verify Scopes:</strong> Grant full read/write permission scopes to the drive context (<code>drive.file</code>, <code>drive</code>, and <code>userinfo.email</code>) during the authorization consent redirect.
+            <strong>Step 3: Update OAuth Credentials in App</strong><br />
+            Click the <strong style={{ color: 'var(--indigo)' }}>"Change Credentials for OAuth"</strong> button above. Paste your new <strong>Client ID</strong> and <strong>Client Secret</strong>, then click <strong>Save Credentials</strong>.
+          </li>
+          <li>
+            <strong>Step 4: Set Up Root Repository Folder</strong><br />
+            Create a main repository folder in your new Google Drive account (or share your existing old root folder with the new account). Copy the Folder ID from the browser URL, paste it into <strong>Root Repository Folder ID</strong>, and save.
+          </li>
+          <li>
+            <strong>Step 5: Connect & Authorize Account</strong><br />
+            Click the <strong style={{ color: 'var(--indigo)' }}>"Change Google Account"</strong> button at the top to open Google's sign-in screen, pick your target Google account, and click <strong>Allow</strong> to grant Drive access.
           </li>
         </Box>
       </Card>

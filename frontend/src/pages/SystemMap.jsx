@@ -187,11 +187,13 @@ const StageDrawer = ({ stage, onClose }) => {
       anchor="right"
       open={Boolean(stage)}
       onClose={onClose}
-      PaperProps={{
-        sx: {
-          width: { xs: '100%', sm: 420 },
-          bgcolor: 'background.paper',
-          borderLeft: '1px solid', borderColor: 'divider',
+      slotProps={{
+        paper: {
+          sx: {
+            width: { xs: '100%', sm: 420 },
+            bgcolor: 'background.paper',
+            borderLeft: '1px solid', borderColor: 'divider',
+          }
         }
       }}
     >

@@ -639,7 +639,7 @@ const Register = () => {
                       { check: checks.special, label: 'One special symbol' },
                       { check: checks.match, label: 'Passwords match' }
                     ].map((item, idx) => (
-                      <Grid item xs={6} key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Grid xs={6} key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <CheckCircleIcon sx={{ fontSize: 14, color: item.check ? 'success.main' : 'text.disabled' }} />
                         <Typography variant="caption" color={item.check ? 'text.primary' : 'text.secondary'} sx={{ fontSize: '0.72rem' }}>
                           {item.label}

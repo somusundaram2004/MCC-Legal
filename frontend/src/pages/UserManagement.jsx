@@ -22,6 +22,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 // ─── Shared field styles ──────────────────────────────────────────────────────
 const FIELD_SX = {
@@ -477,26 +478,25 @@ const UserManagement = () => {
   const [invitationFilterRole, setInvitationFilterRole] = useState('');
   const [invitationFilterStatus, setInvitationFilterStatus] = useState('');
 
-
-
-  // Load initial data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const usersRes = await api.get('/api/users/');
+      const [usersRes, rolesRes, permsRes, deptCatsRes, deptsRes] = await Promise.all([
+        api.get('/api/users/'),
+        api.get('/api/roles/'),
+        api.get('/api/permissions/'),
+        api.get('/api/mous/master/dept-categories/'),
+        api.get('/api/mous/master/departments/'),
+      ]);
       setUsers(usersRes.data);
-      const rolesRes = await api.get('/api/roles/');
       let rolesData = rolesRes.data;
       if (user?.role?.name === 'Admin') {
         rolesData = rolesData.filter(r => r.name !== 'Super Admin');
       }
       setRoles(rolesData);
-      const permsRes = await api.get('/api/permissions/');
       setAllPermissions(permsRes.data);
-      const deptCatsRes = await api.get('/api/mous/master/dept-categories/');
       setDeptCategories(deptCatsRes.data);
-      const deptsRes = await api.get('/api/mous/master/departments/');
       setDepartments(deptsRes.data);
     } catch (err) {
       console.error('Failed to load user management data:', err);
@@ -504,9 +504,12 @@ const UserManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // Global Auto Refresh Subscription
+  useAutoRefresh(REFRESH_CATEGORIES.USERS, loadData);
 
   // Background polling for real-time synchronization across admins
   useEffect(() => {
@@ -944,13 +947,15 @@ const UserManagement = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               sx={{ mb: 1.5 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: 'text.secondary', fontSize: '1.1rem' }} />
-                  </InputAdornment>
-                ),
-                sx: { borderRadius: '8px', bgcolor: '#fff' }
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: 'text.secondary', fontSize: '1.1rem' }} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: '8px', bgcolor: '#fff' }
+                }
               }}
             />
 
@@ -1168,13 +1173,15 @@ const UserManagement = () => {
               value={invitationSearch}
               onChange={(e) => setInvitationSearch(e.target.value)}
               sx={{ mb: 1.5 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: 'text.secondary', fontSize: '1.1rem' }} />
-                  </InputAdornment>
-                ),
-                sx: { borderRadius: '8px', bgcolor: '#fff' }
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: 'text.secondary', fontSize: '1.1rem' }} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: '8px', bgcolor: '#fff' }
+                }
               }}
             />
 
@@ -1344,8 +1351,8 @@ const UserManagement = () => {
         onClose={() => setInviteDialogOpen(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{
-          sx: { borderRadius: '16px', boxShadow: '0 24px 80px rgba(0,0,0,0.18)', overflow: 'hidden' }
+        slotProps={{
+          paper: { sx: { borderRadius: '16px', boxShadow: '0 24px 80px rgba(0,0,0,0.18)', overflow: 'hidden' } }
         }}
       >
         <DialogTitle sx={{ bgcolor: 'background.paper', px: 3, pt: 3, pb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -1401,8 +1408,10 @@ const UserManagement = () => {
               required
               autoFocus
               size="small"
-              InputProps={{
-                sx: { borderRadius: '10px', fontSize: '0.95rem' }
+              slotProps={{
+                input: {
+                  sx: { borderRadius: '10px', fontSize: '0.95rem' }
+                }
               }}
             />
 
@@ -1416,9 +1425,11 @@ const UserManagement = () => {
                     size="small"
                     value={generatedLink}
                     fullWidth
-                    InputProps={{
-                      readOnly: true,
-                      sx: { fontSize: '0.8rem', bgcolor: '#fff', borderRadius: '8px' }
+                    slotProps={{
+                      input: {
+                        readOnly: true,
+                        sx: { fontSize: '0.8rem', bgcolor: '#fff', borderRadius: '8px' }
+                      }
                     }}
                   />
                   <Button
@@ -1465,8 +1476,8 @@ const UserManagement = () => {
         open={inviteSubmitting}
         maxWidth="xs"
         fullWidth
-        PaperProps={{
-          sx: { borderRadius: '24px', p: 3, textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.18)' }
+        slotProps={{
+          paper: { sx: { borderRadius: '24px', p: 3, textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.18)' } }
         }}
       >
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 1 }}>
@@ -1496,8 +1507,8 @@ const UserManagement = () => {
       <Dialog
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
-        PaperProps={{
-          sx: { borderRadius: '16px', p: 1, maxWidth: '440px' }
+        slotProps={{
+          paper: { sx: { borderRadius: '16px', p: 1, maxWidth: '440px' } }
         }}
       >
         <DialogTitle sx={{ fontWeight: 800 }}>Confirm User Deletion</DialogTitle>
@@ -1535,17 +1546,19 @@ const UserManagement = () => {
         open={userDialogOpen}
         onClose={() => setUserDialogOpen(false)}
         maxWidth={false}
-        PaperProps={{
-          sx: {
-            width: '900px',
-            maxWidth: '90vw',
-            maxHeight: '90vh',
-            borderRadius: '20px',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.18)',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            m: 2,
+        slotProps={{
+          paper: {
+            sx: {
+              width: '900px',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              borderRadius: '20px',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.18)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              m: 2,
+            }
           }
         }}
       >

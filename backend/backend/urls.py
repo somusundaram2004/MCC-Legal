@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
     path('api/activity-logs/', include('activity_logs.urls')),
     path('api/mous/', include('mous.urls')),
+    path('api/customization/', include('customization.urls')),
     
     # Dashboard & Global Search
     path('api/dashboard/stats/', DashboardStatsView.as_view(), name='dashboard_stats'),

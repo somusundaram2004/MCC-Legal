@@ -263,7 +263,7 @@ const MasterData = () => {
       </Card>
 
       {/* Editor Modal */}
-      <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+      <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: '20px' } } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>
           {editId ? `Edit ${currentTab.label}` : `Add New ${currentTab.label}`}
         </DialogTitle>

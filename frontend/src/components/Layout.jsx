@@ -43,6 +43,7 @@ import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 
 import { useAuth } from '../context/AuthContext';
+import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 import { useThemeMode } from '../context/ThemeContext';
 import { useSiteTime } from '../context/SiteTimeContext';
 import api from '../services/api';
@@ -201,12 +202,35 @@ const Layout = ({ children }) => {
     }
   };
 
-  const handleSearchSubmit = (e) => {
-    if (e.key === 'Enter' && searchQuery.trim()) {
-      navigate(`/explorer?search=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery('');
+  const [customPages, setCustomPages] = useState([]);
+
+  const fetchCustomPages = React.useCallback(async () => {
+    try {
+      const res = await api.get('/api/users/custom-pages/');
+      const rawList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      const userRole = user?.role?.name || 'User';
+      const userId = String(user?.id || '');
+
+      setCustomPages(rawList.filter(p => {
+        if (p.is_published === false || p.is_enabled === false) return false;
+        if (userRole === 'Super Admin') return true;
+        const roles = p.allowed_roles || [];
+        const allowedUserIds = (p.allowed_permissions || []).map(String);
+        if (roles.length === 0 && allowedUserIds.length === 0) return true;
+        return roles.some(r => r.toLowerCase() === userRole.toLowerCase()) || allowedUserIds.includes(userId);
+      }));
+    } catch (err) {
+      console.debug('Failed to load custom pages for sidebar:', err);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchCustomPages();
+    }
+  }, [user, fetchCustomPages]);
+
+  useAutoRefresh(REFRESH_CATEGORIES.SETTINGS, fetchCustomPages);
 
   const menuItems = [
     { text: 'Dashboard',       icon: <DashboardIcon />,          path: '/',           permission: 'view_dashboard', iconColor: 'var(--indigo)' },
@@ -427,6 +451,83 @@ const Layout = ({ children }) => {
                     }}>
                       {item.text}
                     </Typography>
+                  </Box>
+                </ListItemButton>
+              </Tooltip>
+            </ListItem>
+          );
+        })}
+
+        {/* Dynamic Custom Modules created via Website Builder */}
+        {customPages.map((cp) => {
+          const targetRoute = cp.route?.startsWith('/custom-page/')
+            ? cp.route
+            : (cp.route?.startsWith('/') ? cp.route : `/custom-page/${cp.slug}`);
+          const isSelected = location.pathname === targetRoute || location.pathname === `/custom-page/${cp.slug}`;
+          return (
+            <ListItem key={cp.id} disablePadding sx={{ mb: 0.25 }}>
+              <Tooltip title={isCollapsed ? cp.title : ''} placement="right" arrow>
+                <ListItemButton
+                  onClick={() => {
+                    if (cp.open_new_tab) {
+                      window.open(targetRoute, '_blank');
+                    } else {
+                      navigate(targetRoute);
+                      setMobileOpen(false);
+                    }
+                  }}
+                  selected={isSelected}
+                  sx={{
+                    borderRadius: '10px',
+                    py: 0.9,
+                    px: 1,
+                    minHeight: 40,
+                    justifyContent: 'flex-start',
+                    overflow: 'hidden',
+                    transition: 'all 0.22s cubic-bezier(0.22,1,0.36,1)',
+                    ...(isSelected ? {
+                      background: 'linear-gradient(135deg, var(--indigo) 0%, var(--violet) 100%)',
+                      boxShadow: '0 4px 12px rgba(var(--indigo-rgb), 0.3)',
+                      '&:hover': { opacity: 0.92 },
+                    } : {
+                      '&:hover': { bgcolor: 'action.hover' },
+                    }),
+                  }}
+                >
+                  <Box sx={{
+                    width: 32, height: 32,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderRadius: '8px',
+                    bgcolor: isSelected ? 'rgba(255,255,255,0.18)' : 'rgba(59, 130, 246, 0.12)',
+                    color: isSelected ? '#ffffff' : '#3B82F6',
+                    flexShrink: 0,
+                    '& svg': { fontSize: '1.05rem' },
+                  }}>
+                    <FolderIcon />
+                  </Box>
+                  <Box sx={{
+                    maxWidth: isCollapsed ? 0 : 180,
+                    overflow: 'hidden',
+                    opacity: isCollapsed ? 0 : 1,
+                    transition: 'max-width 0.28s cubic-bezier(0.22,1,0.36,1), opacity 0.2s ease',
+                    whiteSpace: 'nowrap',
+                    ml: 1.2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justify: 'space-between',
+                    width: '100%'
+                  }}>
+                    <Typography sx={{
+                      fontSize: '0.858rem',
+                      fontWeight: isSelected ? 700 : 500,
+                      color: isSelected ? '#ffffff' : 'text.primary',
+                      lineHeight: 1,
+                    }}>
+                      {cp.title}
+                    </Typography>
+                    {cp.badge && (
+                      <Chip label={cp.badge} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 800, bgcolor: cp.badge_color || '#3B82F6', color: '#fff', ml: 0.5 }} />
+                    )}
                   </Box>
                 </ListItemButton>
               </Tooltip>
@@ -724,7 +825,7 @@ const Layout = ({ children }) => {
           vertical: 'top',
           horizontal: 'right',
         }}
-        PaperProps={{ sx: { p: 2.5, width: 280, borderRadius: '16px', mt: 1.5 } }}
+        slotProps={{ paper: { sx: { p: 2.5, width: 280, borderRadius: '16px', mt: 1.5 } } }}
       >
         <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5 }}>
           Site Date & Time Override
@@ -784,7 +885,7 @@ const Layout = ({ children }) => {
         onClose={handleNotiClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        PaperProps={{ sx: { width: 340, maxHeight: 420, borderRadius: '16px', mt: 1.5, border: '1px solid', borderColor: 'divider', boxShadow: '0 12px 32px rgba(0,0,0,0.1)' } }}
+        slotProps={{ paper: { sx: { width: 340, maxHeight: 420, borderRadius: '16px', mt: 1.5, border: '1px solid', borderColor: 'divider', boxShadow: '0 12px 32px rgba(0,0,0,0.1)' } } }}
       >
         <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -839,22 +940,22 @@ const Layout = ({ children }) => {
                     <NotificationsActiveIcon fontSize="small" />
                   </ListItemIcon>
                   <ListItemText
-                    primary={n.title}
+                    disableTypography
+                    primary={
+                      <Typography variant="body2" component="div" sx={{ fontSize: '0.85rem', fontWeight: n.is_read ? 500 : 700, color: n.is_read ? 'text.secondary' : 'text.primary' }}>
+                        {n.title}
+                      </Typography>
+                    }
                     secondary={
-                      <>
-                        <Typography variant="body2" color="text.secondary" sx={{ display: 'block', fontSize: '0.8rem', mt: 0.25 }}>
+                      <Box>
+                        <Typography variant="body2" component="div" color="text.secondary" sx={{ display: 'block', fontSize: '0.8rem', mt: 0.25 }}>
                           {n.description}
                         </Typography>
-                        <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem', mt: 0.5, display: 'block' }}>
+                        <Typography variant="caption" component="div" color="text.disabled" sx={{ fontSize: '0.7rem', mt: 0.5, display: 'block' }}>
                           {new Date(n.created_at).toLocaleString()}
                         </Typography>
-                      </>
+                      </Box>
                     }
-                    primaryTypographyProps={{ 
-                      fontSize: '0.85rem', 
-                      fontWeight: n.is_read ? 500 : 700, 
-                      color: n.is_read ? 'text.secondary' : 'text.primary' 
-                    }}
                   />
                 </ListItemButton>
               </ListItem>
@@ -875,7 +976,7 @@ const Layout = ({ children }) => {
         open={Boolean(profileAnchor)}
         onClose={handleProfileClose}
         onClick={handleProfileClose}
-        PaperProps={{ sx: { width: 220, borderRadius: '16px', mt: 1.5, border: '1px solid', borderColor: 'divider', boxShadow: '0 12px 32px rgba(0,0,0,0.1)' } }}
+        slotProps={{ paper: { sx: { width: 220, borderRadius: '16px', mt: 1.5, border: '1px solid', borderColor: 'divider', boxShadow: '0 12px 32px rgba(0,0,0,0.1)' } } }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
@@ -1032,17 +1133,19 @@ const Layout = ({ children }) => {
             bgcolor: 'rgba(15, 23, 42, 0.4)'
           }
         }}
-        PaperProps={{
-          sx: {
-            borderRadius: '16px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
-            border: '1px solid',
-            borderColor: 'divider',
-            background: (theme) => theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
-            backgroundImage: 'none',
-            overflow: 'hidden',
-            mt: '8vh',
-            alignSelf: 'flex-start'
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: '16px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+              border: '1px solid',
+              borderColor: 'divider',
+              background: (theme) => theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
+              backgroundImage: 'none',
+              overflow: 'hidden',
+              mt: '8vh',
+              alignSelf: 'flex-start'
+            }
           }
         }}
       >
@@ -1056,13 +1159,15 @@ const Layout = ({ children }) => {
             placeholder="Search files, folders, users or actions..."
             value={cmdQuery}
             onChange={(e) => setCmdQuery(e.target.value)}
-            InputProps={{
-              disableUnderline: true,
-              endAdornment: (
-                <IconButton size="small" onClick={() => { setCmdOpen(false); setCmdQuery(''); }}>
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              )
+            slotProps={{
+              input: {
+                disableUnderline: true,
+                endAdornment: (
+                  <IconButton size="small" onClick={() => { setCmdOpen(false); setCmdQuery(''); }}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                )
+              }
             }}
             sx={{
               '& input': {
@@ -1235,14 +1340,16 @@ const Layout = ({ children }) => {
         onClose={() => setShowLoginPopup(false)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: '24px',
-            p: 1.5,
-            border: '1px solid',
-            borderColor: 'divider',
-            background: 'background.paper',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: '24px',
+              p: 1.5,
+              border: '1px solid',
+              borderColor: 'divider',
+              background: 'background.paper',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+            }
           }
         }}
       >

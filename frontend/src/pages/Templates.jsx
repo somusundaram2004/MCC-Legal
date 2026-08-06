@@ -236,7 +236,7 @@ const Templates = () => {
           { label: 'Categories', value: stats.total_categories, icon: <FolderCopyIcon />, color: '#EC4899', bg: 'rgba(236,72,153,0.08)' },
           { label: 'Storage (MB)', value: stats.storage_usage_mb, icon: <StorageIcon />, color: '#0EA5E9', bg: 'rgba(14,165,233,0.08)' },
         ].map(({ label, value, icon, color, bg }) => (
-          <Grid item xs={6} sm={3} key={label}>
+          <Grid xs={6} sm={3} key={label}>
             <Card sx={{ p: 2.5, borderRadius: '18px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', transition: 'box-shadow 0.2s', '&:hover': { boxShadow: `0 6px 20px ${color}22` } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Avatar sx={{ bgcolor: bg, color, width: 46, height: 46, borderRadius: '12px' }}>{icon}</Avatar>
@@ -260,13 +260,15 @@ const Templates = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             sx={{ flex: '1 1 200px', minWidth: 160 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                </InputAdornment>
-              ),
-              sx: { borderRadius: '10px' }
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                  </InputAdornment>
+                ),
+                sx: { borderRadius: '10px' }
+              }
             }}
           />
 
@@ -374,7 +376,7 @@ const Templates = () => {
                   </Box>
                   <Grid container spacing={2.5}>
                     {items.map((item) => (
-                      <Grid item xs={12} sm={6} md={4} lg={3} key={item.id}>
+                      <Grid xs={12} sm={6} md={4} lg={3} key={item.id}>
                         <Card
                           onClick={() => navigate(`/template-detail/${item.id}`)}
                           sx={{
@@ -417,7 +419,7 @@ const Templates = () => {
           {viewMode === 'grid' && (
             <Grid container spacing={2.5}>
               {sortedCollections.map((item) => (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={item.id}>
+                <Grid xs={12} sm={6} md={4} lg={3} key={item.id}>
                   <Card
                     onClick={() => navigate(`/template-detail/${item.id}`)}
                     sx={{
@@ -495,17 +497,19 @@ const Templates = () => {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         maxWidth={false}
-        PaperProps={{
-          sx: {
-            width: '800px',
-            maxWidth: '90vw',
-            maxHeight: '90vh',
-            borderRadius: '20px',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.18)',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            m: 2,
+        slotProps={{
+          paper: {
+            sx: {
+              width: '800px',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              borderRadius: '20px',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.18)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              m: 2,
+            }
           }
         }}
       >

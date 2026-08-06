@@ -163,7 +163,7 @@ const MOUCreate = () => {
             </Typography>
 
             <Grid container spacing={2.5}>
-              <Grid item xs={12}>
+              <Grid xs={12}>
                 <TextField
                   fullWidth
                   required
@@ -174,7 +174,7 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid item xs={12} sm={6}>
+              <Grid xs={12} sm={6}>
                 <TextField
                   fullWidth
                   required
@@ -185,7 +185,7 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid item xs={12} sm={6}>
+              <Grid xs={12} sm={6}>
                 <FormControl fullWidth required>
                   <InputLabel>Department Category (Stream)</InputLabel>
                   <Select
@@ -200,7 +200,7 @@ const MOUCreate = () => {
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12} sm={6}>
+              <Grid xs={12} sm={6}>
                 <Autocomplete
                   disabled={!deptCategory}
                   options={filteredFormDepts}
@@ -232,7 +232,7 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid item xs={12}>
+              <Grid xs={12}>
                 <FormControl fullWidth>
                   <InputLabel>MOU Dynamic Template</InputLabel>
                   <Select
@@ -262,7 +262,7 @@ const MOUCreate = () => {
 
             <Grid container spacing={2.5}>
               {(selectedTemplate?.fields_schema || []).map((f) => (
-                <Grid item xs={12} sm={6} key={f.name}>
+                <Grid xs={12} sm={6} key={f.name}>
                   <TextField
                     fullWidth
                     label={f.label}
@@ -273,7 +273,7 @@ const MOUCreate = () => {
                 </Grid>
               ))}
 
-              <Grid item xs={12}>
+              <Grid xs={12}>
                 <TextField
                   fullWidth
                   multiline
@@ -295,7 +295,7 @@ const MOUCreate = () => {
             </Typography>
 
             <Grid container spacing={2.5}>
-              <Grid item xs={12} sm={6}>
+              <Grid xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Duration</InputLabel>
                   <Select
@@ -311,7 +311,7 @@ const MOUCreate = () => {
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12} sm={6}>
+              <Grid xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="College Coordinator Name"
@@ -320,7 +320,7 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid item xs={12} sm={6}>
+              <Grid xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="College Coordinator Email"
@@ -329,7 +329,7 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid item xs={12} sm={6}>
+              <Grid xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Partner Contact Person Name"

@@ -605,21 +605,23 @@ const Login = () => {
       {/* Forgot Password & OTP Reset Modal */}
       <Dialog
         open={forgotModalOpen}
-        TransitionComponent={Zoom}
-        transitionDuration={280}
+        slots={{ transition: Zoom }}
         onClose={() => {
           setForgotModalOpen(false);
           setForgotStep(1);
           setForgotError('');
           setForgotSuccess('');
         }}
-        PaperProps={{
-          sx: {
-            borderRadius: '24px',
-            p: 1.5,
-            maxWidth: 440,
-            width: '90%',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.18)'
+        slotProps={{
+          transition: { timeout: 280 },
+          paper: {
+            sx: {
+              borderRadius: '24px',
+              p: 1.5,
+              maxWidth: 440,
+              width: '90%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.18)'
+            }
           }
         }}
       >

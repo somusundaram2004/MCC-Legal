@@ -441,8 +441,8 @@ class GoogleDriveOAuthTests(TestCase):
         token = self.get_jwt_token("admin@test.edu", "password123")
         self.client.credentials(HTTP_AUTHORIZATION='Bearer ' + token)
 
-        with self.settings(GOOGLE_OAUTH_CLIENT_ID="mock_client_id", GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8000/api/google-drive/oauth/callback/"):
-            response = self.client.get('/api/google-drive/oauth-url/')
+        with self.settings(GOOGLE_DRIVE_CLIENT_ID="mock_client_id"):
+            response = self.client.get('/api/users/google-drive-settings/oauth-url/?redirect_uri=http://localhost:5173/settings')
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertIn("mock_client_id", response.data['url'])
             self.assertIn("response_type=code", response.data['url'])
@@ -451,7 +451,7 @@ class GoogleDriveOAuthTests(TestCase):
         token = self.get_jwt_token("user@test.edu", "password123")
         self.client.credentials(HTTP_AUTHORIZATION='Bearer ' + token)
 
-        response = self.client.get('/api/google-drive/oauth-url/')
+        response = self.client.get('/api/users/google-drive-settings/oauth-url/?redirect_uri=http://localhost:5173/settings')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     @patch('requests.post')
@@ -484,10 +484,17 @@ class GoogleDriveOAuthTests(TestCase):
 
         mock_get.side_effect = side_effect
 
-        with self.settings(GOOGLE_OAUTH_CLIENT_ID="mock_client_id", GOOGLE_OAUTH_CLIENT_SECRET="mock_secret", GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8000/api/google-drive/oauth/callback/", FRONTEND_URL="http://localhost:5173"):
-            response = self.client.get('/api/google-drive/oauth/callback/?code=mock_code')
-            self.assertEqual(response.status_code, status.HTTP_302_FOUND)
-            self.assertIn("http://localhost:5173/settings?drive=connected", response.url)
+        token = self.get_jwt_token("admin@test.edu", "password123")
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer ' + token)
+
+        with self.settings(GOOGLE_DRIVE_CLIENT_ID="mock_client_id", GOOGLE_DRIVE_CLIENT_SECRET="mock_secret"):
+            response = self.client.post('/api/users/google-drive-settings/oauth-callback/', {
+                'code': 'mock_code',
+                'redirect_uri': 'http://localhost:5173/settings'
+            })
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.data['connected_email'], 'connected@gmail.com')
+            self.assertEqual(response.data['storage_usage'], 2000000)
 
             from users.models import GoogleDriveSetting
             setting = GoogleDriveSetting.objects.filter(is_active=True).first()
@@ -523,11 +530,14 @@ class WebOAuthIntegrationTests(TestCase):
         token = self.get_jwt_token("admin@test.edu", "password123")
         self.client.credentials(HTTP_AUTHORIZATION='Bearer ' + token)
 
+        from users.models import GoogleDriveSetting
+        GoogleDriveSetting.objects.all().delete()
+
         with self.settings(GOOGLE_OAUTH_CLIENT_ID="mock_oauth_client_id", GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8000/api/google-drive/oauth/callback/"):
             response = self.client.get('/api/google-drive/oauth-url/?force_select=true')
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertIn("mock_oauth_client_id", response.data['url'])
-            self.assertIn("prompt=consent+select_account", response.data['url'])
+            self.assertIn("prompt=select_account+consent", response.data['url'])
             self.assertIn("http%3A%2F%2Flocalhost%3A8000%2Fapi%2Fgoogle-drive%2Foauth%2Fcallback%2F", response.data['url'])
 
     def test_oauth_url_blocked_for_normal_user(self):
@@ -567,7 +577,7 @@ class WebOAuthIntegrationTests(TestCase):
 
         mock_get.side_effect = side_effect
 
-        with self.settings(GOOGLE_OAUTH_CLIENT_ID="mock_client_id", GOOGLE_OAUTH_CLIENT_SECRET="mock_secret", GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8000/api/google-drive/oauth/callback/", FRONTEND_URL="http://localhost:5173"):
+        with self.settings(GOOGLE_OAUTH_CLIENT_ID="mock_client_id", GOOGLE_OAUTH_CLIENT_SECRET="mock_secret", GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8000/api/google-drive/oauth/callback/"):
             response = self.client.get('/api/google-drive/oauth/callback/?code=mock_code')
             # The callback must return a 302 Found redirect to React settings page
             self.assertEqual(response.status_code, status.HTTP_302_FOUND)
@@ -588,7 +598,7 @@ class WebOAuthIntegrationTests(TestCase):
 
         from users.models import GoogleDriveSetting
         GoogleDriveSetting.objects.create(
-            connected_email="jeffersonsamuel003@gmail.com",
+            connected_email="connected_account@example.com",
             connection_status="Connected",
             oauth_connected=True,
             storage_limit=5000000000000,
@@ -601,7 +611,7 @@ class WebOAuthIntegrationTests(TestCase):
         response = self.client.get('/api/google-drive/status/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['connection_status'], 'Connected')
-        self.assertEqual(response.data['connected_email'], 'jeffersonsamuel003@gmail.com')
+        self.assertEqual(response.data['connected_email'], 'connected_account@example.com')
         self.assertEqual(response.data['storage_limit'], 5000000000000)
 
     def test_disconnect(self):
@@ -610,7 +620,7 @@ class WebOAuthIntegrationTests(TestCase):
 
         from users.models import GoogleDriveSetting
         setting = GoogleDriveSetting.objects.create(
-            connected_email="jeffersonsamuel003@gmail.com",
+            connected_email="connected_account@example.com",
             connection_status="Connected",
             oauth_connected=True,
             is_active=True
@@ -629,7 +639,7 @@ class WebOAuthIntegrationTests(TestCase):
 
         from users.models import GoogleDriveSetting
         setting = GoogleDriveSetting.objects.create(
-            connected_email="jeffersonsamuel003@gmail.com",
+            connected_email="connected_account@example.com",
             connection_status="Connected",
             oauth_connected=True,
             is_active=True,

@@ -293,30 +293,30 @@ const MOUDetail = () => {
           {mou.submissions.map((sub) => (
             <Box key={sub.id} sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', p: 2.5, borderRadius: '14px', mb: 2 }}>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={4}>
+                <Grid xs={12} sm={4}>
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>SIGNED DATE</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>{sub.signed_date}</Typography>
                 </Grid>
-                <Grid item xs={12} sm={4}>
+                <Grid xs={12} sm={4}>
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>MOU TERM MONTH/YEAR</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>{sub.mou_month} / {sub.mou_year}</Typography>
                 </Grid>
-                <Grid item xs={12} sm={4}>
+                <Grid xs={12} sm={4}>
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>SUBMITTED BY</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>{sub.uploaded_by} ({sub.department_name})</Typography>
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid xs={12}>
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>EXECUTIVE SUMMARY</Typography>
                   <Typography variant="body2" sx={{ mt: 0.5 }}>{sub.summary}</Typography>
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid xs={12}>
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>PURPOSE</Typography>
                   <Typography variant="body2" sx={{ mt: 0.5 }}>{sub.purpose}</Typography>
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid xs={12}>
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, mb: 0.5, display: 'block' }}>BENEFITS</Typography>
                   {Array.isArray(sub.benefits) ? sub.benefits.map((b, idx) => (
                     <Chip key={idx} label={b} size="small" sx={{ mr: 1, fontWeight: 700 }} />
@@ -324,14 +324,14 @@ const MOUDetail = () => {
                 </Grid>
 
                 {sub.remarks && (
-                  <Grid item xs={12}>
+                  <Grid xs={12}>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>REMARKS</Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic' }}>{sub.remarks}</Typography>
                   </Grid>
                 )}
 
                 {sub.reviewer_comments && (
-                  <Grid item xs={12}>
+                  <Grid xs={12}>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>COMPLIANCE FEEDBACK</Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic', color: 'error.main' }}>{sub.reviewer_comments}</Typography>
                   </Grid>
@@ -366,7 +366,7 @@ const MOUDetail = () => {
       {/* Main Details Grid */}
       <Grid container spacing={3}>
         {/* Left Column: summary and documents */}
-        <Grid item xs={12} md={8}>
+        <Grid xs={12} md={8}>
           <Card sx={{ p: 3, mb: 3, borderRadius: '20px', border: '1px solid', borderColor: 'divider' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1 }}>
               Agreement Summary
@@ -441,7 +441,7 @@ const MOUDetail = () => {
         </Grid>
 
         {/* Right Column: dates and timeline */}
-        <Grid item xs={12} md={4}>
+        <Grid xs={12} md={4}>
           {/* Expiry Card */}
           <Card sx={{ p: 3, mb: 3, borderRadius: '20px', border: '1px solid', borderColor: 'divider' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 2 }}>
@@ -502,13 +502,13 @@ const MOUDetail = () => {
         onClose={() => setShareDialogOpen(false)} 
         maxWidth="md" 
         fullWidth
-        PaperProps={{ sx: { borderRadius: '24px', p: 1 } }}
+        slotProps={{ paper: { sx: { borderRadius: '24px', p: 1 } } }}
       >
         <DialogTitle sx={{ fontWeight: 800 }}>Share Folder Permissions</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={3.5}>
             {/* Left: select departments and permission */}
-            <Grid item xs={12} md={5}>
+            <Grid xs={12} md={5}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5 }}>
                 Share with Department
               </Typography>
@@ -583,7 +583,7 @@ const MOUDetail = () => {
             </Grid>
 
             {/* Right: show active shares list */}
-            <Grid item xs={12} md={7}>
+            <Grid xs={12} md={7}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5 }}>
                 Active Share Rules ({activeShares.length})
               </Typography>
@@ -636,7 +636,7 @@ const MOUDetail = () => {
         onClose={() => setReviewDialogOpen(false)} 
         maxWidth="xs" 
         fullWidth
-        PaperProps={{ sx: { borderRadius: '20px' } }}
+        slotProps={{ paper: { sx: { borderRadius: '20px' } } }}
       >
         <DialogTitle sx={{ fontWeight: 800 }}>
           {reviewAction === 'approve' ? 'Verify & Approve Submission' : 'Reject Submission'}

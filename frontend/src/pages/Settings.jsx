@@ -6,7 +6,7 @@ import {
   Tabs, Tab, Slider, IconButton, Dialog, DialogTitle,
   DialogContent, DialogActions, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, CircularProgress,
-  Tooltip, Badge, InputAdornment, LinearProgress
+  Tooltip, Badge, InputAdornment, LinearProgress, Autocomplete, Checkbox
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
@@ -26,6 +26,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
+import SecurityIcon from '@mui/icons-material/Security';
 
 import { useThemeMode } from '../context/ThemeContext';
 import MailIcon from '@mui/icons-material/Mail';
@@ -35,6 +36,9 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import GoogleDriveSettingsTab from '../components/GoogleDriveSettingsTab';
+import CustomizerHub from '../components/CustomizerHub/CustomizerHub';
+import { showCustomToast } from '../utils/customToast';
+import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 import {
   getMasterDeptCategories, createMasterDeptCategory, updateMasterDeptCategory, deleteMasterDeptCategory,
   getMasterDepartments, createMasterDepartment, updateMasterDepartment, deleteMasterDepartment,
@@ -253,7 +257,7 @@ const MasterDataTab = () => {
         )}
       </Card>
 
-      <Dialog open={mdOpen} onClose={closeMdDialog} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+      <Dialog open={mdOpen} onClose={closeMdDialog} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: '20px' } } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>
           {mdEditId ? `Edit ${currentMdTab.label}` : `Add New ${currentMdTab.label}`}
         </DialogTitle>
@@ -438,7 +442,7 @@ const MasterList = ({ icon, title, color, fetchFn, createFn, updateFn, deleteFn,
       </CardContent>
 
       {/* Add/Edit Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: '20px' } } }}>
         <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>
           {editItem ? `Edit ${title}` : `Add ${title}`}
         </DialogTitle>
@@ -756,7 +760,7 @@ const EmailSettingsTab = () => {
       )}
 
       {/* Add / Edit Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '16px' } }}>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth slotProps={{ paper: { sx: { borderRadius: '16px' } } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>
           {editingId ? 'Edit SMTP Configuration' : 'Add SMTP Configuration'}
         </DialogTitle>
@@ -838,18 +842,20 @@ const EmailSettingsTab = () => {
                 required={!editingId}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        aria-label="toggle password visibility"
-                        onClick={() => setShowPassword(!showPassword)}
-                        edge="end"
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  )
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label="toggle password visibility"
+                          onClick={() => setShowPassword(!showPassword)}
+                          edge="end"
+                        >
+                          {showPassword ? <VisibilityOff /> : <Visibility />}
+                        </IconButton>
+                      </InputAdornment>
+                    )
+                  }
                 }}
               />
             </>
@@ -882,7 +888,7 @@ const EmailSettingsTab = () => {
       </Dialog>
 
       {/* Test Dialog */}
-      <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '16px' } }}>
+      <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: '16px' } } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Test SMTP Connection</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -910,7 +916,202 @@ const EmailSettingsTab = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* SMTP Setup Guidelines Card */}
+      <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', bgcolor: 'action.hover', p: 4, mt: 4 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: 'text.primary' }}>
+          <SettingsSuggestIcon color="primary" /> Steps to Follow for SMTP Mail Setup
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, lineHeight: 1.6 }}>
+          Follow these clear steps to configure custom outgoing SMTP mail servers for automated notifications & password resets:
+        </Typography>
+        <Box component="ol" sx={{ pl: 2.5, m: 0, '& li': { mb: 1.8, fontSize: '0.86rem', lineHeight: 1.6, color: 'text.primary' } }}>
+          <li>
+            <strong>Step 1: Obtain SMTP Host & Port Credentials</strong><br />
+            For <em>Gmail / Google Workspace</em>: Host <code>smtp.gmail.com</code>, Port <code>587</code> (TLS) or <code>465</code> (SSL).<br />
+            For <em>Microsoft Outlook / Office 365</em>: Host <code>smtp.office365.com</code>, Port <code>587</code> (TLS).
+          </li>
+          <li>
+            <strong>Step 2: Generate Gmail App Password (Required for 2FA Account)</strong><br />
+            If using Gmail with 2-Step Verification enabled, go to <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer">Google Account &gt; Security &gt; App Passwords</a>. Generate a 16-character App Password and use it as your <strong>SMTP Password</strong> instead of your personal login password.
+          </li>
+          <li>
+            <strong>Step 3: Add New SMTP Configuration</strong><br />
+            Click the <strong style={{ color: 'var(--indigo)' }}>"Add SMTP"</strong> or <strong style={{ color: 'var(--indigo)' }}>"Configure New SMTP"</strong> button above. Select a preset mail provider or enter your Host, Port, Username, Password, and Sender Email address.
+          </li>
+          <li>
+            <strong>Step 4: Activate & Test Outgoing Mail Connection</strong><br />
+            Click <strong>Save Settings</strong>, then click <strong>Activate</strong> on your new configuration. Click the <strong>Send Test Email</strong> icon to deliver a sample email and verify active delivery.
+          </li>
+        </Box>
+      </Card>
     </Box>
+  );
+};
+
+
+// ── Module Permissions Access Rights Matrix Component ───────────────────────
+const ModulePermissionsMatrix = () => {
+  const [modules, setModules] = useState([]);
+  const [systemUsers, setSystemUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [modRes, userRes] = await Promise.all([
+        api.get('/api/users/custom-pages/'),
+        api.get('/api/users/')
+      ]);
+      setModules(modRes.data);
+      setSystemUsers(userRes.data.results || userRes.data || []);
+    } catch (err) {
+      console.error('Failed to load module access matrix:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleRoleToggle = (modId, roleName) => {
+    setModules(prev => prev.map(m => {
+      if (m.id !== modId) return m;
+      const currentRoles = m.allowed_roles?.length > 0 ? m.allowed_roles : ['Super Admin', 'Admin', 'User'];
+      let updated;
+      if (currentRoles.includes(roleName)) {
+        updated = currentRoles.filter(r => r !== roleName);
+      } else {
+        updated = [...currentRoles, roleName];
+      }
+      return { ...m, allowed_roles: updated };
+    }));
+  };
+
+  const handleUserAccessChange = (modId, selectedUserIds) => {
+    setModules(prev => prev.map(m => {
+      if (m.id !== modId) return m;
+      return { ...m, allowed_permissions: selectedUserIds };
+    }));
+  };
+
+  const handleSaveModuleAccess = async (mod) => {
+    setSavingId(mod.id);
+    try {
+      await api.patch(`/api/users/custom-pages/${mod.id}/`, {
+        allowed_roles: mod.allowed_roles,
+        allowed_permissions: mod.allowed_permissions
+      });
+      triggerGlobalAutoRefresh(REFRESH_CATEGORIES.SETTINGS);
+      showCustomToast.success(`Access rights updated for "${mod.title}"!`);
+    } catch (err) {
+      showCustomToast.error(`Failed to update access for "${mod.title}".`);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <CircularProgress />
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Loading module access matrix...</Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3, boxShadow: 'none' }}>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <SecurityIcon color="primary" />
+          Module Access Control Matrix
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Grant or revoke module access permissions for Admin, User, and specific individual users.
+        </Typography>
+      </Box>
+
+      {modules.length === 0 ? (
+        <Alert severity="info" sx={{ borderRadius: '12px' }}>No dynamic modules created yet in Website Builder.</Alert>
+      ) : (
+        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: '14px' }}>
+          <Table size="small">
+            <TableHead sx={{ bgcolor: 'action.hover' }}>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 800 }}>Module Title &amp; Route</TableCell>
+                <TableCell sx={{ fontWeight: 800 }}>Super Admin</TableCell>
+                <TableCell sx={{ fontWeight: 800 }}>Admin Access</TableCell>
+                <TableCell sx={{ fontWeight: 800 }}>User Access</TableCell>
+                <TableCell sx={{ fontWeight: 800, minWidth: 260 }}>Grant Access to Specific Users</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 800 }}>Action</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {modules.map((mod) => {
+                const roles = mod.allowed_roles?.length > 0 ? mod.allowed_roles : ['Super Admin', 'Admin', 'User'];
+                const allowedUserIds = mod.allowed_permissions || [];
+                const isSaving = savingId === mod.id;
+                return (
+                  <TableRow key={mod.id} hover>
+                    <TableCell>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{mod.title}</Typography>
+                      <Chip label={`/custom-page/${mod.slug}`} size="small" variant="outlined" sx={{ fontSize: '0.68rem', height: 18 }} />
+                    </TableCell>
+                    <TableCell>
+                      <Checkbox checked disabled size="small" />
+                    </TableCell>
+                    <TableCell>
+                      <Checkbox
+                        checked={roles.includes('Admin')}
+                        onChange={() => handleRoleToggle(mod.id, 'Admin')}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Checkbox
+                        checked={roles.includes('User')}
+                        onChange={() => handleRoleToggle(mod.id, 'User')}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Autocomplete
+                        multiple
+                        size="small"
+                        options={systemUsers}
+                        getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name || option.username} (${option.email})`}
+                        value={systemUsers.filter(u => allowedUserIds.includes(String(u.id)) || allowedUserIds.includes(u.email))}
+                        onChange={(event, newValue) => {
+                          handleUserAccessChange(mod.id, newValue.map(u => String(u.id)));
+                        }}
+                        renderInput={(params) => (
+                          <TextField {...params} size="small" placeholder="Select specific users..." />
+                        )}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleSaveModuleAccess(mod)}
+                        disabled={isSaving}
+                        sx={{ borderRadius: '8px', fontWeight: 700 }}
+                      >
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Card>
   );
 };
 
@@ -1039,9 +1240,9 @@ const Settings = () => {
             scrollButtons="auto"
             slotProps={{ indicator: { sx: { height: 3, borderRadius: '3px 3px 0 0' } } }}
           >
-            <Tab icon={<PaletteIcon fontSize="small" />} iconPosition="start" label="Appearance" sx={tabSx} />
+            <Tab icon={<PaletteIcon fontSize="small" />} iconPosition="start" label="Appearance & Customization" sx={tabSx} />
             <Tab icon={<SettingsSuggestIcon fontSize="small" />} iconPosition="start" label="Master Data Config" sx={tabSx} />
-             <Tab icon={<NotificationsActiveIcon fontSize="small" />} iconPosition="start" label="Notifications" sx={tabSx} />
+            <Tab icon={<NotificationsActiveIcon fontSize="small" />} iconPosition="start" label="Notifications" sx={tabSx} />
             <Tab icon={<StorageIcon fontSize="small" />} iconPosition="start" label="Storage" sx={tabSx} />
             {['Super Admin', 'Admin'].includes(user?.role?.name) && (
               <Tab icon={<MailIcon fontSize="small" />} iconPosition="start" label="Email Settings" sx={tabSx} />
@@ -1049,213 +1250,17 @@ const Settings = () => {
             {['Super Admin', 'Admin'].includes(user?.role?.name) && (
               <Tab icon={<StorageIcon fontSize="small" />} iconPosition="start" label="Google Drive" sx={tabSx} />
             )}
+            {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+              <Tab icon={<SecurityIcon fontSize="small" />} iconPosition="start" label="Module Permissions" sx={tabSx} />
+            )}
           </Tabs>
         </Box>
 
         <Box sx={{ p: 3 }}>
 
-          {/* ════════════════════════ TAB 1: APPEARANCE ════════════════════════ */}
+          {/* ════════════════════════ TAB 0: APPEARANCE & WEBSITE CUSTOMIZATION ════════════════════════ */}
           <TabPanel value={activeTab} index={0}>
-            <Grid container spacing={3}>
-              {/* Color Presets */}
-              <Grid item xs={12} md={7}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.5 }}>Color Scheme</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-                  Choose a preset or pick custom colors below. Changes apply to the entire site.
-                </Typography>
-
-                <Grid container spacing={1.5} sx={{ mb: 3 }}>
-                  {PRESET_COLORS.map(preset => (
-                    <Grid item xs={6} sm={3} key={preset.label}>
-                      <Box
-                        onClick={() => applyPreset(preset)}
-                        sx={{
-                          p: 1.5,
-                          borderRadius: '12px',
-                          border: '2px solid',
-                          borderColor: selectedPreset === preset.label ? customPrimary : 'divider',
-                          cursor: 'pointer',
-                          transition: 'all 0.18s',
-                          '&:hover': { borderColor: preset.primary, transform: 'translateY(-2px)' },
-                          textAlign: 'center'
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', mb: 1 }}>
-                          <Box sx={{ width: 20, height: 20, borderRadius: '6px', bgcolor: preset.primary }} />
-                          <Box sx={{ width: 20, height: 20, borderRadius: '6px', bgcolor: preset.secondary }} />
-                        </Box>
-                        <Typography variant="caption" sx={{ fontSize: '0.68rem', fontWeight: 700, display: 'block', lineHeight: 1.2 }}>
-                          {preset.label}
-                        </Typography>
-                        {selectedPreset === preset.label && (
-                          <CheckCircleIcon sx={{ fontSize: '0.75rem', color: preset.primary, mt: 0.5 }} />
-                        )}
-                      </Box>
-                    </Grid>
-                  ))}
-                </Grid>
-
-                {/* Custom Color Pickers */}
-                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5 }}>Custom Colors</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', border: '1px solid', borderColor: 'divider' }}>
-                      <Box sx={{ position: 'relative' }}>
-                        <Box
-                          sx={{
-                            width: 40, height: 40, borderRadius: '10px',
-                            bgcolor: customPrimary, cursor: 'pointer',
-                            boxShadow: `0 0 0 3px ${customPrimary}40`
-                          }}
-                        />
-                        <input
-                          type="color"
-                          value={customPrimary}
-                          onChange={e => { setCustomPrimary(e.target.value); setSelectedPreset(''); }}
-                          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
-                        />
-                      </Box>
-                      <Box>
-                        <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.68rem' }}>Primary Color</Typography>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{customPrimary.toUpperCase()}</Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', border: '1px solid', borderColor: 'divider' }}>
-                      <Box sx={{ position: 'relative' }}>
-                        <Box
-                          sx={{
-                            width: 40, height: 40, borderRadius: '10px',
-                            bgcolor: customSecondary, cursor: 'pointer',
-                            boxShadow: `0 0 0 3px ${customSecondary}40`
-                          }}
-                        />
-                        <input
-                          type="color"
-                          value={customSecondary}
-                          onChange={e => { setCustomSecondary(e.target.value); setSelectedPreset(''); }}
-                          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
-                        />
-                      </Box>
-                      <Box>
-                        <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.68rem' }}>Secondary Color</Typography>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{customSecondary.toUpperCase()}</Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              {/* Right Panel: Font & Radius & Preview */}
-              <Grid item xs={12} md={5}>
-                {/* Font */}
-                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>Font Family</Typography>
-                <FormControl fullWidth size="small" sx={{ mb: 3 }}>
-                  <Select value={selectedFont} onChange={e => setSelectedFont(e.target.value)}>
-                    {FONT_OPTIONS.map(f => (
-                      <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>
-                        {f.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                {/* Border Radius */}
-                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
-                  Border Radius — <span style={{ color: customPrimary, fontFamily: 'monospace' }}>{radiusValue}px</span>
-                </Typography>
-                <Box sx={{ px: 1, mb: 3 }}>
-                  <Slider
-                    value={radiusValue}
-                    onChange={(_, v) => setRadiusValue(v)}
-                    min={0} max={28} step={2}
-                    marks={[{ value: 0, label: 'Sharp' }, { value: 14, label: 'Default' }, { value: 28, label: 'Round' }]}
-                    sx={{ color: customPrimary }}
-                  />
-                </Box>
-
-                {/* Live Preview Card */}
-                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5 }}>Live Preview</Typography>
-                <Box sx={{
-                  p: 2.5, borderRadius: `${radiusValue}px`, border: '2px solid', borderColor: customPrimary,
-                  background: `linear-gradient(135deg, ${customPrimary}08, ${customSecondary}08)`,
-                  fontFamily: selectedFont
-                }}>
-                  <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-                    <Box sx={{
-                      px: 2, py: 0.7, borderRadius: `${Math.max(radiusValue - 4, 4)}px`,
-                      background: `linear-gradient(135deg, ${customPrimary}, ${customSecondary})`,
-                      color: '#fff', fontSize: '0.8rem', fontWeight: 700, fontFamily: selectedFont
-                    }}>
-                      Primary Button
-                    </Box>
-                    <Box sx={{
-                      px: 2, py: 0.7, borderRadius: `${Math.max(radiusValue - 4, 4)}px`,
-                      border: `2px solid ${customPrimary}`, color: customPrimary,
-                      fontSize: '0.8rem', fontWeight: 700, fontFamily: selectedFont
-                    }}>
-                      Outlined
-                    </Box>
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    {['Active', 'Pending', 'Expired'].map((label, i) => (
-                      <Box key={label} sx={{
-                        px: 1.2, py: 0.3, borderRadius: `${Math.max(radiusValue - 6, 4)}px`,
-                        bgcolor: [customPrimary, `${customPrimary}40`, '#94A3B820'][i],
-                        color: i === 0 ? '#fff' : customPrimary,
-                        fontSize: '0.7rem', fontWeight: 700, fontFamily: selectedFont
-                      }}>
-                        {label}
-                      </Box>
-                    ))}
-                  </Box>
-                  <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: 'text.secondary', fontFamily: selectedFont }}>
-                    College Data Bridge — MOU Management System
-                  </Typography>
-                </Box>
-
-                {/* Dark Mode Toggle */}
-                <Box sx={{
-                  mt: 2.5, p: 2, borderRadius: '12px', bgcolor: 'action.hover',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Theme Mode</Typography>
-                    <Typography variant="caption" color="text.secondary">Currently {mode.toUpperCase()} mode</Typography>
-                  </Box>
-                  <Button variant="outlined" onClick={toggleTheme} size="small" sx={{ borderRadius: '10px', fontWeight: 700 }}>
-                    Toggle {mode === 'light' ? '🌙 Dark' : '☀️ Light'}
-                  </Button>
-                </Box>
-              </Grid>
-
-              {/* Action Buttons */}
-              <Grid item xs={12}>
-                <Divider sx={{ mb: 2.5 }} />
-                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<RestartAltIcon />}
-                    onClick={handleResetAppearance}
-                    sx={{ borderRadius: '12px', fontWeight: 700 }}
-                  >
-                    Reset to Defaults
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<CheckCircleIcon />}
-                    onClick={handleSaveAppearance}
-                    sx={{
-                      borderRadius: '12px', fontWeight: 700,
-                      background: `linear-gradient(135deg, ${customPrimary}, ${customSecondary})`
-                    }}
-                  >
-                    Apply Appearance
-                  </Button>
-                </Box>
-              </Grid>
-            </Grid>
+            <CustomizerHub />
           </TabPanel>
 
           {/* ════════════════════════ TAB 2: MASTER DATA CONFIG ════════════════════════ */}
@@ -1266,7 +1271,7 @@ const Settings = () => {
           {/* ════════════════════════ TAB 3: NOTIFICATIONS ════════════════════════ */}
           <TabPanel value={activeTab} index={2}>
             <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
+              <Grid xs={12} md={6}>
                 <Card sx={{ borderRadius: '16px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
                   <CardContent sx={{ p: 3 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -1290,7 +1295,7 @@ const Settings = () => {
                 </Card>
               </Grid>
 
-              <Grid item xs={12} md={6}>
+              <Grid xs={12} md={6}>
                 <Card sx={{ borderRadius: '16px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
                   <CardContent sx={{ p: 3 }}>
                     <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', color: 'text.secondary', display: 'block', mb: 2 }}>
@@ -1316,7 +1321,7 @@ const Settings = () => {
                 </Card>
               </Grid>
 
-              <Grid item xs={12}>
+              <Grid xs={12}>
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Button
                     variant="contained"
@@ -1334,7 +1339,7 @@ const Settings = () => {
           {/* ════════════════════════ TAB 4: STORAGE ════════════════════════ */}
           <TabPanel value={activeTab} index={3}>
             <Grid container spacing={3} justifyContent="center">
-              <Grid item xs={12} md={7}>
+              <Grid xs={12} md={7}>
                 <Card sx={{ borderRadius: '16px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
                   <CardContent sx={{ p: 3 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -1419,6 +1424,11 @@ const Settings = () => {
           {['Super Admin', 'Admin'].includes(user?.role?.name) && (
             <TabPanel value={activeTab} index={5}>
               <GoogleDriveSettingsTab />
+            </TabPanel>
+          )}
+          {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+            <TabPanel value={activeTab} index={6}>
+              <ModulePermissionsMatrix />
             </TabPanel>
           )}
         </Box>

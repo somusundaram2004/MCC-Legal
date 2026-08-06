@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     'notifications',
     'activity_logs',
     'mous',
+    'customization',
 ]
 
 MIDDLEWARE = [
@@ -182,7 +183,9 @@ try:
     }
     print("Database Configured: PostgreSQL database 'mou_dashboard' is ready.")
 except Exception as e:
-    print(f"PostgreSQL connection failed ({e}). Falling back to SQLite.")
+    if not DEBUG:
+        raise ImproperlyConfigured(f"PostgreSQL database connection failed in production mode (DEBUG=False): {e}")
+    print(f"PostgreSQL connection failed ({e}). Falling back to SQLite for local development.")
     DATABASES['default'] = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
@@ -291,10 +294,9 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='MCC LEGAL DOCUMENT <no-r
 COMPANY_LOGO_URL = env('COMPANY_LOGO_URL', default='https://example.com/logo.png')
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 
-# Google OAuth 2.0 Settings
-GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default='')
+GOOGLE_DRIVE_CLIENT_ID = env('GOOGLE_DRIVE_CLIENT_ID', default='')
+GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default=GOOGLE_DRIVE_CLIENT_ID)
 GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default='')
-GOOGLE_OAUTH_REDIRECT_URI = env('GOOGLE_OAUTH_REDIRECT_URI', default='http://localhost:8000/api/google-drive/oauth/callback/')
 
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[
     'http://localhost:5173',

@@ -63,12 +63,14 @@ const PDFPreviewModal = ({ open, onClose, fileUrl, docId, title }) => {
       onClose={onClose}
       maxWidth="lg"
       fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: '20px',
-          height: '90vh',
-          display: 'flex',
-          flexDirection: 'column'
+      slotProps={{
+        paper: {
+          sx: {
+            borderRadius: '20px',
+            height: '90vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }
         }
       }}
     >

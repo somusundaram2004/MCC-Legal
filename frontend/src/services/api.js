@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8000',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -10,8 +12,17 @@ const api = axios.create({
 // Request Interceptor: Attach access token and custom time header to requests
 api.interceptors.request.use(
   (config) => {
+    const isPublicEndpoint = config.url && (
+      config.url.includes('/auth/login/') ||
+      config.url.includes('/auth/google/') ||
+      config.url.includes('/auth/google-client-id/') ||
+      config.url.includes('/auth/register/') ||
+      config.url.includes('/auth/forgot-password/') ||
+      config.url.includes('/auth/reset-password/')
+    );
+
     const token = localStorage.getItem('access_token');
-    if (token) {
+    if (token && !isPublicEndpoint) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     
@@ -29,9 +40,37 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Handle transparent token refreshing on 401
+import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
+
+// Helper to determine affected category from API URL
+const getCategoryFromUrl = (url = '') => {
+  const lower = url.toLowerCase();
+  if (lower.includes('/folders/') || lower.includes('/files/')) return REFRESH_CATEGORIES.FOLDERS;
+  if (lower.includes('/mous/') || lower.includes('/mou')) return REFRESH_CATEGORIES.MOUS;
+  if (lower.includes('/users/') || lower.includes('/roles/')) return REFRESH_CATEGORIES.USERS;
+  if (lower.includes('/departments/')) return REFRESH_CATEGORIES.DEPARTMENTS;
+  if (lower.includes('/templates/')) return REFRESH_CATEGORIES.TEMPLATES;
+  if (lower.includes('/notifications/')) return REFRESH_CATEGORIES.NOTIFICATIONS;
+  if (lower.includes('/settings/') || lower.includes('/google-drive/')) return REFRESH_CATEGORIES.SETTINGS;
+  if (lower.includes('/activity-logs/')) return REFRESH_CATEGORIES.ACTIVITY_LOGS;
+  return REFRESH_CATEGORIES.ALL;
+};
+
+// Response Interceptor: Handle transparent token refreshing on 401 & dispatch auto refresh
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Automatically trigger data refresh on successful state mutations (POST, PUT, PATCH, DELETE)
+    const method = response.config?.method?.toLowerCase();
+    if (['post', 'put', 'patch', 'delete'].includes(method)) {
+      const url = response.config?.url || '';
+      // Exclude authentication/login requests
+      if (!url.includes('/auth/login') && !url.includes('/auth/google') && !url.includes('/auth/refresh')) {
+        const category = getCategoryFromUrl(url);
+        triggerGlobalAutoRefresh(category);
+      }
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     
@@ -52,7 +91,7 @@ api.interceptors.response.use(
       if (refreshToken) {
         try {
           // Attempt to refresh token
-          const res = await axios.post('http://127.0.0.1:8000/api/users/auth/refresh/', {
+          const res = await axios.post(`${API_BASE_URL}/api/users/auth/refresh/`, {
             refresh: refreshToken,
           });
           

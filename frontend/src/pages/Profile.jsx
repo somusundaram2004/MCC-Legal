@@ -77,7 +77,7 @@ const Profile = () => {
 
       <Grid container spacing={3}>
         {/* Profile Details Card */}
-        <Grid item xs={12} md={6}>
+        <Grid xs={12} md={6}>
           <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', height: '100%' }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
@@ -99,31 +99,31 @@ const Profile = () => {
               <Divider sx={{ mb: 2.5 }} />
 
               <Grid container spacing={2} sx={{ mb: 3 }}>
-                <Grid item xs={4}>
+                <Grid xs={4}>
                   <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Email:</Typography>
                 </Grid>
-                <Grid item xs={8}>
+                <Grid xs={8}>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>{user?.email}</Typography>
                 </Grid>
 
-                <Grid item xs={4}>
+                <Grid xs={4}>
                   <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Department:</Typography>
                 </Grid>
-                <Grid item xs={8}>
+                <Grid xs={8}>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>{user?.department || 'MOU Administration'}</Typography>
                 </Grid>
 
-                <Grid item xs={4}>
+                <Grid xs={4}>
                   <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Designation:</Typography>
                 </Grid>
-                <Grid item xs={8}>
+                <Grid xs={8}>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>{user?.designation || 'Coordinator'}</Typography>
                 </Grid>
 
-                <Grid item xs={4}>
+                <Grid xs={4}>
                   <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Account Status:</Typography>
                 </Grid>
-                <Grid item xs={8}>
+                <Grid xs={8}>
                   <Chip label="Active" color="success" size="small" sx={{ fontWeight: 700, height: 22 }} />
                 </Grid>
               </Grid>
@@ -146,7 +146,7 @@ const Profile = () => {
         </Grid>
 
         {/* Change Password Card */}
-        <Grid item xs={12} md={6}>
+        <Grid xs={12} md={6}>
           <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', height: '100%' }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>

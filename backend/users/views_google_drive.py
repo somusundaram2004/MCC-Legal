@@ -28,39 +28,60 @@ class IsAdminOrSuperAdmin(permissions.BasePermission):
 import os
 import json
 
+def sanitize_secret(client_secret):
+    if not client_secret:
+        return ''
+    client_secret = client_secret.strip()
+    if 'GOCSPX-' in client_secret:
+        idx = client_secret.find('GOCSPX-')
+        sub = client_secret[idx:]
+        parts = sub.split('"')[0].split("'")[0].split(',')[0].split('\\')[0].split('}')[0].strip()
+        return parts
+    return client_secret
+
 def get_oauth_credentials():
-    client_id = getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', '')
-    client_secret = getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', '')
+    # 1. Check database setting first so Super Admin UI updates take priority
+    db_setting = GoogleDriveSetting.objects.filter(is_active=True).first() or GoogleDriveSetting.objects.first()
+    client_id = db_setting.client_id if db_setting and db_setting.client_id else ''
+    client_secret = db_setting.client_secret if db_setting and db_setting.client_secret else ''
+    
+    client_secret = sanitize_secret(client_secret)
 
-    # 1. Check credentials.json if present
-    cred_path = os.path.join(settings.BASE_DIR, 'credentials.json')
-    if os.path.exists(cred_path):
-        try:
-            with open(cred_path, 'r') as f:
-                data = json.load(f)
-                web_data = data.get('web') or data.get('installed') or {}
-                if not client_id:
-                    client_id = web_data.get('client_id', '')
-                if not client_secret:
-                    client_secret = web_data.get('client_secret', '')
-        except Exception as e:
-            logger.error(f"Error reading credentials.json: {e}")
+    # 2. Check settings / environment variables next (allows test settings overrides)
+    if not client_id:
+        client_id = (
+            getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', '') or 
+            getattr(settings, 'GOOGLE_DRIVE_CLIENT_ID', '') or 
+            os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '') or 
+            os.environ.get('GOOGLE_DRIVE_CLIENT_ID', '')
+        )
+    if not client_secret:
+        raw_secret = (
+            getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', '') or 
+            os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
+        )
+        client_secret = sanitize_secret(raw_secret)
 
-    # 2. Fall back to database setting
+    # 3. Check credentials.json fallback last
     if not client_id or not client_secret:
-        db_setting = GoogleDriveSetting.objects.first()
-        if db_setting:
-            if not client_id:
-                client_id = db_setting.client_id
-            if not client_secret:
-                client_secret = db_setting.client_secret
+        cred_path = os.path.join(settings.BASE_DIR, 'credentials.json')
+        if os.path.exists(cred_path):
+            try:
+                with open(cred_path, 'r') as f:
+                    data = json.load(f)
+                    web_data = data.get('web') or data.get('installed') or {}
+                    if not client_id:
+                        client_id = web_data.get('client_id', '') or data.get('client_id', '')
+                    if not client_secret:
+                        client_secret = sanitize_secret(web_data.get('client_secret', ''))
+            except Exception as e:
+                logger.error(f"Error reading credentials.json: {e}")
                 
     return client_id, client_secret
 
 def get_oauth_redirect_uri(request_redirect_uri=None):
     if request_redirect_uri:
         return request_redirect_uri
-
     cred_path = os.path.join(settings.BASE_DIR, 'credentials.json')
     if os.path.exists(cred_path):
         try:
@@ -70,10 +91,9 @@ def get_oauth_redirect_uri(request_redirect_uri=None):
                 uris = web_data.get('redirect_uris', [])
                 if uris:
                     return uris[0]
-        except Exception as e:
-            logger.error(f"Error parsing redirect_uris from credentials.json: {e}")
-
-    return getattr(settings, 'GOOGLE_OAUTH_REDIRECT_URI', 'http://localhost:5173/settings')
+        except Exception:
+            pass
+    return getattr(settings, 'GOOGLE_OAUTH_REDIRECT_URI', 'http://localhost:8000/api/google-drive/oauth/callback/')
 
 
 class GoogleDriveViewSet(viewsets.ViewSet):
@@ -83,17 +103,21 @@ class GoogleDriveViewSet(viewsets.ViewSet):
     def status(self, request):
         setting = GoogleDriveSetting.objects.filter(is_active=True).first()
         if not setting:
-            # Fallback to check if any configuration exists
             setting = GoogleDriveSetting.objects.first()
             
+        default_root_id = getattr(settings, 'GOOGLE_DRIVE_ROOT_FOLDER_ID', '')
+        client_id, client_secret = get_oauth_credentials()
+
         if not setting:
             return Response({
                 "connection_status": "Disconnected",
                 "connected_email": None,
+                "client_id": client_id,
+                "client_secret": "••••••••" if client_secret else "",
                 "storage_limit": None,
                 "storage_usage": None,
                 "available_storage": None,
-                "root_folder_id": "Default",
+                "root_folder_id": default_root_id,
                 "default_upload_folder": "Root Repository",
                 "last_connection_time": None
             })
@@ -105,24 +129,32 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         return Response({
             "connection_status": setting.connection_status or ("Connected" if setting.oauth_connected else "Disconnected"),
             "connected_email": setting.connected_email,
+            "client_id": client_id,
+            "client_secret": "••••••••" if client_secret else "",
             "storage_limit": limit,
             "storage_usage": usage,
             "available_storage": available,
-            "root_folder_id": setting.root_folder_id or "Default",
+            "root_folder_id": setting.root_folder_id or default_root_id,
             "default_upload_folder": setting.default_upload_folder or "Root Repository",
             "last_connection_time": setting.last_connection_time
         })
 
     @action(detail=False, methods=['get'], url_path='oauth-url')
     def oauth_url(self, request):
+        force_select = request.query_params.get('force_select', 'false').lower() == 'true'
+
         client_id, _ = get_oauth_credentials()
         if not client_id:
             return Response({"detail": "Google Client ID is not configured on the server"}, status=status.HTTP_400_BAD_REQUEST)
 
         req_redirect = request.query_params.get('redirect_uri')
-        redirect_uri = get_oauth_redirect_uri(req_redirect)
+        redirect_uri = get_oauth_redirect_uri(req_redirect or getattr(settings, 'GOOGLE_OAUTH_REDIRECT_URI', 'http://localhost:8000/api/google-drive/oauth/callback/'))
         if not redirect_uri:
             return Response({"detail": "GOOGLE_OAUTH_REDIRECT_URI settings is required"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        import secrets
+        state = secrets.token_urlsafe(32)
+        request.session['oauth_state'] = state
 
         params = {
             'client_id': client_id,
@@ -131,7 +163,8 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             'scope': 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email openid',
             'access_type': 'offline',
             'include_granted_scopes': 'true',
-            'prompt': 'consent select_account'
+            'prompt': 'select_account consent',
+            'state': state
         }
 
         url = 'https://accounts.google.com/o/oauth2/auth?' + urllib.parse.urlencode(params)
@@ -141,34 +174,24 @@ class GoogleDriveViewSet(viewsets.ViewSet):
     def oauth_callback(self, request):
         from django.http import HttpResponseRedirect
         
-        frontend_base = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
-
-        code = request.data.get('code') if hasattr(request, 'data') and request.data.get('code') else request.query_params.get('code')
-        error_param = request.data.get('error') if hasattr(request, 'data') and request.data.get('error') else request.query_params.get('error')
-        req_redirect_uri = request.data.get('redirect_uri') if hasattr(request, 'data') and request.data.get('redirect_uri') else request.query_params.get('redirect_uri')
-        
-        is_json_req = (
-            request.content_type == 'application/json' or
-            'application/json' in request.headers.get('Accept', '') or
-            (hasattr(request, 'data') and request.data.get('code') is not None)
-        )
+        code = request.data.get('code') or request.query_params.get('code')
+        req_redirect_uri = request.data.get('redirect_uri') or request.query_params.get('redirect_uri')
+        is_json_req = request.content_type == 'application/json' or request.data.get('code') is not None
 
         if not code:
-            error_reason = error_param or 'No authorization code received'
-            logger.warning(f"Google OAuth callback received without code: {error_reason}")
+            error_reason = request.data.get('error') or request.query_params.get('error', 'No authorization code received')
             if is_json_req:
                 return Response({"detail": error_reason}, status=status.HTTP_400_BAD_REQUEST)
-            frontend_url = f"{frontend_base}/settings?drive=failed&error={urllib.parse.quote(error_reason)}"
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/') + f'/settings?drive=failed&error={urllib.parse.quote(error_reason)}'
             return HttpResponseRedirect(frontend_url)
 
         client_id, client_secret = get_oauth_credentials()
-        redirect_uri = get_oauth_redirect_uri(req_redirect_uri)
+        redirect_uri = get_oauth_redirect_uri(req_redirect_uri or getattr(settings, 'GOOGLE_OAUTH_REDIRECT_URI', 'http://localhost:8000/api/google-drive/oauth/callback/'))
 
         if not client_id or not client_secret or not redirect_uri:
-            logger.error("Google OAuth credentials or redirect_uri missing on server during callback exchange")
             if is_json_req:
                 return Response({"detail": "Google OAuth credentials or redirect_uri missing on server"}, status=status.HTTP_400_BAD_REQUEST)
-            frontend_url = f"{frontend_base}/settings?drive=failed&error=credentials_missing"
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/') + '/settings?drive=failed&error=credentials_missing'
             return HttpResponseRedirect(frontend_url)
 
         token_url = 'https://oauth2.googleapis.com/token'
@@ -183,10 +206,9 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         try:
             res = requests.post(token_url, data=payload)
             if res.status_code != 200:
-                logger.error(f"Failed to exchange OAuth code with Google: {res.text}")
                 if is_json_req:
                     return Response({"detail": f"Failed to exchange code with Google: {res.text}"}, status=status.HTTP_400_BAD_REQUEST)
-                frontend_url = f"{frontend_base}/settings?drive=failed&error={urllib.parse.quote(res.text)}"
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/') + f'/settings?drive=failed&error={urllib.parse.quote(res.text)}'
                 return HttpResponseRedirect(frontend_url)
 
             tokens = res.json()
@@ -257,7 +279,7 @@ class GoogleDriveViewSet(viewsets.ViewSet):
                     "connection_status": "Connected"
                 }, status=status.HTTP_200_OK)
 
-            frontend_url = f"{frontend_base}/settings?drive=connected"
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/') + '/settings?drive=connected'
             return HttpResponseRedirect(frontend_url)
         except Exception as e:
             logger.error(f"Google Drive OAuth callback failed: {e}", exc_info=True)
@@ -266,7 +288,7 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             print("=" * 70 + "\n")
             if is_json_req:
                 return Response({"detail": f"OAuth authorization failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            frontend_url = f"{frontend_base}/settings?drive=failed&error={urllib.parse.quote(str(e))}"
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/') + f'/settings?drive=failed&error={urllib.parse.quote(str(e))}'
             return HttpResponseRedirect(frontend_url)
 
     @action(detail=False, methods=['post'], url_path='disconnect')
@@ -333,13 +355,13 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"Google Drive test connection failed: {e}", exc_info=True)
             setting.connection_status = 'Refresh Failed'
-            setting.save()
+            setting.save(update_fields=['connection_status'])
             print("\n" + "=" * 70)
             print(f" [GOOGLE DRIVE ERROR] Connection Test Failed: {e}")
             print("=" * 70 + "\n")
             return Response(
-                {"detail": f"Google Drive connection test failed: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"detail": f"Google Drive connection refresh failed ({str(e)}). Please click 'Change Google Account' below to re-authorize."},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
     @action(detail=False, methods=['patch'], url_path='update-root-folder')
@@ -360,13 +382,62 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         if not setting:
             setting = GoogleDriveSetting.objects.first()
         if not setting:
-            return Response({"detail": "No active Google Drive connection found to update"}, status=status.HTTP_400_BAD_REQUEST)
-
+            setting = GoogleDriveSetting.objects.create(
+                root_folder_id=root_folder_id,
+                connection_status='Disconnected',
+                default_upload_folder='Root Repository'
+            )
         setting.root_folder_id = root_folder_id
         setting.save()
 
+        warning_msg = None
+        if setting.oauth_connected and root_folder_id and root_folder_id.lower() != 'default':
+            try:
+                from services import drive_service
+                service = drive_service.authenticate()
+                service.files().get(fileId=root_folder_id, fields='id, name', supportsAllDrives=True).execute()
+            except Exception as access_err:
+                warning_msg = f"Root folder ID '{root_folder_id}' saved, but the connected account ({setting.connected_email}) does not have permission to access it. Please share this folder with '{setting.connected_email}' in Google Drive."
+
         log_activity(request.user, f"Updated Google Drive root folder ID to: {root_folder_id}", "drive")
         return Response({
-            "detail": "Root folder ID updated successfully",
+            "detail": warning_msg or "Root folder ID updated and verified successfully!",
+            "root_folder_id": setting.root_folder_id,
+            "has_warning": warning_msg is not None
+        })
+
+    @action(detail=False, methods=['patch'], url_path='update-credentials')
+    def update_credentials(self, request):
+        client_id = request.data.get('client_id', '').strip()
+        client_secret = request.data.get('client_secret', '').strip()
+        root_folder_id = request.data.get('root_folder_id', '').strip()
+
+        setting = GoogleDriveSetting.objects.filter(is_active=True).first() or GoogleDriveSetting.objects.first()
+        if not setting:
+            setting = GoogleDriveSetting.objects.create(
+                client_id=client_id,
+                client_secret=client_secret,
+                root_folder_id=root_folder_id,
+                connection_status='Disconnected',
+                default_upload_folder='Root Repository'
+            )
+        else:
+            if client_id:
+                setting.client_id = client_id
+            if client_secret and client_secret != '••••••••':
+                setting.client_secret = client_secret
+            if root_folder_id:
+                if 'drive.google.com' in root_folder_id:
+                    import re
+                    match = re.search(r'folders/([a-zA-Z0-9_-]+)', root_folder_id)
+                    if match:
+                        root_folder_id = match.group(1)
+                setting.root_folder_id = root_folder_id
+            setting.save()
+
+        log_activity(request.user, "Updated Google Drive OAuth Client credentials", "drive")
+        return Response({
+            "detail": "Google Drive OAuth credentials updated successfully",
+            "client_id": setting.client_id,
             "root_folder_id": setting.root_folder_id
         })

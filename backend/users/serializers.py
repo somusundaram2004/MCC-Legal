@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from roles.models import Role
 from permissions.models import Permission
-from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting
+from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting, CustomDynamicPage
 import re
 
 User = get_user_model()
@@ -197,4 +197,11 @@ class GoogleDriveSettingSerializer(serializers.ModelSerializer):
         if 'private_key' in validated_data and not validated_data['private_key']:
             validated_data.pop('private_key')
         return super().update(instance, validated_data)
+
+
+class CustomDynamicPageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomDynamicPage
+        fields = '__all__'
+
 

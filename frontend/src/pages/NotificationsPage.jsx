@@ -14,6 +14,7 @@ import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 
 import api from '../services/api';
 import EmptyState from '../components/EmptyState';
+import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 const NotificationsPage = () => {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ const NotificationsPage = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('all'); // 'all', 'unread', 'approvals'
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = React.useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get('/api/notifications/');
@@ -31,11 +32,14 @@ const NotificationsPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchNotifications();
-  }, []);
+  }, [fetchNotifications]);
+
+  // Global Auto Refresh Subscription
+  useAutoRefresh(REFRESH_CATEGORIES.NOTIFICATIONS, fetchNotifications);
 
   const handleMarkAsRead = async (id) => {
     try {
@@ -178,9 +182,10 @@ const NotificationsPage = () => {
                     </ListItemIcon>
 
                     <ListItemText
+                      disableTypography
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: '0.92rem' }}>
+                          <Typography variant="subtitle2" component="div" sx={{ fontWeight: 800, fontSize: '0.92rem' }}>
                             {n.title}
                           </Typography>
                           {!n.is_read && (
@@ -190,10 +195,10 @@ const NotificationsPage = () => {
                       }
                       secondary={
                         <Box>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.84rem', lineHeight: 1.5 }}>
+                          <Typography variant="body2" component="div" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.84rem', lineHeight: 1.5 }}>
                             {n.description}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
+                          <Typography variant="caption" component="div" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
                             {new Date(n.created_at).toLocaleString()}
                           </Typography>
                         </Box>

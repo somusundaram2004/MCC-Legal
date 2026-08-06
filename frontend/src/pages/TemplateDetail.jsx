@@ -253,7 +253,7 @@ const TemplateDetail = () => {
 
       <Grid container spacing={3.5}>
         {/* Left Column: Documents list & upload trigger */}
-        <Grid item xs={12} md={8}>
+        <Grid xs={12} md={8}>
           <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', mb: 3 }}>
             <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>PDF Document Repository</Typography>
@@ -358,7 +358,7 @@ const TemplateDetail = () => {
         </Grid>
 
         {/* Right Column: Information & Audit Activity logs */}
-        <Grid item xs={12} md={4}>
+        <Grid xs={12} md={4}>
           {/* Metadata Card */}
           <Card sx={{ p: 3, mb: 3.5, borderRadius: '20px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 2 }}>Template Parameters</Typography>
@@ -436,7 +436,7 @@ const TemplateDetail = () => {
       </Grid>
 
       {/* Guided Wizard dialog: Upload PDF Template file */}
-      <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '24px' } }}>
+      <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} maxWidth="sm" fullWidth slotProps={{ paper: { sx: { borderRadius: '24px' } } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Upload PDF Template File</DialogTitle>
         <DialogContent dividers>
           {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
@@ -482,7 +482,7 @@ const TemplateDetail = () => {
 
           <Grid container spacing={2.5}>
             {/* Document metadata fields */}
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 required
@@ -492,7 +492,7 @@ const TemplateDetail = () => {
                 onChange={(e) => setDocName(e.target.value)}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <FormControl fullWidth required>
                 <InputLabel id="upload-doc-type-label">Document Type</InputLabel>
                 <Select
@@ -506,7 +506,7 @@ const TemplateDetail = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 label="Version Number"
@@ -515,7 +515,7 @@ const TemplateDetail = () => {
                 onChange={(e) => setVersion(e.target.value)}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 type="date"
@@ -525,7 +525,7 @@ const TemplateDetail = () => {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 multiline
@@ -561,7 +561,7 @@ const TemplateDetail = () => {
       />
 
       {/* Send Email Dialog */}
-      <Dialog open={emailOpen} onClose={() => { setEmailOpen(false); setSelectedDocForEmail(null); }} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+      <Dialog open={emailOpen} onClose={() => { setEmailOpen(false); setSelectedDocForEmail(null); }} maxWidth="sm" fullWidth slotProps={{ paper: { sx: { borderRadius: '20px' } } }}>
         <form onSubmit={handleSendEmail}>
           <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>Send Document via Email</DialogTitle>
           <DialogContent>

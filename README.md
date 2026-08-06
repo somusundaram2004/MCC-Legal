@@ -42,7 +42,19 @@ An enterprise-grade **Folder-Centric MOU Management System** built for universit
 - Node.js (v18+)
 - Python (v3.10+)
 
-### 1. Backend Setup
+### 1. Environment Configuration
+Copy the template environment files:
+```bash
+# Backend Environment Setup
+cp backend/.env.example backend/.env
+
+# Frontend Environment Setup
+cp frontend/.env.example frontend/.env
+```
+
+Fill in your `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `SECRET_KEY` in `backend/.env`.
+
+### 2. Backend Setup
 ```bash
 cd backend
 python -m venv .venv
@@ -55,13 +67,14 @@ python seed.py
 python manage.py runserver
 ```
 
-### 2. Frontend Setup
+### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
+---
 
 ## 📝 License
 Distributed under the MIT License. Developed for higher education institutions.

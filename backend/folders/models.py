@@ -8,7 +8,8 @@ class Folder(models.Model):
         on_delete=models.CASCADE, 
         null=True, 
         blank=True, 
-        related_name='children'
+        related_name='children',
+        db_index=True
     )
     google_folder_id = models.CharField(max_length=255, blank=True, null=True)
     created_by = models.ForeignKey(
@@ -16,7 +17,8 @@ class Folder(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='created_folders'
+        related_name='created_folders',
+        db_index=True
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -29,7 +31,8 @@ class Folder(models.Model):
             ('Expired', 'Expired'),
             ('Archived', 'Archived'),
         ],
-        default='Active'
+        default='Active',
+        db_index=True
     )
     summary = models.TextField(blank=True, null=True)
     expiry_date = models.DateField(blank=True, null=True)

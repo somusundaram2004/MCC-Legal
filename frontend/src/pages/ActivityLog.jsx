@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
   Box, Typography, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, Paper, CircularProgress, Alert, TextField, 
@@ -19,6 +19,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import ComputerIcon from '@mui/icons-material/Computer';
 
 import api from '../services/api';
+import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 /* Module Color Styles */
 const MODULE_CONFIG = {
@@ -61,7 +62,7 @@ const ActivityLog = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get('/api/activity-logs/');
@@ -72,11 +73,14 @@ const ActivityLog = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+  }, [fetchLogs]);
+
+  // Global Auto Refresh Subscription
+  useAutoRefresh(REFRESH_CATEGORIES.ACTIVITY_LOGS, fetchLogs);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -141,12 +145,14 @@ const ActivityLog = () => {
             width: { xs: '100%', sm: 300 },
             '& .MuiOutlinedInput-root': { borderRadius: '20px' }
           }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-              </InputAdornment>
-            ),
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
+            }
           }}
         />
       </Box>
@@ -158,7 +164,7 @@ const ActivityLog = () => {
           { title: 'Active System Users', count: uniqueUsers, label: 'Logged operations', color: '#3B82F6', icon: <PeopleIcon /> },
           { title: 'Security & Auth Events', count: securityEvents, label: 'Logins & Deletions', color: '#F59E0B', icon: <SecurityIcon /> },
         ].map((item) => (
-          <Grid item xs={12} sm={4} key={item.title}>
+          <Grid xs={12} sm={4} key={item.title}>
             <Card sx={{ p: 2.2, borderRadius: '16px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box>

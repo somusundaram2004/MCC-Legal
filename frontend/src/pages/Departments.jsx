@@ -21,6 +21,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 
 import { getMOUs } from '../services/mouApi';
 import { getMOUCategories, createMOUCategory, deleteMOUCategory } from '../services/templateApi';
+import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 
 const Departments = () => {
@@ -46,7 +47,7 @@ const Departments = () => {
   const [categoryToDelete, setCategoryToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  const loadData = () => {
+  const loadData = React.useCallback(() => {
     setLoading(true);
     Promise.all([getMOUs(), getMOUCategories()])
       .then(([mouData, catData]) => {
@@ -58,11 +59,14 @@ const Departments = () => {
         console.error("Failed to load departments data:", err);
         setLoading(false);
       });
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  // Global Auto Refresh Subscription
+  useAutoRefresh(REFRESH_CATEGORIES.DEPARTMENTS, loadData);
 
   const getIcon = (type) => {
     switch (type) {
@@ -186,12 +190,14 @@ const Departments = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             sx={{ width: 240 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                </InputAdornment>
-              ),
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                  </InputAdornment>
+                ),
+              }
             }}
           />
           <Button
@@ -216,7 +222,7 @@ const Departments = () => {
             const stats = getDeptStats(dept.name);
             const bg = getBgColor(dept.color);
             return (
-              <Grid item xs={12} sm={6} md={4} key={dept.id}>
+              <Grid xs={12} sm={6} md={4} key={dept.id}>
                 <Card
                   className="card-lift"
                   sx={{
@@ -285,19 +291,19 @@ const Departments = () => {
 
                     {/* Metrics */}
                     <Grid container spacing={1} sx={{ mb: 2 }}>
-                      <Grid item xs={4}>
+                      <Grid xs={4}>
                         <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'action.hover' }}>
                           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem', fontWeight: 700 }}>TOTAL</Typography>
                           <Typography variant="subtitle1" sx={{ fontWeight: 900, color: 'primary.main' }}>{stats.total}</Typography>
                         </Box>
                       </Grid>
-                      <Grid item xs={4}>
+                      <Grid xs={4}>
                         <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'rgba(16,185,129,0.08)' }}>
                           <Typography variant="caption" sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#10B981' }}>ACTIVE</Typography>
                           <Typography variant="subtitle1" sx={{ fontWeight: 900, color: '#10B981' }}>{stats.active}</Typography>
                         </Box>
                       </Grid>
-                      <Grid item xs={4}>
+                      <Grid xs={4}>
                         <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'rgba(249,115,22,0.08)' }}>
                           <Typography variant="caption" sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#F97316' }}>EXPIRING</Typography>
                           <Typography variant="subtitle1" sx={{ fontWeight: 900, color: '#F97316' }}>{stats.expiring}</Typography>
@@ -323,7 +329,7 @@ const Departments = () => {
       )}
 
       {/* Create Category Dialog */}
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth slotProps={{ paper: { sx: { borderRadius: '20px' } } }}>
         <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>
           Create New Category {categoryType === 'Company' ? '(Company / Partner)' : '(College Department)'}
         </DialogTitle>
@@ -341,7 +347,7 @@ const Departments = () => {
             />
 
             <Grid container spacing={2}>
-              <Grid item xs={6}>
+              <Grid xs={6}>
                 <TextField
                   required
                   label="Abbreviation Code"
@@ -351,7 +357,7 @@ const Departments = () => {
                   fullWidth
                 />
               </Grid>
-              <Grid item xs={6}>
+              <Grid xs={6}>
                 <FormControl fullWidth required>
                   <InputLabel>Category Type</InputLabel>
                   <Select
@@ -367,7 +373,7 @@ const Departments = () => {
             </Grid>
 
             <Grid container spacing={2}>
-              <Grid item xs={6}>
+              <Grid xs={6}>
                 <FormControl fullWidth required>
                   <InputLabel>Icon Style</InputLabel>
                   <Select
@@ -385,7 +391,7 @@ const Departments = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={6}>
+              <Grid xs={6}>
                 <FormControl fullWidth required>
                   <InputLabel>Color Theme</InputLabel>
                   <Select
@@ -434,7 +440,7 @@ const Departments = () => {
       <Dialog 
         open={deleteConfirmOpen} 
         onClose={() => setDeleteConfirmOpen(false)}
-        PaperProps={{ sx: { borderRadius: '16px' } }}
+        slotProps={{ paper: { sx: { borderRadius: '16px' } } }}
       >
         <DialogTitle sx={{ fontWeight: 800 }}>Delete Category</DialogTitle>
         <DialogContent>

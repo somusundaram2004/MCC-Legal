@@ -20,8 +20,10 @@ def get_service_account_info():
         from users.models import GoogleDriveSetting
         active_setting = GoogleDriveSetting.objects.filter(is_active=True).first()
         if active_setting:
-            private_key = active_setting.private_key
-            if private_key:
+            private_key = active_setting.private_key or ''
+            if 'YOUR_PRIVATE_KEY_HERE' in private_key:
+                private_key = ''
+            elif private_key:
                 if private_key.startswith('"') and private_key.endswith('"'):
                     private_key = private_key[1:-1]
                 elif private_key.startswith("'") and private_key.endswith("'"):
@@ -33,7 +35,7 @@ def get_service_account_info():
                 "project_id": active_setting.project_id,
                 "private_key_id": active_setting.private_key_id,
                 "private_key": private_key,
-                "client_email": active_setting.client_email,
+                "client_email": active_setting.client_email if 'your-service-account' not in (active_setting.client_email or '') else '',
                 "client_id": active_setting.client_id,
                 "auth_uri": active_setting.auth_uri,
                 "token_uri": active_setting.token_uri,
@@ -47,12 +49,18 @@ def get_service_account_info():
 
     # Fallback to env/settings:
     private_key = getattr(settings, 'GOOGLE_DRIVE_PRIVATE_KEY', '') or os.environ.get('GOOGLE_DRIVE_PRIVATE_KEY', '')
-    if private_key:
+    if 'YOUR_PRIVATE_KEY_HERE' in private_key:
+        private_key = ''
+    elif private_key:
         if private_key.startswith('"') and private_key.endswith('"'):
             private_key = private_key[1:-1]
         elif private_key.startswith("'") and private_key.endswith("'"):
             private_key = private_key[1:-1]
         private_key = private_key.replace('\\n', '\n')
+    
+    client_email = getattr(settings, 'GOOGLE_DRIVE_CLIENT_EMAIL', '') or ''
+    if 'your-service-account' in client_email:
+        client_email = ''
     
     return {
         "type": getattr(settings, 'GOOGLE_DRIVE_TYPE', 'service_account'),
@@ -100,7 +108,6 @@ def authenticate():
             client_secret = active_setting.client_secret or getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', '')
             
             if not client_id or not client_secret:
-                import os
                 import json
                 cred_path = os.path.join(settings.BASE_DIR, 'credentials.json')
                 if os.path.exists(cred_path):
@@ -141,18 +148,30 @@ def authenticate():
             return build('drive', 'v3', credentials=creds)
 
         info = get_service_account_info()
-        if info.get('client_email') and info.get('private_key'):
+        pk = info.get('private_key') or ''
+        if info.get('client_email') and pk and 'BEGIN PRIVATE KEY' in pk and 'YOUR_PRIVATE_KEY_HERE' not in pk:
             creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
             return build('drive', 'v3', credentials=creds)
 
         sa_file = getattr(settings, 'GOOGLE_SERVICE_ACCOUNT_FILE', None)
         if sa_file and os.path.exists(sa_file):
-            creds = service_account.Credentials.from_service_account_file(sa_file, scopes=SCOPES)
-            return build('drive', 'v3', credentials=creds)
+            try:
+                import json
+                with open(sa_file, 'r') as f:
+                    sa_data = json.load(f)
+                    sa_pk = sa_data.get('private_key', '')
+                    if sa_pk and 'BEGIN PRIVATE KEY' in sa_pk and 'YOUR_PRIVATE_KEY_HERE' not in sa_pk:
+                        creds = service_account.Credentials.from_service_account_file(sa_file, scopes=SCOPES)
+                        return build('drive', 'v3', credentials=creds)
+            except Exception as sa_err:
+                logger.debug(f"Service account file check skipped: {sa_err}")
 
         raise ValueError("Google Drive credentials missing.")
     except Exception as e:
-        logger.error(f"Google Drive authentication failed: {e}")
+        if "credentials missing" not in str(e).lower():
+            logger.error(f"Google Drive authentication failed: {e}")
+        else:
+            logger.debug(f"Google Drive authentication fallback: {e}")
         raise
 
 def folder_exists(folder_id):

@@ -10,12 +10,15 @@ class ActivityLog(models.Model):
         related_name='activity_logs'
     )
     action = models.TextField()
-    module = models.CharField(max_length=100)
-    created_at = models.DateTimeField(auto_now_add=True)
+    module = models.CharField(max_length=100, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     ip_address = models.GenericIPAddressField(blank=True, null=True)
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at', 'module']),
+        ]
 
     def __str__(self):
         user_str = self.user.email if self.user else "System"

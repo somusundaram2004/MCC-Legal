@@ -36,6 +36,7 @@ import TimelineIcon from '@mui/icons-material/Timeline';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSiteTime } from '../context/SiteTimeContext';
+import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 import BreadcrumbNav from '../components/BreadcrumbNav';
 import FilePreviewModal from '../components/FilePreviewModal';
 
@@ -315,6 +316,9 @@ const FolderExplorer = () => {
   useEffect(() => {
     fetchContents();
   }, [fetchContents]);
+
+  // Global Auto Refresh Subscription
+  useAutoRefresh([REFRESH_CATEGORIES.FOLDERS, REFRESH_CATEGORIES.FILES, REFRESH_CATEGORIES.MOUS], fetchContents);
 
   // Background polling for dynamic updates (real-time updates of files/folders)
   useEffect(() => {
@@ -1033,7 +1037,7 @@ const FolderExplorer = () => {
                           : { color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.12)' };
 
                         return (
-                          <Grid item xs={12} sm={6} md={4} lg={2.4} key={folder.id}>
+                          <Grid xs={12} sm={6} md={4} lg={2.4} key={folder.id}>
                             <Card 
                               className="card-lift"
                               sx={{ 
@@ -1230,7 +1234,7 @@ const FolderExplorer = () => {
                         const canPreviewPdf = isAdmin || hasExplicitPreviewGrant;
                         const canDownloadPdf = isAdmin || hasExplicitDownloadGrant;
                         return (
-                          <Grid item xs={12} sm={6} md={4} lg={3} key={file.id}>
+                          <Grid xs={12} sm={6} md={4} lg={3} key={file.id}>
                             <Card 
                               sx={{ 
                                 cursor: 'pointer',
@@ -1573,8 +1577,8 @@ const FolderExplorer = () => {
         onClose={() => setAuditDialogOpen(false)}
         maxWidth="md"
         fullWidth
-        PaperProps={{
-          sx: { borderRadius: '24px', p: 1 }
+        slotProps={{
+          paper: { sx: { borderRadius: '24px', p: 1 } }
         }}
       >
         <DialogTitle sx={{ fontWeight: 800, pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1595,45 +1599,45 @@ const FolderExplorer = () => {
                   Parent Folder Details
                 </Typography>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
+                  <Grid xs={12} sm={6}>
                     <Typography variant="body2" color="text.secondary">Folder Name</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 700 }}>{auditData.folder.name}</Typography>
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid xs={12} sm={6}>
                     <Typography variant="body2" color="text.secondary">Creator / Owner</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 700, color: 'primary.main' }}>
                       {auditData.folder.created_by}
                     </Typography>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid xs={12} sm={3}>
                     <Typography variant="body2" color="text.secondary">Created Date</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600 }}>
                       {new Date(auditData.folder.created_at).toLocaleDateString()}
                     </Typography>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid xs={12} sm={3}>
                     <Typography variant="body2" color="text.secondary">Created Time</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600 }}>
                       {new Date(auditData.folder.created_at).toLocaleTimeString()}
                     </Typography>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid xs={12} sm={3}>
                     <Typography variant="body2" color="text.secondary">Last Updated Date</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600 }}>
                       {new Date(auditData.folder.updated_at).toLocaleDateString()}
                     </Typography>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid xs={12} sm={3}>
                     <Typography variant="body2" color="text.secondary">Last Updated Time</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600 }}>
                       {new Date(auditData.folder.updated_at).toLocaleTimeString()}
                     </Typography>
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid xs={12} sm={6}>
                     <Typography variant="body2" color="text.secondary">Status</Typography>
                     <Chip label={auditData.folder.status} size="small" color="primary" sx={{ fontWeight: 700, mt: 0.5 }} />
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid xs={12} sm={6}>
                     <Typography variant="body2" color="text.secondary">Expiry Date</Typography>
                     {isEditingExpiry ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
@@ -1678,7 +1682,7 @@ const FolderExplorer = () => {
                       </Box>
                     )}
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid xs={12}>
                     <Typography variant="body2" color="text.secondary">Summary</Typography>
                     <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 0.5 }}>
                       {auditData.folder.summary || 'No summary description provided.'}
@@ -1838,8 +1842,8 @@ const FolderExplorer = () => {
         open={Boolean(actionLoadingMessage)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{
-          sx: { borderRadius: '24px', p: 3, textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.18)' }
+        slotProps={{
+          paper: { sx: { borderRadius: '24px', p: 3, textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.18)' } }
         }}
       >
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 1 }}>
@@ -1939,9 +1943,11 @@ const FolderExplorer = () => {
                     ? activeItem.data.web_view_link
                     : `${window.location.origin}/explorer?folder=${activeItem?.data?.id}`
                 }
-                InputProps={{
-                  readOnly: true,
-                  sx: { fontFamily: 'monospace', fontSize: '0.8rem' }
+                slotProps={{
+                  input: {
+                    readOnly: true,
+                    sx: { fontFamily: 'monospace', fontSize: '0.8rem' }
+                  }
                 }}
               />
               <Button 
@@ -2021,7 +2027,7 @@ const FolderExplorer = () => {
         anchorEl={menuAnchor}
         open={Boolean(menuAnchor)}
         onClose={handleMenuClose}
-        PaperProps={{ sx: { minWidth: 180, borderRadius: '12px', border: '1px solid', borderColor: 'divider', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' } }}
+        slotProps={{ paper: { sx: { minWidth: 180, borderRadius: '12px', border: '1px solid', borderColor: 'divider', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' } } }}
       >
         {activeItem?.type === 'folder' ? (
           <>

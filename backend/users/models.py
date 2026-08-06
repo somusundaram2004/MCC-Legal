@@ -268,3 +268,38 @@ class PasswordResetOTP(models.Model):
     def is_expired(self):
         return timezone.now() > self.expires_at
 
+
+class CustomDynamicPage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True)
+    icon = models.CharField(max_length=100, default='Folder')
+    route = models.CharField(max_length=255, default='/custom-page')
+    parent_slug = models.CharField(max_length=255, blank=True, null=True)
+    root_folder_name = models.CharField(max_length=255, blank=True, null=True)
+    root_folder_id = models.CharField(max_length=255, blank=True, null=True)
+    google_drive_folder_id = models.CharField(max_length=255, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    order = models.IntegerField(default=0)
+    badge = models.CharField(max_length=50, blank=True, null=True)
+    badge_color = models.CharField(max_length=50, default='#3B82F6')
+    page_type = models.CharField(max_length=100, default='Folder Repository')
+    is_published = models.BooleanField(default=True)
+    is_enabled = models.BooleanField(default=True)
+    open_new_tab = models.BooleanField(default=False)
+    allowed_roles = models.JSONField(default=list)
+    allowed_permissions = models.JSONField(default=list)
+    theme_colors = models.JSONField(default=dict)
+    crud_permissions = models.JSONField(default=dict)
+    entity_schema = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'title']
+
+    def __str__(self):
+        status = "Published" if self.is_published else "Draft"
+        return f"{self.title} ({self.slug}) - {status}"
+
+

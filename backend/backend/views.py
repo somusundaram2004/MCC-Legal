@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Q, Sum, Count
 from permissions.custom_permissions import HasDynamicPermission
 from folders.models import Folder
 from files.models import File
@@ -96,7 +96,6 @@ class DashboardStatsView(APIView):
         # Real System Storage Stats
         import shutil
         from django.conf import settings
-        from django.db.models import Sum
         from users.models import GoogleDriveSetting
 
         media_root = getattr(settings, 'MEDIA_ROOT', '')
@@ -148,33 +147,37 @@ class DashboardStatsView(APIView):
         recent_folders_serializer = FolderSerializer(recent_folders, many=True)
 
         # Real MOU & Folder status counts from database
-        from django.db.models import Count
         today = datetime.date.today()
 
-        # Active MOUs: Active or Renewed status and not expired
-        active_mous = mous_qs.filter(
-            Q(status__in=['Active', 'Renewed']),
+        # Active Agreements: Count active MOUs + active Repository Folders (excluding Draft, Pending, Expired, Archived)
+        active_mou_count = mous_qs.filter(
+            Q(status__in=['Active', 'Renewed', 'Signed']),
+            Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+        ).exclude(status__in=['Draft', 'Pending Verification', 'Pending Review', 'Expired', 'Archived']).count()
+
+        active_folder_count = folders_qs.filter(
+            Q(status__in=['Active', 'Signed', 'Renewed']),
             Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
         ).count()
-        if active_mous == 0 and mous_qs.count() == 0:
-            active_mous = folders_qs.filter(status='Active').count()
 
-        # Pending Verification MOUs: Pending Verification, Signed, or Pending Review status
+        active_mous = active_mou_count + active_folder_count
+
+        # Pending Verification MOUs
         pending_approval = mous_qs.filter(
-            status__in=['Pending Verification', 'Signed', 'Pending Review']
+            status__in=['Pending Verification', 'Pending Review']
         ).count()
-        if pending_approval == 0 and mous_qs.count() == 0:
-            pending_approval = folders_qs.filter(status__in=['Pending Review', 'Signed']).count()
+        if pending_approval == 0:
+            pending_approval = folders_qs.filter(status='Pending Review').count()
 
-        # Expiring in 30 Days: Active/Renewed status with expiry_date within 30 days from today
+        # Expiring in 30 Days
         expiring_30 = mous_qs.filter(
-            status__in=['Active', 'Renewed'],
+            status__in=['Active', 'Renewed', 'Signed'],
             expiry_date__gte=today,
             expiry_date__lte=today + datetime.timedelta(days=30)
         ).count()
-        if expiring_30 == 0 and mous_qs.count() == 0:
+        if expiring_30 == 0:
             expiring_30 = folders_qs.filter(
-                status='Active',
+                status__in=['Active', 'Signed'],
                 expiry_date__gte=today,
                 expiry_date__lte=today + datetime.timedelta(days=30)
             ).count()
