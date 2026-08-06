@@ -47,18 +47,33 @@ def seed_data():
         name="Super Admin",
         defaults={"description": "Super Administrator with full system control"}
     )
-    Role.objects.get_or_create(
+    admin_role, _ = Role.objects.get_or_create(
         name="Admin",
         defaults={"description": "Administrator"}
     )
-    Role.objects.get_or_create(
+    user_role, _ = Role.objects.get_or_create(
         name="User",
         defaults={"description": "Standard User"}
     )
 
-    # 3. Associate all permissions to Super Admin role
+    # 3. Associate permissions to roles
+    # Super Admin and Admin get all permissions
     for perm in db_permissions.values():
         RolePermission.objects.get_or_create(role=super_admin_role, permission=perm)
+        RolePermission.objects.get_or_create(role=admin_role, permission=perm)
+
+    # User gets specific default permissions
+    user_permissions = [
+        "view_folder",
+        "upload_files",
+        "download_files",
+        "preview_files",
+        "view_notifications",
+        "view_dashboard"
+    ]
+    for codename in user_permissions:
+        if codename in db_permissions:
+            RolePermission.objects.get_or_create(role=user_role, permission=db_permissions[codename])
 
     # 4. Super Admin Credentials Only
     email = "superadmin@college.edu"

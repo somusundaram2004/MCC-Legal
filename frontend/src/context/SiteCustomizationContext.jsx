@@ -142,9 +142,7 @@ export const SiteCustomizationProvider = ({ children }) => {
 
   return (
     <SiteCustomizationContext.Provider value={value}>
-      <ThemeProvider theme={dynamicMuiTheme}>
-        {children}
-      </ThemeProvider>
+      {children}
     </SiteCustomizationContext.Provider>
   );
 };

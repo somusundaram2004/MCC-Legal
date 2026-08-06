@@ -69,8 +69,8 @@ function App() {
     <>
       <Toaster position="top-center" reverseOrder={false} />
       <Router>
-        <ThemeModeProvider>
-          <SiteCustomizationProvider>
+        <SiteCustomizationProvider>
+          <ThemeModeProvider>
             <SiteTimeProvider>
               <AutoRefreshProvider>
                 <DynamicGoogleOAuthProvider>
@@ -237,8 +237,8 @@ function App() {
               </DynamicGoogleOAuthProvider>
             </AutoRefreshProvider>
           </SiteTimeProvider>
-        </SiteCustomizationProvider>
-      </ThemeModeProvider>
+        </ThemeModeProvider>
+      </SiteCustomizationProvider>
     </Router>
   </>
 );

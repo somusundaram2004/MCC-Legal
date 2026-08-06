@@ -185,15 +185,15 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
           justifyContent: 'space-between',
           px: '14px',
           border: '1.5px solid',
-          borderColor: showError ? '#d32f2f' : open ? 'var(--violet)' : disabled ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.23)',
+          borderColor: showError ? '#d32f2f' : open ? 'var(--violet)' : disabled ? 'action.disabledBackground' : 'divider',
           borderRadius: '12px',
-          backgroundColor: disabled ? 'rgba(0,0,0,0.04)' : '#fff',
+          backgroundColor: disabled ? 'action.disabledBackground' : 'background.paper',
           cursor: disabled ? 'not-allowed' : 'pointer',
           outline: 'none',
           transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
           boxShadow: open ? '0 0 0 3px rgba(var(--violet-rgb), 0.12)' : 'none',
           userSelect: 'none',
-          '&:hover': { borderColor: showError ? '#d32f2f' : open ? 'var(--violet)' : disabled ? 'rgba(0,0,0,0.12)' : '#111827' },
+          '&:hover': { borderColor: showError ? '#d32f2f' : open ? 'var(--violet)' : disabled ? 'action.disabledBackground' : 'text.primary' },
           '&:focus-visible': { outline: 'none', borderColor: 'var(--violet)', boxShadow: '0 0 0 3px rgba(var(--violet-rgb), 0.12)' },
         }}
       >
@@ -208,8 +208,8 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
             transform: (open || hasValue) ? 'none' : 'translateY(-50%)',
             fontSize: (open || hasValue) ? '11.5px' : '14px',
             fontWeight: (open || hasValue) ? 500 : 400,
-            color: showError ? '#d32f2f' : (open || hasValue) ? 'var(--violet)' : disabled ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.6)',
-            bgcolor: disabled ? 'transparent' : '#fff',
+            color: showError ? '#d32f2f' : (open || hasValue) ? 'var(--violet)' : disabled ? 'text.disabled' : 'text.secondary',
+            bgcolor: disabled ? 'transparent' : 'background.paper',
             px: (open || hasValue) ? '4px' : 0,
             lineHeight: 1,
             transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
@@ -227,12 +227,13 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
           sx={{
             fontSize: '14px',
             fontFamily: 'Inter, system-ui, sans-serif',
-            color: disabled ? 'rgba(0,0,0,0.38)' : hasValue ? 'rgba(0,0,0,0.87)' : 'transparent',
+            color: disabled ? 'text.disabled' : hasValue ? 'text.primary' : 'transparent',
             flex: 1,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
             mt: hasValue ? '2px' : 0,
+            textAlign: 'left',
           }}
         >
           {selectedLabel || '\u00A0'}
@@ -245,7 +246,7 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
             ml: 0.5,
             display: 'flex',
             alignItems: 'center',
-            color: open ? '#7C3AED' : disabled ? 'rgba(0,0,0,0.26)' : 'rgba(0,0,0,0.54)',
+            color: open ? 'var(--violet)' : disabled ? 'text.disabled' : 'text.secondary',
             transition: 'transform 0.2s ease, color 0.2s ease',
             transform: open ? 'rotate(180deg)' : 'none',
             flexShrink: 0,
@@ -284,10 +285,13 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
             left: `${dropPos.left}px`,
             width: `${dropPos.width}px`,
             zIndex: 9999,
-            backgroundColor: '#fff',
-            border: '1px solid #E5E7EB',
+            backgroundColor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
             borderRadius: '12px',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
+            boxShadow: (theme) => theme.palette.mode === 'dark' 
+              ? '0 12px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3)' 
+              : '0 12px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
@@ -301,15 +305,16 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
         >
           {/* Search box */}
           {showSearch && (
-            <Box sx={{ p: '8px', borderBottom: '1px solid #F3F4F6', flexShrink: 0, bgcolor: '#fff' }}>
+            <Box sx={{ p: '8px', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0, bgcolor: 'background.paper' }}>
               <Box sx={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 px: '12px', py: '7px',
-                border: '1px solid #E5E7EB',
+                border: '1px solid',
+                borderColor: 'divider',
                 borderRadius: '8px',
-                bgcolor: '#F9FAFB',
+                bgcolor: 'action.hover',
               }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0, opacity: 0.6 }}>
                   <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <Box
@@ -321,9 +326,9 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
                   placeholder="Search department..."
                   sx={{
                     border: 'none', outline: 'none', background: 'transparent',
-                    flex: 1, fontSize: '13px', color: '#111827', p: 0,
+                    flex: 1, fontSize: '13px', color: 'text.primary', p: 0,
                     fontFamily: 'Inter, system-ui, sans-serif',
-                    '&::placeholder': { color: '#9CA3AF' },
+                    '&::placeholder': { color: 'text.secondary' },
                   }}
                 />
               </Box>
@@ -339,14 +344,14 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
               py: '4px',
               '&::-webkit-scrollbar': { width: '6px' },
               '&::-webkit-scrollbar-track': { background: 'transparent' },
-              '&::-webkit-scrollbar-thumb': { background: '#C7C3FF', borderRadius: '99px', '&:hover': { background: '#A78BFA' } },
+              '&::-webkit-scrollbar-thumb': { background: 'rgba(var(--indigo-rgb), 0.25)', borderRadius: '99px', '&:hover': { background: 'rgba(var(--indigo-rgb), 0.5)' } },
               scrollbarWidth: 'thin',
-              scrollbarColor: '#C7C3FF transparent',
+              scrollbarColor: 'rgba(var(--indigo-rgb), 0.25) transparent',
             }}
           >
             {filtered.length === 0 ? (
               <Box sx={{ py: 3, textAlign: 'center' }}>
-                <Typography sx={{ fontSize: '13px', color: '#9CA3AF', fontFamily: 'Inter, system-ui, sans-serif' }}>
+                <Typography sx={{ fontSize: '13px', color: 'text.secondary', fontFamily: 'Inter, system-ui, sans-serif' }}>
                   No departments found
                 </Typography>
               </Box>
@@ -372,8 +377,12 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
                       fontSize: '14px',
                       fontFamily: 'Inter, system-ui, sans-serif',
                       fontWeight: isSel ? 600 : 400,
-                      color: (isSel || isHigh) ? '#5B3DF5' : '#111827',
-                      backgroundColor: isSel ? '#EDE9FE' : isHigh ? '#F5F3FF' : 'transparent',
+                      color: isSel ? 'var(--violet)' : isHigh ? 'primary.main' : 'text.primary',
+                      backgroundColor: isSel 
+                        ? 'rgba(var(--indigo-rgb), 0.15)' 
+                        : isHigh 
+                          ? 'action.hover' 
+                          : 'transparent',
                       transition: 'background-color 0.1s ease, color 0.1s ease',
                     }}
                   >
@@ -954,7 +963,7 @@ const UserManagement = () => {
                       <SearchIcon sx={{ color: 'text.secondary', fontSize: '1.1rem' }} />
                     </InputAdornment>
                   ),
-                  sx: { borderRadius: '8px', bgcolor: '#fff' }
+                  sx: { borderRadius: '8px', bgcolor: 'background.paper' }
                 }
               }}
             />
@@ -968,7 +977,7 @@ const UserManagement = () => {
                   value={filterCategory}
                   label="Stream"
                   onChange={(e) => { setFilterCategory(e.target.value); setFilterDept(''); }}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Streams</MenuItem>
                   {deptCategories.map(c => (
@@ -984,7 +993,7 @@ const UserManagement = () => {
                   value={filterDept}
                   label="Department / Company"
                   onChange={(e) => setFilterDept(e.target.value)}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Depts / Companies</MenuItem>
                   {(filterCategory ? departments.filter(d => d.category === filterCategory) : departments).map(d => (
@@ -1000,7 +1009,7 @@ const UserManagement = () => {
                   value={filterUserType}
                   label="User Type"
                   onChange={(e) => setFilterUserType(e.target.value)}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">User Type</MenuItem>
                   {user?.role?.name !== 'Admin' && <MenuItem value="Super Admin">Super Admin</MenuItem>}
@@ -1017,7 +1026,7 @@ const UserManagement = () => {
                   value={filterRole}
                   label="Role"
                   onChange={(e) => setFilterRole(e.target.value)}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">Role</MenuItem>
                   {roles.map(r => (
@@ -1033,7 +1042,7 @@ const UserManagement = () => {
                   value={filterStatus}
                   label="Status"
                   onChange={(e) => setFilterStatus(e.target.value)}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">Status</MenuItem>
                   <MenuItem value="Active">Active</MenuItem>
@@ -1180,7 +1189,7 @@ const UserManagement = () => {
                       <SearchIcon sx={{ color: 'text.secondary', fontSize: '1.1rem' }} />
                     </InputAdornment>
                   ),
-                  sx: { borderRadius: '8px', bgcolor: '#fff' }
+                  sx: { borderRadius: '8px', bgcolor: 'background.paper' }
                 }
               }}
             />
@@ -1194,7 +1203,7 @@ const UserManagement = () => {
                   value={invitationFilterStream}
                   label="Stream"
                   onChange={(e) => setInvitationFilterStream(e.target.value)}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Streams</MenuItem>
                   {deptCategories.map(c => (
@@ -1210,7 +1219,7 @@ const UserManagement = () => {
                   value={invitationFilterDept}
                   label="Department / Company"
                   onChange={(e) => setInvitationFilterDept(e.target.value)}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Depts / Companies</MenuItem>
                   {departments.map(d => (
@@ -1226,7 +1235,7 @@ const UserManagement = () => {
                   value={invitationFilterRole}
                   label="Role"
                   onChange={(e) => setInvitationFilterRole(e.target.value)}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Roles</MenuItem>
                   {roles.map(r => (
@@ -1242,7 +1251,7 @@ const UserManagement = () => {
                   value={invitationFilterStatus}
                   label="Status"
                   onChange={(e) => setInvitationFilterStatus(e.target.value)}
-                  sx={{ borderRadius: '8px', bgcolor: '#fff' }}
+                  sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Statuses</MenuItem>
                   <MenuItem value="Pending">Pending</MenuItem>
@@ -1428,7 +1437,7 @@ const UserManagement = () => {
                     slotProps={{
                       input: {
                         readOnly: true,
-                        sx: { fontSize: '0.8rem', bgcolor: '#fff', borderRadius: '8px' }
+                        sx: { fontSize: '0.8rem', bgcolor: 'background.paper', borderRadius: '8px' }
                       }
                     }}
                   />

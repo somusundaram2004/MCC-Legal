@@ -31,6 +31,7 @@ import api from '../services/api';
 import FilePreviewModal from '../components/FilePreviewModal';
 import { useAuth } from '../context/AuthContext';
 import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
+import FolderExplorer from './FolderExplorer';
 
 const getModuleIcon = (iconName) => {
   switch (iconName) {
@@ -182,6 +183,10 @@ const DynamicPageContainer = () => {
 
   const paginatedItems = filteredItems.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
   const uniqueDepartments = Array.from(new Set(items.map(i => i.department_name).filter(Boolean)));
+
+  if (pageConfig?.page_type === 'Folder Repository' || pageConfig?.page_type === 'Document Repository') {
+    return <FolderExplorer rootFolderId={pageConfig.root_folder_id} />;
+  }
 
   return (
     <Box sx={{ width: '100%' }} className="animate-fade-slide-up">

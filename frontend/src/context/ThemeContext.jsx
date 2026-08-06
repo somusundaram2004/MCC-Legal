@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { useSiteCustomization } from './SiteCustomizationContext';
 
 const ThemeModeContext = createContext({ toggleTheme: () => {}, mode: 'light', applyAppearance: () => {} });
 export const useThemeMode = () => useContext(ThemeModeContext);
@@ -17,7 +18,46 @@ export const ThemeModeProvider = ({ children }) => {
   const [fontFamily, setFontFamily] = useState(() => getLS('app_font_family', "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif"));
   const [borderRadius, setBorderRadius] = useState(() => parseInt(getLS('app_border_radius', '14')));
 
-  useEffect(() => { localStorage.setItem('theme_mode', mode); }, [mode]);
+  const siteCustomization = useSiteCustomization();
+  const dbTheme = siteCustomization?.theme || {};
+
+  // Sync DB customization settings with local states if there are no user overrides
+  useEffect(() => {
+    const localThemeMode = localStorage.getItem('theme_mode');
+    if (!localThemeMode && dbTheme.mode) {
+      setMode(dbTheme.mode);
+    }
+    const localPrimary = localStorage.getItem('app_primary_color');
+    if (!localPrimary && dbTheme.primary_color) {
+      setPrimaryColor(dbTheme.primary_color);
+    }
+    const localSecondary = localStorage.getItem('app_secondary_color');
+    if (!localSecondary && dbTheme.secondary_color) {
+      setSecondaryColor(dbTheme.secondary_color);
+    }
+    const localRadius = localStorage.getItem('app_border_radius');
+    if (!localRadius && dbTheme.border_radius !== undefined) {
+      setBorderRadius(parseInt(dbTheme.border_radius));
+    }
+    const localFont = localStorage.getItem('app_font_family');
+    if (!localFont && dbTheme.font_family) {
+      setFontFamily(dbTheme.font_family);
+    }
+  }, [dbTheme]);
+
+  useEffect(() => { 
+    localStorage.setItem('theme_mode', mode); 
+    // Synchronize HTML document classes and attributes
+    if (mode === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.style.setProperty('color-scheme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
+      document.documentElement.style.setProperty('color-scheme', 'light');
+    }
+  }, [mode]);
   const toggleTheme = () => setMode(p => p === 'light' ? 'dark' : 'light');
 
   useEffect(() => {

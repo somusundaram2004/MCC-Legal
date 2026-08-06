@@ -32,6 +32,8 @@ import InfoIcon from '@mui/icons-material/Info';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
 
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -40,7 +42,7 @@ import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContex
 import BreadcrumbNav from '../components/BreadcrumbNav';
 import FilePreviewModal from '../components/FilePreviewModal';
 
-const FolderExplorer = () => {
+const FolderExplorer = ({ rootFolderId = null }) => {
   const { user, hasPermission } = useAuth();
   const { getFormattedSiteDateTime } = useSiteTime();
   const navigate = useNavigate();
@@ -65,6 +67,9 @@ const FolderExplorer = () => {
   };
 
   const getDynamicFolderColor = (folder) => {
+    if (folder.status === 'Archived') {
+      return '#475569';
+    }
     if (folder.expiry_date) {
       const expiry = new Date(folder.expiry_date);
       const today = new Date();
@@ -90,6 +95,9 @@ const FolderExplorer = () => {
   };
 
   const getDynamicFolderLabel = (folder) => {
+    if (folder.status === 'Archived') {
+      return 'Archived';
+    }
     if (folder.expiry_date) {
       const expiry = new Date(folder.expiry_date);
       const today = new Date();
@@ -113,10 +121,21 @@ const FolderExplorer = () => {
     return folder.status || 'Active';
   };
 
+  const getOrderedSubfolders = (subfolders) => {
+    if (!subfolders) return [];
+    return [...subfolders].sort((a, b) => {
+      const aArchived = a.status === 'Archived';
+      const bArchived = b.status === 'Archived';
+      if (aArchived && !bArchived) return -1;
+      if (!aArchived && bArchived) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  };
+
   const folderParam = searchParams.get('folder');
-  const currentFolderId = folderParam ? parseInt(folderParam) : null;
+  const currentFolderId = folderParam ? parseInt(folderParam) : (rootFolderId ? parseInt(rootFolderId) : null);
   const setCurrentFolderId = (folderId) => {
-    if (folderId === null) {
+    if (folderId === null || (rootFolderId && parseInt(folderId) === parseInt(rootFolderId))) {
       setSearchParams({});
     } else {
       setSearchParams({ folder: folderId });
@@ -660,6 +679,32 @@ const FolderExplorer = () => {
     }
   };
 
+  const handleArchiveFolder = async (folder) => {
+    try {
+      await api.put(`/api/folders/${folder.id}/`, {
+        status: 'Archived'
+      });
+      setSuccess(`Folder "${folder.name}" archived successfully.`);
+      fetchContents();
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.detail || "Failed to archive folder.");
+    }
+  };
+
+  const handleUnarchiveFolder = async (folder) => {
+    try {
+      await api.put(`/api/folders/${folder.id}/`, {
+        status: 'Active'
+      });
+      setSuccess(`Folder "${folder.name}" unarchived successfully.`);
+      fetchContents();
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.detail || "Failed to unarchive folder.");
+    }
+  };
+
   const triggerRename = (item, type) => {
     setActiveItem({ type, data: item });
     setRenameName(item.name);
@@ -709,6 +754,21 @@ const FolderExplorer = () => {
     return '#6b7280';
   };
 
+  const getBreadcrumbPath = () => {
+    if (!currentFolder || !currentFolder.path) return [];
+    if (!rootFolderId) return currentFolder.path;
+    const rootIndex = currentFolder.path.findIndex(p => parseInt(p.id) === parseInt(rootFolderId));
+    if (rootIndex === -1) return currentFolder.path;
+    return currentFolder.path.slice(rootIndex + 1);
+  };
+  
+  const getRootLabel = () => {
+    if (!rootFolderId || !currentFolder) return "Root";
+    if (currentFolder.id === parseInt(rootFolderId)) return currentFolder.name;
+    const found = currentFolder.path?.find(p => parseInt(p.id) === parseInt(rootFolderId));
+    return found ? found.name : currentFolder.name;
+  };
+
   return (
     <Box sx={{ flexGrow: 1 }} className="animate-fade-in">
       {/* Breadcrumbs Row wrapped in a modern card */}
@@ -726,8 +786,9 @@ const FolderExplorer = () => {
           }}>
             <FolderIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
             <BreadcrumbNav 
-              path={currentFolder ? currentFolder.path : []} 
+              path={getBreadcrumbPath()} 
               onFolderClick={handleFolderClick} 
+              rootLabel={getRootLabel()}
             />
           </Box>
         ) : (
@@ -1029,7 +1090,7 @@ const FolderExplorer = () => {
 
                   {viewMode === 'grid' ? (
                     <Grid container spacing={2.5}>
-                      {folderData.subfolders.map((folder) => {
+                      {getOrderedSubfolders(folderData.subfolders).map((folder) => {
                         const deptStyle = folder.name.toLowerCase().includes('medical') ? { color: '#14B8A6', bg: 'rgba(20, 184, 166, 0.12)' }
                           : folder.name.toLowerCase().includes('commerce') ? { color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.12)' }
                           : folder.name.toLowerCase().includes('arts') ? { color: '#EC4899', bg: 'rgba(236, 72, 153, 0.12)' }
@@ -1149,7 +1210,7 @@ const FolderExplorer = () => {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {folderData.subfolders.map((folder) => (
+                           {getOrderedSubfolders(folderData.subfolders).map((folder) => (
                             <TableRow 
                               key={folder.id} 
                               hover 
@@ -2036,6 +2097,19 @@ const FolderExplorer = () => {
                 <ListItemIcon><DriveFileRenameOutlineIcon fontSize="small" /></ListItemIcon>
                 Rename Folder
               </MenuItem>
+            )}
+            {hasPermission('rename_folder') && (
+              activeItem?.data?.status === 'Archived' ? (
+                <MenuItem onClick={() => { handleUnarchiveFolder(activeItem.data); handleMenuClose(); }}>
+                  <ListItemIcon><UnarchiveIcon fontSize="small" /></ListItemIcon>
+                  Remove Archive
+                </MenuItem>
+              ) : (
+                <MenuItem onClick={() => { handleArchiveFolder(activeItem.data); handleMenuClose(); }}>
+                  <ListItemIcon><ArchiveIcon fontSize="small" /></ListItemIcon>
+                  Archive Folder
+                </MenuItem>
+              )
             )}
             {(hasPermission('manage_users') || activeItem?.data?.created_by?.id === user?.id) && (
               <MenuItem onClick={() => { triggerAccess(activeItem.data); handleMenuClose(); }}>

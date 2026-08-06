@@ -46,6 +46,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 import { useThemeMode } from '../context/ThemeContext';
 import { useSiteTime } from '../context/SiteTimeContext';
+import { useSiteCustomization } from '../context/SiteCustomizationContext';
 import api from '../services/api';
 
 const drawerWidth = 260;
@@ -55,6 +56,9 @@ const Layout = ({ children }) => {
   const { user, logout, hasPermission } = useAuth();
   const { mode, toggleTheme } = useThemeMode();
   const { siteTime, isCustom, setCustomTime, resetToLive, getFormattedSiteDateTime } = useSiteTime();
+  const { info } = useSiteCustomization();
+  const sidebarTitle = info?.sidebar_title || 'MCC LEGAL';
+  const sidebarSubtitle = info?.sidebar_subtitle || 'Documents';
   const [clockAnchor, setClockAnchor] = useState(null);
   
   const handleClockOpen = (e) => setClockAnchor(e.currentTarget);
@@ -300,7 +304,7 @@ const Layout = ({ children }) => {
             WebkitTextFillColor: 'transparent',
             lineHeight: 1.2,
           }}>
-            MCC LEGAL
+            {sidebarTitle}
           </Typography>
           <Typography variant="caption" sx={{
             fontWeight: 600,
@@ -309,7 +313,7 @@ const Layout = ({ children }) => {
             color: 'text.secondary',
             lineHeight: 1.2,
           }}>
-            Documents
+            {sidebarSubtitle}
           </Typography>
         </Box>
 

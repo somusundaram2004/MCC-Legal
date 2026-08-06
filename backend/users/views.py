@@ -1045,4 +1045,15 @@ class CustomDynamicPageViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        for page in qs:
+            if page.root_folder_id and page.google_drive_folder_id:
+                try:
+                    from folders.models import Folder
+                    Folder.objects.filter(id=int(page.root_folder_id)).update(google_folder_id=page.google_drive_folder_id.strip())
+                except Exception as e:
+                    pass
+        return qs
+
 
