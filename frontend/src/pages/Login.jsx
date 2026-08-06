@@ -23,10 +23,12 @@ import { showCustomToast } from '../utils/customToast';
 
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
+import { useSiteCustomization } from '../context/SiteCustomizationContext';
 
 const Login = () => {
   const { login, googleLogin, user } = useAuth();
   const { mode, toggleTheme } = useThemeMode();
+  const { login: loginCustomization } = useSiteCustomization();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -306,10 +308,10 @@ const Login = () => {
             </Box>
 
             <Typography variant="h3" sx={{ fontWeight: 800, mb: 1, letterSpacing: '-0.5px' }}>
-              MCC LEGAL Documents
+              {loginCustomization?.left_heading || "MCC LEGAL Documents"}
             </Typography>
             <Typography variant="subtitle1" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 5, fontWeight: 500 }}>
-              Professional Memorandum of Understanding Registry
+              {loginCustomization?.left_subheading || "Professional Memorandum of Understanding Registry"}
             </Typography>
 
             {/* Custom SVG Illustration */}
@@ -347,13 +349,13 @@ const Login = () => {
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'flex-start', mt: 4, pl: 6 }}>
               <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600 }}>
-                <ArrowRightAltIcon /> Fully-integrated document version control
+                <ArrowRightAltIcon /> {loginCustomization?.point_1 || "Fully-integrated document version control"}
               </Typography>
               <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600 }}>
-                <ArrowRightAltIcon /> Granular user permission matrices
+                <ArrowRightAltIcon /> {loginCustomization?.point_2 || "Granular user permission matrices"}
               </Typography>
               <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600 }}>
-                <ArrowRightAltIcon /> Automated expiry warning system logs
+                <ArrowRightAltIcon /> {loginCustomization?.point_3 || "Automated expiry warning system logs"}
               </Typography>
             </Box>
           </Box>
@@ -387,10 +389,10 @@ const Login = () => {
             {/* Header info */}
             <Box sx={{ mb: 4, textAlign: { xs: 'center', sm: 'left' } }}>
               <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, letterSpacing: '-0.5px', color: 'text.primary' }}>
-                Sign In
+                {loginCustomization?.heading || "Sign In"}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Welcome back! Enter credentials to manage institution agreements.
+                {loginCustomization?.subheading || "Welcome back! Enter credentials to manage institution agreements."}
               </Typography>
             </Box>
 
@@ -496,18 +498,20 @@ const Login = () => {
                 />
 
                 {/* Remember me & Forgot Password Row */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: -0.5 }}>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        size="small"
-                        color="primary"
-                      />
-                    }
-                    label={<Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>Remember me</Typography>}
-                  />
+                <Box sx={{ display: 'flex', justifyContent: loginCustomization?.show_remember_me !== false ? 'space-between' : 'flex-end', alignItems: 'center', mt: -0.5 }}>
+                  {loginCustomization?.show_remember_me !== false && (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={rememberMe}
+                          onChange={(e) => setRememberMe(e.target.checked)}
+                          size="small"
+                          color="primary"
+                        />
+                      }
+                      label={<Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>Remember me</Typography>}
+                    />
+                  )}
                   <Link
                     component="button"
                     type="button"
@@ -548,7 +552,7 @@ const Login = () => {
                       <span>Signing In...</span>
                     </Box>
                   ) : (
-                    'Sign In'
+                    loginCustomization?.button_text || 'Sign In'
                   )}
                 </Button>
               </Box>

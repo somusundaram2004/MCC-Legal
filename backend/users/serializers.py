@@ -204,4 +204,22 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
         model = CustomDynamicPage
         fields = '__all__'
 
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        self.sync_google_drive_folder(instance)
+        return instance
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        self.sync_google_drive_folder(instance)
+        return instance
+
+    def sync_google_drive_folder(self, instance):
+        if instance.root_folder_id and instance.google_drive_folder_id:
+            try:
+                from folders.models import Folder
+                Folder.objects.filter(id=int(instance.root_folder_id)).update(google_folder_id=instance.google_drive_folder_id.strip())
+            except Exception as e:
+                pass
+
 

@@ -13,9 +13,6 @@ import InfoIcon from '@mui/icons-material/Info';
 import ImageIcon from '@mui/icons-material/Image';
 import NavigationIcon from '@mui/icons-material/Navigation';
 import LockIcon from '@mui/icons-material/Lock';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import CodeIcon from '@mui/icons-material/Code';
-import TranslateIcon from '@mui/icons-material/Translate';
 import DevicesIcon from '@mui/icons-material/Devices';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import TabletIcon from '@mui/icons-material/Tablet';
@@ -195,9 +192,6 @@ const CustomizerHub = () => {
           <Tab icon={<ImageIcon />} iconPosition="start" label="Branding Assets" />
           <Tab icon={<PaletteIcon />} iconPosition="start" label="Theme & Colors" />
           <Tab icon={<LockIcon />} iconPosition="start" label="Login Page" />
-          <Tab icon={<DashboardIcon />} iconPosition="start" label="Dashboard & Widgets" />
-          <Tab icon={<TranslateIcon />} iconPosition="start" label="Dynamic Text (i18n)" />
-          <Tab icon={<CodeIcon />} iconPosition="start" label="Custom Code (CSS/JS)" />
           <Tab icon={<DevicesIcon />} iconPosition="start" label="Live Preview" />
           <Tab icon={<AutoAwesomeIcon />} iconPosition="start" label="Website Builder" />
         </Tabs>
@@ -508,16 +502,35 @@ const CustomizerHub = () => {
             Login Page Branding & Content
           </Typography>
           <Grid container spacing={2.5}>
-            {Object.keys(login).map((key) => (
-              <Grid xs={12} sm={6} key={key}>
-                <TextField
-                  fullWidth
-                  label={key.replace(/_/g, ' ').toUpperCase()}
-                  value={login[key] || ''}
-                  onChange={(e) => setLogin({ ...login, [key]: e.target.value })}
-                />
-              </Grid>
-            ))}
+            {Object.keys(login).map((key) => {
+              if (key === 'show_remember_me') {
+                return (
+                  <Grid xs={12} sm={6} key={key} sx={{ display: 'flex', alignItems: 'center' }}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={Boolean(login[key])}
+                          onChange={(e) => setLogin({ ...login, [key]: e.target.checked })}
+                          color="primary"
+                        />
+                      }
+                      label="Show Remember Me Option"
+                      sx={{ fontWeight: 700, ml: 0.5 }}
+                    />
+                  </Grid>
+                );
+              }
+              return (
+                <Grid xs={12} sm={6} key={key}>
+                  <TextField
+                    fullWidth
+                    label={key.replace(/_/g, ' ').toUpperCase()}
+                    value={login[key] || ''}
+                    onChange={(e) => setLogin({ ...login, [key]: e.target.value })}
+                  />
+                </Grid>
+              );
+            })}
           </Grid>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
             <Button
@@ -533,150 +546,8 @@ const CustomizerHub = () => {
         </Card>
       )}
 
-      {/* Tab 4: Dashboard Customizer */}
+      {/* Tab 4: Live Preview */}
       {activeTab === 4 && (
-        <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-            Dashboard Content & Widget Visibility
-          </Typography>
-          <Grid container spacing={2.5}>
-            <Grid xs={12}>
-              <TextField
-                fullWidth
-                label="Dashboard Welcome Text"
-                value={dashboard.welcome_text || ''}
-                onChange={(e) => setDashboard({ ...dashboard, welcome_text: e.target.value })}
-              />
-            </Grid>
-            <Grid xs={12}>
-              <TextField
-                fullWidth
-                label="Recent Activity Table Title"
-                value={dashboard.recent_activity_title || ''}
-                onChange={(e) => setDashboard({ ...dashboard, recent_activity_title: e.target.value })}
-              />
-            </Grid>
-          </Grid>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-            <Button
-              variant="contained"
-              onClick={() => handleSaveSection('dashboard', dashboard)}
-              disabled={saving}
-              startIcon={<SaveIcon />}
-              sx={{ backgroundColor: '#4F46E5', color: '#ffffff !important', px: 4, py: 1.2, borderRadius: '10px' }}
-            >
-              Save Dashboard Settings
-            </Button>
-          </Box>
-        </Card>
-      )}
-
-      {/* Tab 5: Dynamic Text (i18n) */}
-      {activeTab === 5 && (
-        <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-            Dynamic UI Text & Multi-Language Dictionary
-          </Typography>
-          <Grid container spacing={3}>
-            <Grid xs={12} sm={6}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: 'primary.main' }}>
-                English UI Strings
-              </Typography>
-              {Object.keys(dynamicText.en || {}).map((key) => (
-                <TextField
-                  key={key}
-                  fullWidth
-                  size="small"
-                  label={key}
-                  value={dynamicText.en[key] || ''}
-                  onChange={(e) => setDynamicText({
-                    ...dynamicText,
-                    en: { ...dynamicText.en, [key]: e.target.value }
-                  })}
-                  sx={{ mb: 1.5 }}
-                />
-              ))}
-            </Grid>
-            <Grid xs={12} sm={6}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: 'secondary.main' }}>
-                Tamil UI Strings (தமிழ்)
-              </Typography>
-              {Object.keys(dynamicText.ta || {}).map((key) => (
-                <TextField
-                  key={key}
-                  fullWidth
-                  size="small"
-                  label={`${key} (Tamil)`}
-                  value={dynamicText.ta[key] || ''}
-                  onChange={(e) => setDynamicText({
-                    ...dynamicText,
-                    ta: { ...dynamicText.ta, [key]: e.target.value }
-                  })}
-                  sx={{ mb: 1.5 }}
-                />
-              ))}
-            </Grid>
-          </Grid>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-            <Button
-              variant="contained"
-              onClick={() => handleSaveSection('dynamic_text', dynamicText)}
-              disabled={saving}
-              startIcon={<SaveIcon />}
-              sx={{ backgroundColor: '#4F46E5', color: '#ffffff !important', px: 4, py: 1.2, borderRadius: '10px' }}
-            >
-              Save Dynamic Translations
-            </Button>
-          </Box>
-        </Card>
-      )}
-
-      {/* Tab 6: Custom Code (CSS/JS) */}
-      {activeTab === 6 && (
-        <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-            Advanced Custom CSS & JavaScript Injector
-          </Typography>
-          <Grid container spacing={3}>
-            <Grid xs={12}>
-              <TextField
-                fullWidth
-                multiline
-                rows={6}
-                label="Custom Global CSS (Injected into <head>)"
-                value={customCode.custom_css || ''}
-                onChange={(e) => setCustomCode({ ...customCode, custom_css: e.target.value })}
-                inputProps={{ style: { fontFamily: 'monospace', fontSize: '0.85rem' } }}
-              />
-            </Grid>
-            <Grid xs={12}>
-              <TextField
-                fullWidth
-                multiline
-                rows={6}
-                label="Custom Global JavaScript (Executed in <body>)"
-                value={customCode.custom_js || ''}
-                onChange={(e) => setCustomCode({ ...customCode, custom_js: e.target.value })}
-                inputProps={{ style: { fontFamily: 'monospace', fontSize: '0.85rem' } }}
-              />
-            </Grid>
-          </Grid>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-            <Button
-              variant="contained"
-              onClick={() => handleSaveSection('custom_code', customCode)}
-              disabled={saving}
-              startIcon={<SaveIcon />}
-              sx={{ backgroundColor: '#4F46E5', color: '#ffffff !important', px: 4, py: 1.2, borderRadius: '10px' }}
-            >
-              Inject Code Changes
-            </Button>
-          </Box>
-        </Card>
-      )}
-
-      {/* Tab 7: Live Preview */}
-      {activeTab === 7 && (
         <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
@@ -721,8 +592,8 @@ const CustomizerHub = () => {
         </Card>
       )}
 
-      {/* Tab 8: Website Builder */}
-      {activeTab === 8 && (
+      {/* Tab 5: Website Builder */}
+      {activeTab === 5 && (
         <WebsiteBuilderTab />
       )}
     </Box>

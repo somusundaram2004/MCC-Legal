@@ -46,6 +46,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
+import { useSiteCustomization } from '../context/SiteCustomizationContext';
 import FilePreviewModal from '../components/FilePreviewModal';
 import StatusPill from '../components/StatusPill';
 
@@ -112,7 +113,7 @@ const getFileIcon = (ft) => {
 /* ══════════════════════════════════════════════════════════════════
    1. SUPER ADMIN DASHBOARD
    ══════════════════════════════════════════════════════════════════ */
-const SuperAdminDashboard = ({ stats, user, navigate, setPreviewFile }) => {
+const SuperAdminDashboard = ({ stats, user, navigate, setPreviewFile, info }) => {
   const storage = stats?.storage || {};
   const diskTotal = storage.disk_total_bytes || 0;
   const diskUsed = storage.disk_used_bytes || 0;
@@ -146,10 +147,10 @@ const SuperAdminDashboard = ({ stats, user, navigate, setPreviewFile }) => {
               <Chip label={storage.drive_connected ? "Google Drive Synced" : "Local Storage"} size="small" sx={{ bgcolor: storage.drive_connected ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.15)', color: '#fff', fontWeight: 700, fontSize: '0.72rem' }} />
             </Box>
             <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.5 }}>
-              MCC Legal Documents
+              {info?.website_name || 'MCC Legal Documents'}
             </Typography>
             <Typography variant="body2" sx={{ opacity: 0.9, fontSize: '0.9rem', maxWidth: 640 }}>
-              Full system control panel — monitor infrastructure health, user access permissions, global storage quotas, and audit logs.
+              {info?.website_description || 'Full system control panel — monitor infrastructure health, user access permissions, global storage quotas, and audit logs.'}
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
@@ -862,6 +863,7 @@ const UserDashboard = ({ stats, user, navigate, setPreviewFile }) => {
    ══════════════════════════════════════════════════════════════════ */
 const Dashboard = () => {
   const { user } = useAuth();
+  const { info } = useSiteCustomization();
   const navigate = useNavigate();
   const location = useLocation();
   const [stats, setStats] = useState(null);
@@ -914,7 +916,7 @@ const Dashboard = () => {
 
       {/* Render Role-Specific Dashboard directly based on logged-in user role */}
       {userRole === 'Super Admin' ? (
-        <SuperAdminDashboard stats={stats} user={user} navigate={navigate} setPreviewFile={setPreviewFile} />
+        <SuperAdminDashboard stats={stats} user={user} navigate={navigate} setPreviewFile={setPreviewFile} info={info} />
       ) : (userRole === 'Admin' || userRole === 'Lawyer / MOU Administrator') ? (
         <AdminDashboard stats={stats} user={user} navigate={navigate} setPreviewFile={setPreviewFile} />
       ) : (

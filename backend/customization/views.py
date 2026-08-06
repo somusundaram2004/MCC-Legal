@@ -40,7 +40,9 @@ class WebsiteCustomizationViewSet(viewsets.ViewSet):
     def list(self, request):
         config = WebsiteCustomization.get_active_config()
         serializer = WebsiteCustomizationSerializer(config)
-        return Response(serializer.data)
+        response = Response(serializer.data)
+        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        return response
 
     @action(detail=False, methods=['patch'], url_path='update-section')
     def update_section(self, request):

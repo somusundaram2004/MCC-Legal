@@ -96,7 +96,11 @@ export const useAutoRefreshContext = () => {
  * @param {object} options - Configuration options (pollInterval, enabled, etc.)
  */
 export const useAutoRefresh = (category, refetchFn, options = {}) => {
-  const { pollInterval = 30000, enabled = true } = options;
+  const { 
+    pollInterval = 0,               // Disabled by default (was 30000)
+    enableFocusRefresh = false,     // Disabled by default (was true)
+    enabled = true 
+  } = options;
   const refetchRef = useRef(refetchFn);
   const isExecutingRef = useRef(false);
 
@@ -146,7 +150,7 @@ export const useAutoRefresh = (category, refetchFn, options = {}) => {
 
   // Tab visibility change & window focus listener
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !enableFocusRefresh) return;
 
     const handleFocus = () => {
       if (document.visibilityState === 'visible') {
@@ -161,7 +165,7 @@ export const useAutoRefresh = (category, refetchFn, options = {}) => {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
     };
-  }, [enabled, executeRefetch]);
+  }, [enabled, enableFocusRefresh, executeRefetch]);
 
   // Passive background polling (default 30s)
   useEffect(() => {

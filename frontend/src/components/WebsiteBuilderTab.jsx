@@ -192,6 +192,16 @@ const WebsiteBuilderTab = () => {
     setPageType(preset.page_type);
   };
 
+  const handlePresetClick = (preset) => {
+    const existingPage = pages.find(p => p.slug === preset.slug);
+    if (existingPage) {
+      handleOpenDialog(existingPage);
+    } else {
+      handleOpenDialog();
+      handlePresetSelect(preset);
+    }
+  };
+
   const handleSavePage = async () => {
     if (!title.trim()) {
       setError('Module title is required.');
@@ -334,10 +344,7 @@ const WebsiteBuilderTab = () => {
                   cursor: 'pointer', transition: 'all 0.2s ease',
                   '&:hover': { transform: 'translateY(-3px)', borderColor: 'primary.main', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }
                 }}
-                onClick={() => {
-                  handleOpenDialog();
-                  handlePresetSelect(preset);
-                }}
+                onClick={() => handlePresetClick(preset)}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                   <Chip label={preset.badge} size="small" sx={{ bgcolor: `${preset.badge_color}20`, color: preset.badge_color, fontWeight: 800, height: 20, fontSize: '0.65rem' }} />
@@ -428,7 +435,7 @@ const WebsiteBuilderTab = () => {
                 1. Basic Module Configuration
               </Typography>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="Module Title"
@@ -441,7 +448,7 @@ const WebsiteBuilderTab = () => {
                     required
                   />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="URL Slug"
@@ -451,7 +458,7 @@ const WebsiteBuilderTab = () => {
                   />
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Layout Template</InputLabel>
                     <Select value={pageType} label="Layout Template" onChange={(e) => setPageType(e.target.value)}>
@@ -465,7 +472,7 @@ const WebsiteBuilderTab = () => {
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Module Sidebar Icon</InputLabel>
                     <Select
@@ -494,16 +501,16 @@ const WebsiteBuilderTab = () => {
                 2. Storage &amp; Repository Binding
               </Typography>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel id="assigned-folder-label">Assigned Repository Folder</InputLabel>
                     <Select
                       labelId="assigned-folder-label"
-                      value={rootFolderId || ''}
+                      value={rootFolderId ? String(rootFolderId) : ''}
                       label="Assigned Repository Folder"
                       onChange={(e) => {
                         const selectedId = e.target.value;
-                        setRootFolderId(selectedId);
+                        setRootFolderId(selectedId ? String(selectedId) : '');
                         const folderObj = availableFolders.find(f => String(f.id) === String(selectedId));
                         if (folderObj) {
                           setRootFolderName(folderObj.name);
@@ -516,7 +523,7 @@ const WebsiteBuilderTab = () => {
                         ✨ Auto-create / Default System Root Folder
                       </MenuItem>
                       {availableFolders.map((folder) => (
-                        <MenuItem key={folder.id} value={folder.id}>
+                        <MenuItem key={folder.id} value={String(folder.id)}>
                           📁 {folder.name} {folder.department_name ? `(${folder.department_name})` : ''}
                         </MenuItem>
                       ))}
@@ -527,7 +534,7 @@ const WebsiteBuilderTab = () => {
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="Google Drive Shared Folder ID"
@@ -546,8 +553,8 @@ const WebsiteBuilderTab = () => {
                 3. Sidebar Badge &amp; Color Customization
               </Typography>
               <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '16px', bgcolor: 'background.paper' }}>
-                <Grid container spacing={2.5} alignItems="center">
-                  <Grid item xs={12} sm={4}>
+                <Grid container spacing={2.5} sx={{ alignItems: 'center' }}>
+                  <Grid xs={12} sm={4}>
                     <TextField
                       fullWidth
                       label="Sidebar Badge Text"
@@ -558,7 +565,7 @@ const WebsiteBuilderTab = () => {
                     />
                   </Grid>
 
-                  <Grid item xs={12} sm={8}>
+                  <Grid xs={12} sm={8}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
@@ -657,7 +664,7 @@ const WebsiteBuilderTab = () => {
               <Paper variant="outlined" sx={{ p: 2, borderRadius: '14px', bgcolor: 'action.hover' }}>
                 <Grid container spacing={1.5}>
                   {Object.keys(crudPermissions).map((actionKey) => (
-                    <Grid item xs={6} sm={4} key={actionKey}>
+                    <Grid xs={6} sm={4} key={actionKey}>
                       <FormControlLabel
                         control={
                           <Switch
@@ -682,7 +689,7 @@ const WebsiteBuilderTab = () => {
               </Typography>
               <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '14px', bgcolor: 'action.hover' }}>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
+                  <Grid xs={12} sm={6}>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, mb: 1, display: 'block' }}>
                       Allowed Roles
                     </Typography>
@@ -714,7 +721,7 @@ const WebsiteBuilderTab = () => {
                     </Box>
                   </Grid>
 
-                  <Grid item xs={12} sm={6}>
+                  <Grid xs={12} sm={6}>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, mb: 1, display: 'block' }}>
                       Grant Access to Specific Users
                     </Typography>
@@ -752,17 +759,35 @@ const WebsiteBuilderTab = () => {
             </Box>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 2.5, pt: 1, borderTop: '1px solid', borderColor: 'divider', mt: 1 }}>
-          <Button onClick={() => setDialogOpen(false)} sx={{ fontWeight: 700, textTransform: 'none' }}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleSavePage}
-            disabled={saving}
-            startIcon={<PublishIcon />}
-            sx={{ borderRadius: '12px', px: 3, fontWeight: 800, textTransform: 'none' }}
-          >
-            {saving ? 'Publishing...' : (editId ? 'Update Module' : 'Publish Module to Sidebar')}
-          </Button>
+        <DialogActions sx={{ p: 2.5, pt: 1, borderTop: '1px solid', borderColor: 'divider', mt: 1, justifyContent: 'space-between' }}>
+          <Box>
+            {editId && (
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => {
+                  handleDeletePage(editId, title);
+                  setDialogOpen(false);
+                }}
+                startIcon={<DeleteIcon />}
+                sx={{ fontWeight: 700, textTransform: 'none', borderRadius: '12px' }}
+              >
+                Delete Module
+              </Button>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button onClick={() => setDialogOpen(false)} sx={{ fontWeight: 700, textTransform: 'none' }}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={handleSavePage}
+              disabled={saving}
+              startIcon={<PublishIcon />}
+              sx={{ borderRadius: '12px', px: 3, fontWeight: 800, textTransform: 'none' }}
+            >
+              {saving ? 'Publishing...' : (editId ? 'Update Module' : 'Publish Module to Sidebar')}
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
     </Box>

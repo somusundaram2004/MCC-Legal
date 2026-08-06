@@ -233,8 +233,12 @@ class FolderViewSet(viewsets.ModelViewSet):
                     logger.info("Rename sync successful.")
 
                 # Log & Notify
-                log_activity(request.user, f"Renamed folder from '{old_name}' to '{updated_folder.name}'", "folders", request)
-                notify_admins("Folder Renamed", f"Folder '{old_name}' was renamed to '{updated_folder.name}' by {request.user.name}.", metadata={'action': 'folder_renamed', 'folder_id': updated_folder.id, 'folder_name': updated_folder.name})
+                if old_name != updated_folder.name:
+                    log_activity(request.user, f"Renamed folder from '{old_name}' to '{updated_folder.name}'", "folders", request)
+                    notify_admins("Folder Renamed", f"Folder '{old_name}' was renamed to '{updated_folder.name}' by {request.user.name}.", metadata={'action': 'folder_renamed', 'folder_id': updated_folder.id, 'folder_name': updated_folder.name})
+                else:
+                    log_activity(request.user, f"Updated folder '{updated_folder.name}' status to '{updated_folder.status}'", "folders", request)
+                    notify_admins("Folder Updated", f"Folder '{updated_folder.name}' status was updated to '{updated_folder.status}' by {request.user.name}.", metadata={'action': 'folder_updated', 'folder_id': updated_folder.id, 'folder_name': updated_folder.name, 'status': updated_folder.status})
         except Exception as e:
             logger.exception(f"Folder rename failed for folder '{old_name}' (ID: {folder.id}) to '{updated_folder.name}': {e}")
             return Response({"detail": f"Google Drive folder rename failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

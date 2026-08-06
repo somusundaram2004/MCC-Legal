@@ -4,19 +4,9 @@ from django.conf import settings
 def default_info():
     return {
         "website_name": "MCC Legal & MOU Enterprise Hub",
-        "short_name": "MCC Data Bridge",
-        "website_title": "Madras Christian College - MOU & Legal Repository",
         "website_description": "Comprehensive document hub and MOU lifecycle management portal.",
-        "footer_text": "Madras Christian College (Autonomous), Tambaram, Chennai - 600059.",
-        "copyright_text": "© 2026 Madras Christian College. All rights reserved.",
-        "org_name": "Madras Christian College",
-        "contact_email": "principal@mcc.edu.in",
-        "contact_phone": "+91 44 2239 0675",
-        "address": "Tambaram East, Chennai, Tamil Nadu 600059, India",
-        "google_maps_link": "https://maps.google.com/?q=Madras+Christian+College",
-        "website_url": "http://localhost:5173",
-        "support_email": "support.mou@mcc.edu.in",
-        "support_phone": "+91 44 2239 6772"
+        "sidebar_title": "MCC LEGAL",
+        "sidebar_subtitle": "Documents"
     }
 
 def default_branding():
@@ -69,15 +59,16 @@ def default_navigation():
 
 def default_login():
     return {
-        "heading": "Welcome Back to MCC Data Bridge",
-        "subheading": "Sign in to access college MOUs, legal files, and repository archives.",
-        "background_overlay": "rgba(15, 23, 42, 0.75)",
-        "button_text": "Sign In to Portal",
-        "welcome_message": "Authorized Staff & Administrator Access Only",
-        "footer_text": "Need assistance? Contact support at support.mou@mcc.edu.in",
-        "illustration": "",
-        "terms_text": "Terms of Service",
-        "privacy_text": "Privacy Policy"
+        "left_heading": "MCC LEGAL Documents",
+        "left_subheading": "Professional Memorandum of Understanding Registry",
+        "point_1": "Fully-integrated document version control",
+        "point_2": "Granular user permission matrices",
+        "point_3": "Automated expiry warning system logs",
+        "heading": "Sign In",
+        "subheading": "Welcome back! Enter credentials to manage institution agreements.",
+        "button_text": "Sign In",
+        "show_remember_me": True,
+        "welcome_message": "Authorized Staff & Administrator Access Only"
     }
 
 def default_dashboard():
@@ -220,4 +211,43 @@ class WebsiteCustomization(models.Model):
         config = cls.objects.filter(is_active=True).first()
         if not config:
             config = cls.objects.create(name="Default System Configuration", is_active=True)
+        else:
+            # Auto-populate any missing keys from defaults and delete obsolete ones
+            info_changed = False
+            if not isinstance(config.info, dict):
+                config.info = {}
+                info_changed = True
+            
+            # 1. Delete obsolete keys
+            valid_keys = default_info().keys()
+            obsolete_keys = [k for k in config.info.keys() if k not in valid_keys]
+            for k in obsolete_keys:
+                del config.info[k]
+                info_changed = True
+
+            # 2. Add missing keys
+            for k, v in default_info().items():
+                if k not in config.info:
+                    config.info[k] = v
+                    info_changed = True
+            
+            # 3. Migrate login config keys
+            login_changed = False
+            if not isinstance(config.login, dict):
+                config.login = {}
+                login_changed = True
+            
+            valid_login_keys = default_login().keys()
+            obsolete_login_keys = [k for k in config.login.keys() if k not in valid_login_keys]
+            for k in obsolete_login_keys:
+                del config.login[k]
+                login_changed = True
+            
+            for k, v in default_login().items():
+                if k not in config.login:
+                    config.login[k] = v
+                    login_changed = True
+            
+            if info_changed or login_changed:
+                config.save()
         return config

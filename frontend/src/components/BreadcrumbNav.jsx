@@ -4,7 +4,7 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import HomeIcon from '@mui/icons-material/Home';
 import FolderIcon from '@mui/icons-material/Folder';
 
-const BreadcrumbNav = ({ path = [], onFolderClick }) => {
+const BreadcrumbNav = ({ path = [], onFolderClick, rootLabel = "Root" }) => {
   return (
     <Breadcrumbs 
       separator={<NavigateNextIcon fontSize="small" />} 
@@ -17,7 +17,7 @@ const BreadcrumbNav = ({ path = [], onFolderClick }) => {
         onClick={() => onFolderClick(null)}
       >
         <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
-        Root
+        {rootLabel}
       </Link>
 
       {path.map((folder, index) => {
