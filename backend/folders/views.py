@@ -11,6 +11,7 @@ from .models import Folder, FolderPermission, get_mou_share_permission
 from .serializers import FolderSerializer, FolderPermissionSerializer
 from files.serializers import FileSerializer # For listing files in folder
 from django.db import transaction
+from django.utils import timezone
 from services import drive_service
 import logging
 
@@ -97,14 +98,15 @@ class FolderViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return Folder.objects.none()
         
+        base_qs = Folder.objects.filter(is_deleted=False)
+
         # Super Admin bypasses access filters
         if user.role and user.role.name == "Super Admin":
-            return Folder.objects.all().order_by('name')
+            return base_qs.order_by('name')
 
         # Filter by folder accessibility (recursive lookup)
-        all_folders = Folder.objects.all()
-        accessible_ids = [f.id for f in all_folders if f.has_access(user)]
-        return Folder.objects.filter(id__in=accessible_ids).order_by('name')
+        accessible_ids = [f.id for f in base_qs if f.has_access(user)]
+        return Folder.objects.filter(id__in=accessible_ids, is_deleted=False).order_by('name')
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -395,18 +397,23 @@ class FolderViewSet(viewsets.ModelViewSet):
                 )
             
         folder_name = folder.name
-        google_folder_id = folder.google_folder_id
+        now = timezone.now()
         
         try:
             with transaction.atomic():
-                if google_folder_id:
-                    drive_service.delete_file(google_folder_id)
-                folder.delete()
+                folder.is_deleted = True
+                folder.deleted_at = now
+                folder.deleted_by = request.user
+                folder.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
                 
-                log_activity(request.user, f"Deleted folder '{folder_name}'", "folders", request)
-                notify_admins("Folder Deleted", f"Folder '{folder_name}' was deleted by {request.user.name}.", metadata={'action': 'folder_deleted', 'folder_name': folder_name})
+                from files.models import File
+                Folder.objects.filter(parent=folder).update(is_deleted=True, deleted_at=now, deleted_by=request.user)
+                File.objects.filter(folder=folder).update(is_deleted=True, deleted_at=now, deleted_by=request.user)
+
+                log_activity(request.user, f"Moved folder '{folder_name}' to Recycle Bin", "folders", request)
+                notify_admins("Folder Moved to Recycle Bin", f"Folder '{folder_name}' was moved to Recycle Bin by {request.user.name}.", metadata={'action': 'folder_deleted', 'folder_name': folder_name})
         except Exception as e:
-            return Response({"detail": f"Deletion sync with Google Drive failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"detail": f"Moving folder to Recycle Bin failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -419,7 +426,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         if not folder_ids:
             return Response({"folder_ids": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
         
-        folders = Folder.objects.filter(id__in=folder_ids)
+        folders = Folder.objects.filter(id__in=folder_ids, is_deleted=False)
         if len(folders) != len(folder_ids):
             return Response({"detail": "One or more of the selected folders do not exist."}, status=status.HTTP_404_NOT_FOUND)
         
@@ -439,28 +446,28 @@ class FolderViewSet(viewsets.ModelViewSet):
                     )
         
         deleted_names = []
+        now = timezone.now()
         try:
             with transaction.atomic():
+                from files.models import File
                 for folder in folders:
                     folder_name = folder.name
-                    google_folder_id = folder.google_folder_id
+                    folder.is_deleted = True
+                    folder.deleted_at = now
+                    folder.deleted_by = request.user
+                    folder.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
                     
-                    if google_folder_id:
-                        try:
-                            drive_service.delete_file(google_folder_id)
-                        except Exception as drive_err:
-                            logger.warning(f"Failed to delete folder '{google_folder_id}' on Google Drive: {drive_err}")
-                    
-                    folder.delete()
+                    Folder.objects.filter(parent=folder).update(is_deleted=True, deleted_at=now, deleted_by=request.user)
+                    File.objects.filter(folder=folder).update(is_deleted=True, deleted_at=now, deleted_by=request.user)
                     deleted_names.append(folder_name)
                 
                 if deleted_names:
-                    log_activity(request.user, f"Bulk deleted folders: {', '.join(deleted_names)}", "folders", request)
-                    notify_admins("Folders Deleted", f"Folders: {', '.join(deleted_names)} were deleted by {request.user.name}.", metadata={'action': 'folders_bulk_deleted', 'folder_names': deleted_names})
+                    log_activity(request.user, f"Moved folders to Recycle Bin: {', '.join(deleted_names)}", "folders", request)
+                    notify_admins("Folders Moved to Recycle Bin", f"Folders: {', '.join(deleted_names)} were moved to Recycle Bin by {request.user.name}.", metadata={'action': 'folders_bulk_deleted', 'folder_names': deleted_names})
         except Exception as e:
-            return Response({"detail": f"Database bulk folder deletion failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"detail": f"Moving folders to Recycle Bin failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-        return Response({"detail": "Selected folders deleted successfully."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Selected folders moved to Recycle Bin successfully."}, status=status.HTTP_200_OK)
 
     def sync_drive_directory(self, parent_google_id, parent_folder_obj, user):
         """

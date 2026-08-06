@@ -28,6 +28,7 @@ const SharedWithMe = lazy(() => import('./pages/SharedWithMe'));
 const Departments = lazy(() => import('./pages/Departments'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const Settings = lazy(() => import('./pages/Settings'));
+const RecycleBin = lazy(() => import('./pages/RecycleBin'));
 const Register = lazy(() => import('./pages/Register'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const DynamicPageContainer = lazy(() => import('./pages/DynamicPageContainer'));
@@ -198,6 +199,15 @@ function App() {
                       element={
                         <ProtectedRoute requiredPermission="view_dashboard">
                           <Layout><Settings /></Layout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/recycle-bin"
+                      element={
+                        <ProtectedRoute requiredPermission="view_dashboard">
+                          <Layout><RecycleBin /></Layout>
                         </ProtectedRoute>
                       }
                     />

@@ -48,6 +48,17 @@ class File(models.Model):
     encrypted = models.BooleanField(default=True)
     encryption_key_id = models.CharField(max_length=100, default='Google-Drive-AES-256')
 
+    # Soft Delete / Recycle Bin Fields
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deleted_files'
+    )
+
     def __str__(self):
         return f"{self.name} (v{self.version_number})"
 

@@ -37,6 +37,17 @@ class Folder(models.Model):
     summary = models.TextField(blank=True, null=True)
     expiry_date = models.DateField(blank=True, null=True)
 
+    # Soft Delete / Recycle Bin Fields
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deleted_folders'
+    )
+
     def __str__(self):
         return self.name
 
@@ -178,4 +189,41 @@ class FolderView(models.Model):
 
     def __str__(self):
         return f"{self.user.email} viewed {self.folder.name}"
+
+
+class RecycleBinSetting(models.Model):
+    RETENTION_CHOICES = [
+        ('7_days', '7 Days'),
+        ('14_days', '14 Days'),
+        ('30_days', '30 Days (1 Month)'),
+        ('6_weeks', '6 Weeks'),
+        ('3_months', '3 Months'),
+        ('6_months', '6 Months'),
+        ('1_year', '1 Year'),
+        ('never', 'Never (Manual Purge Only)'),
+    ]
+    retention_period = models.CharField(max_length=50, choices=RETENTION_CHOICES, default='30_days')
+    auto_delete_enabled = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='recycle_bin_setting_updates'
+    )
+
+    class Meta:
+        verbose_name = "Recycle Bin Setting"
+        verbose_name_plural = "Recycle Bin Settings"
+
+    def __str__(self):
+        return f"Recycle Bin Retention: {self.get_retention_period_display()}"
+
+    @classmethod
+    def get_setting(cls):
+        setting = cls.objects.first()
+        if not setting:
+            setting = cls.objects.create(retention_period='30_days', auto_delete_enabled=True)
+        return setting
 

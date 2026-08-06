@@ -14,6 +14,7 @@ import mimetypes
 import os
 import io
 from django.db import transaction
+from django.utils import timezone
 from services import drive_service
 import logging
 
@@ -71,14 +72,16 @@ class FileViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return File.objects.none()
 
-        # Super Admin sees all files
+        base_qs = File.objects.filter(is_deleted=False)
+
+        # Super Admin sees all active files
         if user.role and user.role.name == "Super Admin":
-            return File.objects.all().order_by('-updated_at')
+            return base_qs.order_by('-updated_at')
 
         # Filter files by folder access
-        all_folders = Folder.objects.all()
+        all_folders = Folder.objects.filter(is_deleted=False)
         accessible_folder_ids = [f.id for f in all_folders if f.has_access(user)]
-        return File.objects.filter(folder_id__in=accessible_folder_ids).order_by('-updated_at')
+        return base_qs.filter(folder_id__in=accessible_folder_ids).order_by('-updated_at')
 
     def create(self, request, *args, **kwargs):
         # Read parameters
@@ -318,47 +321,30 @@ class FileViewSet(viewsets.ModelViewSet):
             
         name = file_instance.name
         folder_name = file_instance.folder.name
-        google_file_id = file_instance.google_file_id
+        now = timezone.now()
         
         try:
             with transaction.atomic():
-                # Delete main file from Google Drive first
-                if google_file_id:
-                    logger.info(f"Attempting to delete main file from Google Drive. File ID: '{google_file_id}'...")
-                    try:
-                        drive_service.delete_file(google_file_id)
-                        logger.info("Main file deleted successfully from Google Drive.")
-                    except Exception as drive_err:
-                        logger.warning(f"Failed to delete file '{google_file_id}' on Google Drive: {drive_err}")
+                file_instance.is_deleted = True
+                file_instance.deleted_at = now
+                file_instance.deleted_by = request.user
+                file_instance.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
 
-                # Delete all previous file versions from Google Drive
-                for version in file_instance.versions.all():
-                    if version.google_file_id:
-                        logger.info(f"Attempting to delete file version {version.version_number} from Google Drive. File ID: '{version.google_file_id}'...")
-                        try:
-                            drive_service.delete_file(version.google_file_id)
-                            logger.info(f"Version {version.version_number} deleted successfully from Google Drive.")
-                        except Exception as version_err:
-                            logger.warning(f"Failed to delete file version '{version.google_file_id}' on Google Drive: {version_err}")
-
-                # Delete local database record
+                # Revert folder status back to Active if folder is Signed but no active signed files remain
                 folder = file_instance.folder
-                file_instance.delete()
-
-                # Revert folder status back to Active if folder is Signed but no signed files remain
                 if folder.status == 'Signed':
-                    remaining_signed_exists = File.objects.filter(folder=folder, is_signed=True).exists()
+                    remaining_signed_exists = File.objects.filter(folder=folder, is_signed=True, is_deleted=False).exists()
                     if not remaining_signed_exists:
                         folder.status = 'Active'
                         folder.save(update_fields=['status'])
                         logger.info(f"Folder '{folder.name}' status reverted back to Active as no signed files remain in it.")
 
                 # Audit logging
-                log_activity(request.user, f"Deleted file '{name}' from folder '{folder_name}'", "files", request)
-                notify_admins("File Deleted", f"File '{name}' was deleted from '{folder_name}' by {request.user.name}.", metadata={'action': 'file_deleted', 'file_name': name, 'folder_name': folder_name})
+                log_activity(request.user, f"Moved file '{name}' to Recycle Bin", "files", request)
+                notify_admins("File Moved to Recycle Bin", f"File '{name}' was moved to Recycle Bin from '{folder_name}' by {request.user.name}.", metadata={'action': 'file_deleted', 'file_name': name, 'folder_name': folder_name})
         except Exception as e:
-            logger.exception(f"File deletion failed for file '{name}' (ID: {file_instance.id}): {e}")
-            return Response({"detail": f"Database file deletion failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception(f"Moving file to Recycle Bin failed for file '{name}' (ID: {file_instance.id}): {e}")
+            return Response({"detail": f"Moving file to Recycle Bin failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

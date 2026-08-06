@@ -26,6 +26,7 @@ import FolderIcon from '@mui/icons-material/Folder';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
 import SettingsIcon from '@mui/icons-material/Settings';
+import DeleteIcon from '@mui/icons-material/DeleteOutlined';
 import HistoryIcon from '@mui/icons-material/History';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import HelpCenterIcon from '@mui/icons-material/HelpCenter';
@@ -245,6 +246,7 @@ const Layout = ({ children }) => {
     { text: 'MOU Repositories', icon: <FolderCopyIcon />,          path: '/explorer',   permission: 'view_folder',    iconColor: '#0EA5E9' },
     { text: 'User Management', icon: <ManageAccountsIcon />,      path: '/users',      permission: 'manage_users',   iconColor: '#EC4899' },
     { text: 'Activity Logs',   icon: <AdminPanelSettingsIcon />,  path: '/logs',       permission: 'manage_users',   iconColor: '#F97316' },
+    { text: 'Recycle Bin',     icon: <DeleteIcon />,              path: '/recycle-bin',permission: 'manage_users',   iconColor: '#EF4444' },
     { text: 'System Settings', icon: <SettingsIcon />,           path: '/settings',   permission: 'view_dashboard', iconColor: '#64748B' },
     { text: 'System Map',      icon: <MapIcon />,                 path: '/system-map', permission: 'view_dashboard', iconColor: '#6366F1' },
   ];

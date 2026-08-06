@@ -137,20 +137,50 @@ class FolderSyncAPITests(APITestCase):
         mock_rename_file.assert_called_once_with("drive_id_999", "New Name")
 
     @patch('services.drive_service.delete_file')
-    def test_delete_folder_syncs_with_google_drive(self, mock_delete_file):
+    def test_delete_folder_moves_to_recycle_bin(self, mock_delete_file):
         folder = Folder.objects.create(
             name="Folder to Delete",
             google_folder_id="drive_delete_id_888",
             created_by=self.user
         )
 
-        url = reverse('folder-detail', kwargs={'pk': folder.id})
+        url = reverse('folder-delete') + f'?folder_id={folder.id}'
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
-        # Check database deletion
+        # Check soft deletion in database
+        folder.refresh_from_db()
+        self.assertTrue(folder.is_deleted)
+        self.assertIsNotNone(folder.deleted_at)
+
+    def test_recycle_bin_restore_and_purge(self):
+        folder = Folder.objects.create(
+            name="Recycle Test Folder",
+            google_folder_id="drive_recycle_999",
+            created_by=self.user,
+            is_deleted=True
+        )
+
+        # 1. Test List Recycle Bin
+        list_url = reverse('recycle-bin-list')
+        res = self.client.get(list_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(any(i['real_id'] == folder.id for i in res.data['items']))
+
+        # 2. Test Restore Folder
+        restore_url = reverse('recycle-bin-restore')
+        res = self.client.post(restore_url, {'items': [{'id': folder.id, 'type': 'folder'}]}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        folder.refresh_from_db()
+        self.assertFalse(folder.is_deleted)
+
+        # 3. Test Permanent Delete Folder
+        folder.is_deleted = True
+        folder.save()
+        purge_url = reverse('recycle-bin-permanent-delete')
+        res = self.client.post(purge_url, {'items': [{'id': folder.id, 'type': 'folder'}]}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertFalse(Folder.objects.filter(id=folder.id).exists())
-        mock_delete_file.assert_called_once_with("drive_delete_id_888")
 
     def test_assign_and_revoke_access(self):
         # Create a folder

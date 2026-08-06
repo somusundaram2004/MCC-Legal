@@ -143,8 +143,9 @@ class FileSyncAPITests(APITestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
-        self.assertFalse(File.objects.filter(id=file_instance.id).exists())
-        mock_delete_file.assert_called_once_with("drive_del_file_555")
+        file_instance.refresh_from_db()
+        self.assertTrue(file_instance.is_deleted)
+        self.assertIsNotNone(file_instance.deleted_at)
 
     @patch('services.drive_service.rename_file')
     def test_file_rename_syncs_with_google_drive(self, mock_rename_file):
