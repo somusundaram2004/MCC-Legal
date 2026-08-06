@@ -152,8 +152,13 @@ class FolderSyncAPITests(APITestCase):
         folder.refresh_from_db()
         self.assertTrue(folder.is_deleted)
         self.assertIsNotNone(folder.deleted_at)
+        self.assertEqual(folder.google_folder_id, "drive_delete_id_888")
+        
+        # STRICT REQUIREMENT: Soft delete must NOT delete from Google Drive!
+        mock_delete_file.assert_not_called()
 
-    def test_recycle_bin_restore_and_purge(self):
+    @patch('services.drive_service.delete_file')
+    def test_recycle_bin_restore_and_purge(self, mock_delete_file):
         folder = Folder.objects.create(
             name="Recycle Test Folder",
             google_folder_id="drive_recycle_999",
@@ -173,14 +178,16 @@ class FolderSyncAPITests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         folder.refresh_from_db()
         self.assertFalse(folder.is_deleted)
+        self.assertEqual(folder.google_folder_id, "drive_recycle_999")
 
-        # 3. Test Permanent Delete Folder
+        # 3. Test Permanent Delete Folder (ONLY permanent delete removes from Google Drive)
         folder.is_deleted = True
         folder.save()
         purge_url = reverse('recycle-bin-permanent-delete')
         res = self.client.post(purge_url, {'items': [{'id': folder.id, 'type': 'folder'}]}, format='json')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertFalse(Folder.objects.filter(id=folder.id).exists())
+        mock_delete_file.assert_called_once_with("drive_recycle_999")
 
     def test_assign_and_revoke_access(self):
         # Create a folder

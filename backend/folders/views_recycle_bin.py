@@ -137,6 +137,15 @@ class RecycleBinViewSet(viewsets.ViewSet):
                     if item_type == 'folder':
                         folder = Folder.objects.filter(id=item_id, is_deleted=True).first()
                         if folder:
+                            # Auto-restore parent folder chain if parent was also deleted
+                            parent_chain = folder.get_ancestors()
+                            for ancestor in parent_chain:
+                                if ancestor.is_deleted:
+                                    ancestor.is_deleted = False
+                                    ancestor.deleted_at = None
+                                    ancestor.deleted_by = None
+                                    ancestor.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+
                             folder.is_deleted = False
                             folder.deleted_at = None
                             folder.deleted_by = None
@@ -152,6 +161,16 @@ class RecycleBinViewSet(viewsets.ViewSet):
                     elif item_type == 'file':
                         file_obj = File.objects.filter(id=item_id, is_deleted=True).first()
                         if file_obj:
+                            # Auto-restore parent folder chain if parent was also deleted
+                            if file_obj.folder and file_obj.folder.is_deleted:
+                                parent_chain = file_obj.folder.get_ancestors() + [file_obj.folder]
+                                for ancestor in parent_chain:
+                                    if ancestor.is_deleted:
+                                        ancestor.is_deleted = False
+                                        ancestor.deleted_at = None
+                                        ancestor.deleted_by = None
+                                        ancestor.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+
                             file_obj.is_deleted = False
                             file_obj.deleted_at = None
                             file_obj.deleted_by = None
