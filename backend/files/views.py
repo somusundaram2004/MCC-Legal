@@ -199,9 +199,20 @@ class FileViewSet(viewsets.ModelViewSet):
                 file_instance.file_size = drive_metadata['size']
                 file_instance.web_view_link = drive_metadata.get('webViewLink') or drive_metadata.get('web_view_link')
                 file_instance.web_content_link = drive_metadata.get('webContentLink') or drive_metadata.get('web_content_link')
+
+                # Clean up local file copy after successful Google Drive upload to conserve server disk space
+                if file_instance.file_field and os.path.exists(file_instance.file_field.path):
+                    try:
+                        file_path = file_instance.file_field.path
+                        file_instance.file_field = None
+                        os.remove(file_path)
+                        logger.info(f"Cleaned up local cached file '{file_path}' to conserve server disk space.")
+                    except Exception as clean_err:
+                        logger.warning(f"Failed to remove local cached file: {clean_err}")
+
                 file_instance.save(update_fields=[
                     'google_file_id', 'mime_type', 'file_size',
-                    'web_view_link', 'web_content_link'
+                    'web_view_link', 'web_content_link', 'file_field'
                 ])
 
                 # Support custom creation date/time
@@ -554,10 +565,18 @@ class FileViewSet(viewsets.ModelViewSet):
                 # Update security fields
                 file_instance.sha256_hash = sha256_hash
                 file_instance.virus_scan_status = virus_status
-                file_instance.encrypted = True
-                file_instance.encryption_key_id = 'Google-Drive-AES-256'
-                
                 file_instance.save()
+
+                # Clean up local file copy after successful Google Drive upload to conserve server disk space
+                if file_instance.file_field and os.path.exists(file_instance.file_field.path):
+                    try:
+                        file_path = file_instance.file_field.path
+                        file_instance.file_field = None
+                        os.remove(file_path)
+                        file_instance.save(update_fields=['file_field'])
+                        logger.info(f"Cleaned up local replacement file '{file_path}' to conserve server disk space.")
+                    except Exception as clean_err:
+                        logger.warning(f"Failed to remove local replacement file: {clean_err}")
 
                 # Support custom creation date/time
                 custom_created_at = request.data.get('created_at')

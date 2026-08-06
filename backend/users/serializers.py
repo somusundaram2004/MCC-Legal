@@ -215,11 +215,50 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
         return instance
 
     def sync_google_drive_folder(self, instance):
-        if instance.root_folder_id and instance.google_drive_folder_id:
+        from services import drive_service
+
+        # 1. Create Google Drive folder under Website Builder root if missing
+        if not instance.google_drive_folder_id:
+            try:
+                website_root_id = drive_service.get_website_root_folder_id()
+                logger.info(f"Website Builder module created: '{instance.title}'")
+                logger.info(f"Website Builder Drive root found: '{website_root_id}'")
+                logger.info(f"Creating Google Drive folder for Website Builder module '{instance.title}'...")
+
+                drive_folder_id = drive_service.create_folder(instance.title, parent_id=website_root_id)
+                logger.info(f"Folder created successfully on Google Drive. ID: '{drive_folder_id}'")
+
+                instance.google_drive_folder_id = drive_folder_id
+                instance.save(update_fields=['google_drive_folder_id'])
+                logger.info(f"Drive Folder ID saved: '{drive_folder_id}'")
+            except Exception as e:
+                logger.error(f"Failed to create Google Drive folder for Website Builder module '{instance.title}': {e}", exc_info=True)
+                raise serializers.ValidationError({"google_drive_folder_id": f"Failed to create Google Drive folder: {str(e)}"})
+
+        # 2. Bind/sync with local repository Folder record
+        if instance.root_folder_id:
             try:
                 from folders.models import Folder
                 Folder.objects.filter(id=int(instance.root_folder_id)).update(google_folder_id=instance.google_drive_folder_id.strip())
             except Exception as e:
-                pass
+                logger.warning(f"Failed to sync root_folder_id for page '{instance.title}': {e}")
+        elif instance.google_drive_folder_id:
+            try:
+                from folders.models import Folder
+                existing = Folder.objects.filter(google_folder_id=instance.google_drive_folder_id.strip()).first()
+                if existing:
+                    instance.root_folder_id = str(existing.id)
+                    instance.root_folder_name = existing.name
+                    instance.save(update_fields=['root_folder_id', 'root_folder_name'])
+                else:
+                    new_folder = Folder.objects.create(
+                        name=instance.title,
+                        google_folder_id=instance.google_drive_folder_id.strip()
+                    )
+                    instance.root_folder_id = str(new_folder.id)
+                    instance.root_folder_name = new_folder.name
+                    instance.save(update_fields=['root_folder_id', 'root_folder_name'])
+            except Exception as e:
+                logger.warning(f"Failed to auto-create repository folder for module '{instance.title}': {e}")
 
 
