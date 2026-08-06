@@ -217,29 +217,39 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
     def sync_google_drive_folder(self, instance):
         from services import drive_service
 
-        # 1. Create Google Drive folder under Website Builder root if missing
+        # 1. Create dedicated Google Drive folder under connected Drive root if missing
         if not instance.google_drive_folder_id:
             try:
-                website_root_id = drive_service.get_website_root_folder_id()
+                drive_root_id = drive_service.get_root_folder_id()
                 logger.info(f"Website Builder module created: '{instance.title}'")
-                logger.info(f"Website Builder Drive root found: '{website_root_id}'")
-                logger.info(f"Creating Google Drive folder for Website Builder module '{instance.title}'...")
+                logger.info(f"Connected Drive root found: '{drive_root_id}'")
+                logger.info(f"Creating Google Drive folder for module with exact title '{instance.title}'...")
 
-                drive_folder_id = drive_service.create_folder(instance.title, parent_id=website_root_id)
-                logger.info(f"Folder created successfully on Google Drive. ID: '{drive_folder_id}'")
+                drive_folder_id = drive_service.create_folder(instance.title, parent_id=drive_root_id)
+                logger.info(f"Folder created successfully on Google Drive with exact name '{instance.title}'. ID: '{drive_folder_id}'")
 
                 instance.google_drive_folder_id = drive_folder_id
                 instance.save(update_fields=['google_drive_folder_id'])
                 logger.info(f"Drive Folder ID saved: '{drive_folder_id}'")
             except Exception as e:
-                logger.error(f"Failed to create Google Drive folder for Website Builder module '{instance.title}': {e}", exc_info=True)
+                logger.error(f"Failed to create Google Drive folder for module '{instance.title}': {e}", exc_info=True)
                 raise serializers.ValidationError({"google_drive_folder_id": f"Failed to create Google Drive folder: {str(e)}"})
+        else:
+            # Sync folder name on Google Drive if title was updated
+            try:
+                drive_service.rename_file(instance.google_drive_folder_id, instance.title)
+                logger.info(f"Renamed Google Drive folder '{instance.google_drive_folder_id}' to match module title '{instance.title}'")
+            except Exception as rename_err:
+                logger.warning(f"Note: Google Drive folder rename check skipped: {rename_err}")
 
-        # 2. Bind/sync with local repository Folder record
+        # 2. Bind/sync with system repository Folder record so every module has its own folder
         if instance.root_folder_id:
             try:
                 from folders.models import Folder
-                Folder.objects.filter(id=int(instance.root_folder_id)).update(google_folder_id=instance.google_drive_folder_id.strip())
+                Folder.objects.filter(id=int(instance.root_folder_id)).update(
+                    name=instance.title,
+                    google_folder_id=instance.google_drive_folder_id.strip()
+                )
             except Exception as e:
                 logger.warning(f"Failed to sync root_folder_id for page '{instance.title}': {e}")
         elif instance.google_drive_folder_id:
@@ -247,6 +257,8 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
                 from folders.models import Folder
                 existing = Folder.objects.filter(google_folder_id=instance.google_drive_folder_id.strip()).first()
                 if existing:
+                    existing.name = instance.title
+                    existing.save(update_fields=['name'])
                     instance.root_folder_id = str(existing.id)
                     instance.root_folder_name = existing.name
                     instance.save(update_fields=['root_folder_id', 'root_folder_name'])
