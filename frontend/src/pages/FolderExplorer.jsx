@@ -539,7 +539,7 @@ const FolderExplorer = ({ rootFolderId = null }) => {
     const itemName = activeItem?.data?.name || "Item";
     const itemType = activeItem?.type === 'folder' ? 'Folder' : 'File';
     setDeleteDialogOpen(false);
-    setActionLoadingMessage(`Deleting ${itemType.toLowerCase()}...`);
+    setActionLoadingMessage(`Moving ${itemType.toLowerCase()} to Recycle Bin...`);
     try {
       // Small delay to ensure the delete animation is visible to the user
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -548,10 +548,10 @@ const FolderExplorer = ({ rootFolderId = null }) => {
       } else {
         await api.delete(`/api/files/${activeItem.data.id}/`);
       }
-      setSuccess(`${itemType} "${itemName}" deleted successfully.`);
+      setSuccess(`${itemType} "${itemName}" moved to Recycle Bin.`);
       fetchContents();
     } catch (err) {
-      setError(err.response?.data?.detail || "Delete failed.");
+      setError(err.response?.data?.detail || "Move to Recycle Bin failed.");
     } finally {
       setActionLoadingMessage('');
       setActiveItem(null);
@@ -574,16 +574,16 @@ const FolderExplorer = ({ rootFolderId = null }) => {
 
   const handleBulkDeleteSubmit = async () => {
     setBulkDeleteDialogOpen(false);
-    setActionLoadingMessage("Deleting selected folders...");
+    setActionLoadingMessage("Moving selected folders to Recycle Bin...");
     try {
       // Simulate delay for delete animation consistency if desired, or run immediately
       await new Promise(resolve => setTimeout(resolve, 1500));
       await api.post('/api/folders/bulk-delete/', { folder_ids: selectedFolderIds });
-      setSuccess("Selected folders deleted successfully.");
+      setSuccess("Selected folders moved to Recycle Bin.");
       setSelectedFolderIds([]);
       fetchContents();
     } catch (err) {
-      setError(err.response?.data?.detail || "Bulk deletion failed.");
+      setError(err.response?.data?.detail || "Bulk move to Recycle Bin failed.");
     } finally {
       setActionLoadingMessage('');
     }
@@ -1606,29 +1606,29 @@ const FolderExplorer = ({ rootFolderId = null }) => {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => { setDeleteDialogOpen(false); setActiveItem(null); }}>
-        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogTitle>Move to Recycle Bin?</DialogTitle>
         <DialogContent>
           <Typography variant="body1">
-            Are you sure you want to delete this {activeItem?.type}? This action cannot be undone.
+            Are you sure you want to move this {activeItem?.type} to the Recycle Bin?
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setDeleteDialogOpen(false); setActiveItem(null); }}>Cancel</Button>
-          <Button onClick={handleDeleteSubmit} color="error" variant="contained">Delete</Button>
+          <Button onClick={handleDeleteSubmit} color="error" variant="contained">Move to Recycle Bin</Button>
         </DialogActions>
       </Dialog>
 
       {/* Bulk Delete Confirmation Dialog */}
       <Dialog open={bulkDeleteDialogOpen} onClose={() => setBulkDeleteDialogOpen(false)}>
-        <DialogTitle>Confirm Bulk Delete</DialogTitle>
+        <DialogTitle>Move Selected Folders to Recycle Bin?</DialogTitle>
         <DialogContent>
           <Typography variant="body1">
-            Are you sure you want to delete the <strong>{selectedFolderIds.length}</strong> selected folders? This action cannot be undone and will delete all files and subfolders within them.
+            Are you sure you want to move the <strong>{selectedFolderIds.length}</strong> selected folders to the Recycle Bin?
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setBulkDeleteDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleBulkDeleteSubmit} color="error" variant="contained">Delete All</Button>
+          <Button onClick={handleBulkDeleteSubmit} color="error" variant="contained">Move All to Recycle Bin</Button>
         </DialogActions>
       </Dialog>
 

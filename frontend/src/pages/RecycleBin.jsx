@@ -50,6 +50,17 @@ import {
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
+const DEFAULT_RETENTION_OPTIONS = [
+  { value: '7_days', label: '7 Days' },
+  { value: '14_days', label: '14 Days' },
+  { value: '30_days', label: '30 Days (1 Month)' },
+  { value: '6_weeks', label: '6 Weeks' },
+  { value: '3_months', label: '3 Months' },
+  { value: '6_months', label: '6 Months' },
+  { value: '1_year', label: '1 Year' },
+  { value: 'never', label: 'Never (Keep Indefinitely)' }
+];
+
 export default function RecycleBin() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role?.name === 'Super Admin';
@@ -64,7 +75,7 @@ export default function RecycleBin() {
   const [retentionPeriod, setRetentionPeriod] = useState('30_days');
   const [retentionDisplay, setRetentionDisplay] = useState('30 Days (1 Month)');
   const [autoDeleteEnabled, setAutoDeleteEnabled] = useState(true);
-  const [availableOptions, setAvailableOptions] = useState([]);
+  const [availableOptions, setAvailableOptions] = useState(DEFAULT_RETENTION_OPTIONS);
   const [savingSettings, setSavingSettings] = useState(false);
 
   // Dialog States
@@ -335,8 +346,8 @@ export default function RecycleBin() {
               Items in the Recycle Bin will be automatically purged permanently after the chosen retention threshold.
             </Typography>
 
-            <GridContainer style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <FormControl size="small" sx={{ minWidth: 240, bg: '#ffffff' }}>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 240, bgcolor: '#ffffff' }}>
                 <InputLabel id="retention-label">Auto-Purge Period</InputLabel>
                 <Select
                   labelId="retention-label"
@@ -368,7 +379,7 @@ export default function RecycleBin() {
               )}
 
               {savingSettings && <CircularProgress size={24} />}
-            </GridContainer>
+            </Box>
           </CardContent>
         </Card>
       </Box>
@@ -383,12 +394,14 @@ export default function RecycleBin() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               fullWidth
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: '#94a3b8' }} />
-                  </InputAdornment>
-                )
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: '#94a3b8' }} />
+                    </InputAdornment>
+                  )
+                }
               }}
             />
             <FormControl size="small" sx={{ minWidth: 150 }}>
