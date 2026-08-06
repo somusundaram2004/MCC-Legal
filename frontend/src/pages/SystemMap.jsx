@@ -253,7 +253,7 @@ const StageDrawer = ({ stage, onClose }) => {
               </ListItemIcon>
               <ListItemText
                 primary={n}
-                primaryTypographyProps={{ fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.5 }}
+                slotProps={{ primary: { fontSize: '0.8rem', color: 'text.secondary', lineHeight: 1.5 } }}
               />
             </ListItem>
           ))}
