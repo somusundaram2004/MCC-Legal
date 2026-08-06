@@ -656,8 +656,12 @@ const EmailSettingsTab = () => {
     setSuccess(null);
     try {
       const response = await api.post(`/api/users/smtp-settings/${testingId}/test-connection/`, { test_email: testEmail });
-      setSuccess(response.data.detail || 'Test email sent successfully.');
-      setTestDialogOpen(false);
+      if (response.data?.success === false) {
+        setError(response.data.detail || 'Test connection failed.');
+      } else {
+        setSuccess(response.data.detail || 'Test email sent successfully.');
+        setTestDialogOpen(false);
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Test connection failed.');
     } finally {

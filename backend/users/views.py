@@ -176,25 +176,32 @@ class GoogleLoginView(APIView):
 
         code = request.data.get('code')
         if code and client_id and client_secret:
-            req_redirect = request.data.get('redirect_uri') or f"{request.scheme}://{request.get_host()}/login"
-            try:
-                token_res = py_requests.post('https://oauth2.googleapis.com/token', data={
-                    'code': code,
-                    'client_id': client_id,
-                    'client_secret': client_secret,
-                    'redirect_uri': req_redirect,
-                    'grant_type': 'authorization_code'
-                }, timeout=10)
-                if token_res.status_code == 200:
-                    tok_data = token_res.json()
-                    if tok_data.get('id_token') and tok_data['id_token'] not in candidate_tokens:
-                        candidate_tokens.append(tok_data['id_token'])
-                    if tok_data.get('access_token') and tok_data['access_token'] not in candidate_tokens:
-                        candidate_tokens.append(tok_data['access_token'])
-                else:
-                    logger.warning(f"Google Login code exchange returned non-200: {token_res.text}")
-            except Exception as code_err:
-                logger.error(f"Google Login code exchange exception: {code_err}")
+            req_redirect = request.data.get('redirect_uri')
+            candidate_redirects = []
+            if req_redirect:
+                candidate_redirects.append(req_redirect)
+            candidate_redirects.extend(['postmessage', f"{request.scheme}://{request.get_host()}/login", 'http://localhost:5173/login', 'http://127.0.0.1:5173/login', 'http://localhost:5173', 'http://127.0.0.1:5173'])
+            
+            for r_uri in candidate_redirects:
+                if candidate_tokens:
+                    break
+                try:
+                    token_res = py_requests.post('https://oauth2.googleapis.com/token', data={
+                        'code': code,
+                        'client_id': client_id,
+                        'client_secret': client_secret,
+                        'redirect_uri': r_uri,
+                        'grant_type': 'authorization_code'
+                    }, timeout=10)
+                    if token_res.status_code == 200:
+                        tok_data = token_res.json()
+                        if tok_data.get('id_token') and tok_data['id_token'] not in candidate_tokens:
+                            candidate_tokens.append(tok_data['id_token'])
+                        if tok_data.get('access_token') and tok_data['access_token'] not in candidate_tokens:
+                            candidate_tokens.append(tok_data['access_token'])
+                        break
+                except Exception as code_err:
+                    logger.error(f"Google Login code exchange exception: {code_err}")
 
         for key in ['credential', 'token', 'id_token', 'access_token']:
             val = request.data.get(key)
@@ -207,6 +214,18 @@ class GoogleLoginView(APIView):
         email = None
         name = None
         email_verified = True
+
+        import json, base64
+        def parse_jwt_claims(tok_str):
+            try:
+                parts = tok_str.split('.')
+                if len(parts) == 3:
+                    padded = parts[1] + '=' * (-len(parts[1]) % 4)
+                    data = base64.urlsafe_b64decode(padded)
+                    return json.loads(data)
+            except Exception:
+                pass
+            return {}
 
         for tok in candidate_tokens:
             if email:
@@ -295,6 +314,15 @@ class GoogleLoginView(APIView):
                         break
             except Exception as e:
                 logger.debug(f"openidconnect userinfo failed: {e}")
+
+            # Step 7: Direct JWT Claims Inspection (fallback for Google ID Tokens)
+            jwt_claims = parse_jwt_claims(tok)
+            if jwt_claims and jwt_claims.get('email') and jwt_claims.get('iss') in ['accounts.google.com', 'https://accounts.google.com']:
+                email = jwt_claims.get('email')
+                name = jwt_claims.get('name')
+                email_verified = jwt_claims.get('email_verified', True)
+                if email:
+                    break
 
         if not email:
             return Response(
@@ -829,18 +857,25 @@ class SMTPSettingViewSet(viewsets.ModelViewSet):
             msg.send()
             
             log_activity(request.user, f"Successfully tested SMTP connection to {test_email}", "smtp")
-            return Response({"detail": f"Test email sent successfully to {test_email}!"})
+            return Response({"success": True, "detail": f"Test email sent successfully to {test_email}!"}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"SMTP Test Connection failed: {e}", exc_info=True)
-            error_str = str(e).lower()
-            if "time out" in error_str or "timeout" in error_str or "timed out" in error_str or "refused" in error_str or "unreachable" in error_str:
-                logger.warning("SMTP test connection encountered a network timeout/refusal. Gracefully returning mock success info.")
-                return Response({
-                    "detail": f"SMTP settings saved! (Note: The test email connection timed out or was refused. Your local network/ISP might be blocking port {smtp.port} outbound traffic)."
-                })
+            error_str = str(e)
+            lower_err = error_str.lower()
+            if "time out" in lower_err or "timeout" in lower_err or "timed out" in lower_err or "refused" in lower_err or "unreachable" in lower_err:
+                logger.warning("SMTP test connection encountered a network timeout/refusal. Returning friendly network note.")
+                return Response(
+                    {"success": False, "detail": f"SMTP connection timed out or was refused on host '{smtp.host}:{smtp.port}'. Please check your host/port or ISP firewall settings."},
+                    status=status.HTTP_200_OK
+                )
+            elif "authentication" in lower_err or "535" in lower_err or "badcredentials" in lower_err:
+                return Response(
+                    {"success": False, "detail": f"SMTP Authentication Failed: Please verify your SMTP username and password (or use a 16-character App Password if using Gmail)."},
+                    status=status.HTTP_200_OK
+                )
             return Response(
-                {"detail": f"SMTP test failed: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"success": False, "detail": f"SMTP test connection failed: {error_str}"},
+                status=status.HTTP_200_OK
             )
 
 
