@@ -272,15 +272,17 @@ export default function RecycleBin() {
           >
             Refresh
           </Button>
-          <Button
-            variant="contained"
-            color="error"
-            startIcon={<CleanIcon />}
-            onClick={() => setConfirmEmptyOpen(true)}
-            disabled={items.length === 0 || loading}
-          >
-            Empty Recycle Bin
-          </Button>
+          {isSuperAdmin && (
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<CleanIcon />}
+              onClick={() => setConfirmEmptyOpen(true)}
+              disabled={items.length === 0 || loading}
+            >
+              Empty Recycle Bin
+            </Button>
+          )}
         </Stack>
       </Box>
 
@@ -417,16 +419,18 @@ export default function RecycleBin() {
               >
                 Restore Selected
               </Button>
-              <Button
-                size="small"
-                variant="contained"
-                color="error"
-                startIcon={<DeleteForeverIcon />}
-                onClick={() => handlePermanentDeleteItems(selectedObjects)}
-                disabled={actionProcessing}
-              >
-                Delete Selected
-              </Button>
+              {isSuperAdmin && (
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="error"
+                  startIcon={<DeleteForeverIcon />}
+                  onClick={() => handlePermanentDeleteItems(selectedObjects)}
+                  disabled={actionProcessing}
+                >
+                  Delete Selected
+                </Button>
+              )}
             </Stack>
           )}
         </Box>
@@ -535,16 +539,18 @@ export default function RecycleBin() {
                             <RestoreIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Permanently delete from Google Drive & DB">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => setConfirmDeleteSingle(row)}
-                            disabled={actionProcessing}
-                          >
-                            <DeleteForeverIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        {isSuperAdmin && (
+                          <Tooltip title="Permanently delete from Google Drive & DB">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => setConfirmDeleteSingle(row)}
+                              disabled={actionProcessing}
+                            >
+                              <DeleteForeverIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                       </Stack>
                     </TableCell>
                   </TableRow>

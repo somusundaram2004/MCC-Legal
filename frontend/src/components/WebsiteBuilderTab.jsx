@@ -390,7 +390,7 @@ const WebsiteBuilderTab = () => {
                       <Tooltip title="Edit Module">
                         <IconButton size="small" onClick={() => handleOpenDialog(p)}><EditIcon fontSize="small" /></IconButton>
                       </Tooltip>
-                      <Tooltip title="Delete Module">
+                      <Tooltip title="Move Module to Recycle Bin">
                         <IconButton size="small" color="error" onClick={() => handleDeletePage(p.id, p.title)}><DeleteIcon fontSize="small" /></IconButton>
                       </Tooltip>
                     </Box>
@@ -772,7 +772,7 @@ const WebsiteBuilderTab = () => {
                 startIcon={<DeleteIcon />}
                 sx={{ fontWeight: 700, textTransform: 'none', borderRadius: '12px' }}
               >
-                Delete Module
+                Move to Recycle Bin
               </Button>
             )}
           </Box>

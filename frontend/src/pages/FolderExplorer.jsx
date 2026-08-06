@@ -2124,7 +2124,7 @@ const FolderExplorer = ({ rootFolderId = null }) => {
             {hasPermission('delete_folder') && (
               <MenuItem onClick={() => { triggerDelete(activeItem.data, 'folder'); handleMenuClose(); }} sx={{ color: 'error.main' }}>
                 <ListItemIcon><DeleteOutlinedIcon fontSize="small" color="error" /></ListItemIcon>
-                Delete Folder
+                Move to Recycle Bin
               </MenuItem>
             )}
           </>
@@ -2145,7 +2145,7 @@ const FolderExplorer = ({ rootFolderId = null }) => {
             {hasPermission('delete_files') && (
               <MenuItem onClick={() => { triggerDelete(activeItem.data, 'file'); handleMenuClose(); }} sx={{ color: 'error.main' }}>
                 <ListItemIcon><DeleteOutlinedIcon fontSize="small" color="error" /></ListItemIcon>
-                Delete File
+                Move to Recycle Bin
               </MenuItem>
             )}
           </>
