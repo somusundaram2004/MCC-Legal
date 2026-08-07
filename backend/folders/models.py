@@ -37,6 +37,17 @@ class Folder(models.Model):
     summary = models.TextField(blank=True, null=True)
     expiry_date = models.DateField(blank=True, null=True)
 
+    # Module Isolation Fields
+    module_type = models.CharField(max_length=100, default='mou_repository', db_index=True)
+    custom_page = models.ForeignKey(
+        'users.CustomDynamicPage',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='module_folders',
+        db_index=True
+    )
+
     # Soft Delete / Recycle Bin Fields
     is_deleted = models.BooleanField(default=False, db_index=True)
     deleted_at = models.DateTimeField(blank=True, null=True)

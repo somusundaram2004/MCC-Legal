@@ -248,7 +248,9 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
                 from folders.models import Folder
                 Folder.objects.filter(id=int(instance.root_folder_id)).update(
                     name=instance.title,
-                    google_folder_id=instance.google_drive_folder_id.strip()
+                    google_folder_id=instance.google_drive_folder_id.strip(),
+                    module_type='custom_page',
+                    custom_page=instance
                 )
             except Exception as e:
                 logger.warning(f"Failed to sync root_folder_id for page '{instance.title}': {e}")
@@ -258,14 +260,18 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
                 existing = Folder.objects.filter(google_folder_id=instance.google_drive_folder_id.strip()).first()
                 if existing:
                     existing.name = instance.title
-                    existing.save(update_fields=['name'])
+                    existing.module_type = 'custom_page'
+                    existing.custom_page = instance
+                    existing.save(update_fields=['name', 'module_type', 'custom_page'])
                     instance.root_folder_id = str(existing.id)
                     instance.root_folder_name = existing.name
                     instance.save(update_fields=['root_folder_id', 'root_folder_name'])
                 else:
                     new_folder = Folder.objects.create(
                         name=instance.title,
-                        google_folder_id=instance.google_drive_folder_id.strip()
+                        google_folder_id=instance.google_drive_folder_id.strip(),
+                        module_type='custom_page',
+                        custom_page=instance
                     )
                     instance.root_folder_id = str(new_folder.id)
                     instance.root_folder_name = new_folder.name

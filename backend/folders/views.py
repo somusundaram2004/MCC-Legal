@@ -99,6 +99,13 @@ class FolderViewSet(viewsets.ModelViewSet):
             return Folder.objects.none()
         
         base_qs = Folder.objects.filter(is_deleted=False)
+        custom_page_id = self.request.query_params.get('custom_page_id')
+        module_type = self.request.query_params.get('module_type')
+
+        if custom_page_id:
+            base_qs = base_qs.filter(custom_page_id=custom_page_id)
+        elif module_type:
+            base_qs = base_qs.filter(module_type=module_type)
 
         # Super Admin bypasses access filters
         if user.role and user.role.name == "Super Admin":
@@ -106,7 +113,7 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         # Filter by folder accessibility (recursive lookup)
         accessible_ids = [f.id for f in base_qs if f.has_access(user)]
-        return Folder.objects.filter(id__in=accessible_ids, is_deleted=False).order_by('name')
+        return base_qs.filter(id__in=accessible_ids).order_by('name')
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -161,10 +168,22 @@ class FolderViewSet(viewsets.ModelViewSet):
                 serializer.is_valid(raise_exception=True)
                 folder = serializer.save(created_by=request.user)
 
-                # Get parent Google folder ID
+                # Get parent Google folder ID & inherit module scoping
                 parent_google_id = None
                 if parent_folder:
                     parent_google_id = parent_folder.google_folder_id
+                    folder.module_type = parent_folder.module_type
+                    folder.custom_page = parent_folder.custom_page
+                    folder.save(update_fields=['module_type', 'custom_page'])
+                elif request.data.get('custom_page_id'):
+                    from users.models import CustomDynamicPage
+                    cp = CustomDynamicPage.objects.filter(id=request.data.get('custom_page_id')).first()
+                    if cp:
+                        folder.module_type = 'custom_page'
+                        folder.custom_page = cp
+                        folder.save(update_fields=['module_type', 'custom_page'])
+                        if not parent_google_id and cp.google_drive_folder_id:
+                            parent_google_id = cp.google_drive_folder_id
 
                 # Create folder on Google Drive (Strict: Google Drive is required)
                 logger.info(f"Triggering folder creation on Google Drive. Folder name: '{folder.name}', parent Google Folder ID: '{parent_google_id}'...")
@@ -514,11 +533,25 @@ class FolderViewSet(viewsets.ModelViewSet):
                         f.google_folder_id = item_id
                         f.save(update_fields=['google_folder_id'])
                     else:
+                        m_type = 'mou_repository'
+                        c_page = None
+                        if parent_folder_obj:
+                            m_type = parent_folder_obj.module_type
+                            c_page = parent_folder_obj.custom_page
+                        else:
+                            from users.models import CustomDynamicPage
+                            cp = CustomDynamicPage.objects.filter(google_drive_folder_id=item_id).first()
+                            if cp:
+                                m_type = 'custom_page'
+                                c_page = cp
+
                         Folder.objects.create(
                             name=item_name,
                             parent=parent_folder_obj,
                             google_folder_id=item_id,
-                            created_by=user
+                            created_by=user,
+                            module_type=m_type,
+                            custom_page=c_page
                         )
                 else:
                     # File synchronization (files belong to folders in DB, so we skip if parent_folder_obj is None)
@@ -605,8 +638,8 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         user = request.user
         
-        # 1. Base query for root folders (no parent)
-        root_folders = Folder.objects.filter(parent=None).order_by('name')
+        # 1. Base query for root folders (no parent) isolated strictly to mou_repository
+        root_folders = Folder.objects.filter(parent=None, is_deleted=False, module_type='mou_repository').order_by('name')
         
         # 2. If user is Super Admin, they see all root folders and don't need orphaned subfolders
         if user.role and user.role.name == "Super Admin":

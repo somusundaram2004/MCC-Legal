@@ -42,7 +42,7 @@ import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContex
 import BreadcrumbNav from '../components/BreadcrumbNav';
 import FilePreviewModal from '../components/FilePreviewModal';
 
-const FolderExplorer = ({ rootFolderId = null }) => {
+const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const { user, hasPermission } = useAuth();
   const { getFormattedSiteDateTime } = useSiteTime();
   const navigate = useNavigate();
@@ -396,9 +396,10 @@ const FolderExplorer = ({ rootFolderId = null }) => {
 
     setActionLoadingMessage('Creating folder...');
     try {
-      await api.post('/api/folders/', {
+      await api.post('/api/folders/create-custom/', {
         name: folderName.trim(),
-        parent_id: currentFolderId,
+        parent_id: currentFolderId || (rootFolderId ? parseInt(rootFolderId) : null),
+        custom_page_id: customPageId,
         status: folderStatus,
         summary: folderSummary.trim(),
         expiry_date: folderExpiryDate,

@@ -185,7 +185,7 @@ const DynamicPageContainer = () => {
   const uniqueDepartments = Array.from(new Set(items.map(i => i.department_name).filter(Boolean)));
 
   if (pageConfig?.page_type === 'Folder Repository' || pageConfig?.page_type === 'Document Repository') {
-    return <FolderExplorer rootFolderId={pageConfig.root_folder_id} />;
+    return <FolderExplorer rootFolderId={pageConfig.root_folder_id} customPageId={pageConfig.id} />;
   }
 
   return (
