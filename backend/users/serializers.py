@@ -4,6 +4,9 @@ from roles.models import Role
 from permissions.models import Permission
 from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting, CustomDynamicPage
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
