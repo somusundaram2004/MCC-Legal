@@ -1047,13 +1047,50 @@ class CustomDynamicPageViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        from services import drive_service
+        from folders.models import Folder
+        master_root_id = drive_service.get_root_folder_id()
+
         for page in qs:
-            if page.root_folder_id and page.google_drive_folder_id:
+            # 1. Provision dedicated Google Drive folder inside master_root_id if missing or mapped to root
+            if master_root_id and (not page.google_drive_folder_id or page.google_drive_folder_id.strip() == master_root_id.strip()):
                 try:
-                    from folders.models import Folder
-                    Folder.objects.filter(id=int(page.root_folder_id)).update(google_folder_id=page.google_drive_folder_id.strip())
+                    drive_folder_id = drive_service.create_folder(page.title, parent_id=master_root_id)
+                    page.google_drive_folder_id = drive_folder_id
+                    page.save(update_fields=['google_drive_folder_id'])
+                except Exception as err:
+                    logger.warning(f"Dedicated drive folder check for page '{page.title}': {err}")
+
+            # 2. Ensure binding with Folder database model
+            if page.google_drive_folder_id:
+                try:
+                    root_folder = None
+                    if page.root_folder_id:
+                        root_folder = Folder.objects.filter(id=int(page.root_folder_id)).first()
+                    if not root_folder:
+                        root_folder = Folder.objects.filter(google_folder_id=page.google_drive_folder_id.strip()).first()
+                    if not root_folder:
+                        root_folder = Folder.objects.create(
+                            name=page.title,
+                            google_folder_id=page.google_drive_folder_id.strip(),
+                            module_type='custom_page',
+                            custom_page=page
+                        )
+                    
+                    if root_folder:
+                        root_folder.name = page.title
+                        root_folder.google_folder_id = page.google_drive_folder_id.strip()
+                        root_folder.module_type = 'custom_page'
+                        root_folder.custom_page = page
+                        root_folder.save(update_fields=['name', 'google_folder_id', 'module_type', 'custom_page'])
+
+                        if str(page.root_folder_id) != str(root_folder.id) or page.root_folder_name != root_folder.name:
+                            page.root_folder_id = str(root_folder.id)
+                            page.root_folder_name = root_folder.name
+                            page.save(update_fields=['root_folder_id', 'root_folder_name'])
                 except Exception as e:
-                    pass
+                    logger.warning(f"Root folder model sync error for '{page.title}': {e}")
         return qs
+
 
 
