@@ -190,13 +190,33 @@ def folder_exists(folder_id):
 def create_folder(name, parent_id=None):
     """
     Creates a new folder on Google Drive.
-    Returns the ID of the created folder.
+    If a folder with the same name already exists in target_parent, returns its ID without creating a duplicate.
     """
     target_parent = parent_id
     if not target_parent:
         target_parent = get_root_folder_id()
     try:
         service = authenticate()
+
+        # Check if folder with exact name already exists in target_parent to prevent duplicate creation
+        if target_parent and target_parent != 'root':
+            try:
+                safe_name = name.replace("'", "\\'")
+                query = f"name = '{safe_name}' and '{target_parent}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+                search_results = service.files().list(
+                    q=query,
+                    fields="files(id, name)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+                existing_files = search_results.get('files', [])
+                if existing_files:
+                    existing_id = existing_files[0].get('id')
+                    logger.info(f"Reusing existing Google Drive folder '{name}' (ID: {existing_id}) to prevent duplicate folder creation.")
+                    return existing_id
+            except Exception as search_err:
+                logger.debug(f"Pre-creation search for existing folder '{name}' skipped: {search_err}")
+
         file_metadata = {
             'name': name,
             'mimeType': 'application/vnd.google-apps.folder'
@@ -211,6 +231,7 @@ def create_folder(name, parent_id=None):
         folder = service.files().create(body=file_metadata, fields='id, name', supportsAllDrives=True).execute()
         logger.info(f"Created Google Drive folder '{name}' (ID: {folder.get('id')})")
         return folder.get('id')
+
     except HttpError as e:
         if e.resp.status == 403 and "storageQuotaExceeded" in str(e):
             logger.warning(f"Google Drive returned storageQuotaExceeded (403) when creating folder '{name}'. Checking if the folder was still created...")
