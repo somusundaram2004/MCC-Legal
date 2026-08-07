@@ -272,7 +272,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         # Access check: user created the folder or has access
         if not folder.has_access(request.user):
             return Response(
-                {"detail": "You do not have access to delete this folder."},
+                {"detail": "You do not have access to move this folder to Recycle Bin."},
                 status=status.HTTP_403_FORBIDDEN
             )
             
@@ -296,27 +296,28 @@ class FolderViewSet(viewsets.ModelViewSet):
                     )
             
         folder_name = folder.name
-        google_folder_id = folder.google_folder_id
+        now = timezone.now()
         
         try:
             with transaction.atomic():
-                if google_folder_id:
-                    logger.info(f"Attempting to delete folder from Google Drive. Folder ID: '{google_folder_id}'...")
-                    try:
-                        drive_service.delete_file(google_folder_id)
-                        logger.info("Folder deleted successfully from Google Drive.")
-                    except Exception as drive_err:
-                        logger.warning(f"Failed to delete folder '{google_folder_id}' on Google Drive: {drive_err}")
-                self.perform_destroy(folder)
+                folder.is_deleted = True
+                folder.deleted_at = now
+                folder.deleted_by = request.user
+                folder.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+                
+                from files.models import File
+                Folder.objects.filter(parent=folder).update(is_deleted=True, deleted_at=now, deleted_by=request.user)
+                File.objects.filter(folder=folder).update(is_deleted=True, deleted_at=now, deleted_by=request.user)
                     
                 # Log & Notify
-                log_activity(request.user, f"Deleted folder '{folder_name}'", "folders", request)
-                notify_admins("Folder Deleted", f"Folder '{folder_name}' was deleted by {request.user.name}.", metadata={'action': 'folder_deleted', 'folder_name': folder_name})
+                log_activity(request.user, f"Moved folder '{folder_name}' to Recycle Bin", "folders", request)
+                notify_admins("Folder Moved to Recycle Bin", f"Folder '{folder_name}' was moved to Recycle Bin by {request.user.name}.", metadata={'action': 'folder_deleted', 'folder_name': folder_name})
         except Exception as e:
-            logger.exception(f"Folder deletion failed for folder '{folder_name}' (ID: {folder.id}): {e}")
-            return Response({"detail": f"Database folder deletion failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception(f"Moving folder to Recycle Bin failed for folder '{folder_name}' (ID: {folder.id}): {e}")
+            return Response({"detail": f"Moving folder to Recycle Bin failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(status=status.HTTP_204_NO_CONTENT)
+
 
     @action(detail=False, methods=['get'], url_path='drive-status', permission_classes=[permissions.IsAuthenticated])
     def drive_status(self, request):
