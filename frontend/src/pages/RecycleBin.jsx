@@ -283,6 +283,17 @@ export default function RecycleBin() {
           >
             Refresh
           </Button>
+          {items.length > 0 && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<RestoreIcon />}
+              onClick={() => handleRestoreItems(items)}
+              disabled={loading || actionProcessing}
+            >
+              Restore All
+            </Button>
+          )}
           {isSuperAdmin && (
             <Button
               variant="contained"
@@ -295,6 +306,7 @@ export default function RecycleBin() {
             </Button>
           )}
         </Stack>
+
       </Box>
 
       {alertInfo.show && (
@@ -560,17 +572,19 @@ export default function RecycleBin() {
                     </TableCell>
                     <TableCell align="right">
 
-                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                        <Tooltip title="Restore to original location">
-                          <IconButton
-                            size="small"
-                            color="success"
-                            onClick={() => handleRestoreItems([row])}
-                            disabled={actionProcessing}
-                          >
-                            <RestoreIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                      <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="success"
+                          startIcon={<RestoreIcon />}
+                          onClick={() => handleRestoreItems([row])}
+                          disabled={actionProcessing}
+                          sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}
+                        >
+                          Restore
+                        </Button>
+
                         {isSuperAdmin && (
                           <Tooltip title="Permanently delete from Google Drive & DB">
                             <IconButton
