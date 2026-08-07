@@ -246,10 +246,13 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const [previewFile, setPreviewFile] = useState(null);
 
   useEffect(() => {
-    api.get('/api/mous/master/dept-categories/').then(res => setDeptCategories(res.data)).catch(e => {});
-    api.get('/api/mous/master/departments/').then(res => setDepartments(res.data)).catch(e => {});
-    api.get('/api/mous/templates/').then(res => setMouTypes(res.data)).catch(e => {});
-  }, []);
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    api.get('/api/mous/master/dept-categories/').then(res => setDeptCategories(res.data)).catch(() => {});
+    api.get('/api/mous/master/departments/').then(res => setDepartments(res.data)).catch(() => {});
+    api.get('/api/mous/templates/').then(res => setMouTypes(res.data)).catch(() => {});
+  }, [user]);
+
 
   const handleFilterCategoryChange = (e) => {
     const catId = e.target.value;
@@ -296,8 +299,11 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const fetchContents = useCallback(async () => {
     // Skip normal folder contents load if MOU filter is active
     if (isFilteredView) return;
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
     
     setLoading(true);
+
     setError(null);
     try {
       if (searchParamQuery) {

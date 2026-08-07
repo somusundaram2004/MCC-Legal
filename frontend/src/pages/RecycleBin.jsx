@@ -572,7 +572,7 @@ export default function RecycleBin() {
                     </TableCell>
                     <TableCell align="right">
 
-                      <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+                      <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
                         <Button
                           size="small"
                           variant="outlined"
