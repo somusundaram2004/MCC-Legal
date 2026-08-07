@@ -540,7 +540,10 @@ class FolderViewSet(viewsets.ModelViewSet):
                             c_page = parent_folder_obj.custom_page
                         else:
                             from users.models import CustomDynamicPage
-                            cp = CustomDynamicPage.objects.filter(google_drive_folder_id=item_id).first()
+                            from django.db.models import Q
+                            cp = CustomDynamicPage.objects.filter(
+                                Q(google_drive_folder_id=item_id) | Q(title__iexact=item_name)
+                            ).first()
                             if cp:
                                 m_type = 'custom_page'
                                 c_page = cp
