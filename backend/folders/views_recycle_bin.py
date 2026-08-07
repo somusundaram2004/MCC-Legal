@@ -29,10 +29,6 @@ class IsAdminOrSuperAdmin(permissions.BasePermission):
 
 
 def calculate_retention_cutoff(retention_period):
-    """
-    Calculates the datetime cutoff for a given retention period option.
-    Items deleted BEFORE this cutoff date are considered expired.
-    """
     now = timezone.now()
     if retention_period == '7_days':
         return now - timedelta(days=7)
@@ -48,7 +44,51 @@ def calculate_retention_cutoff(retention_period):
         return now - timedelta(days=180)
     elif retention_period == '1_year':
         return now - timedelta(days=365)
-    return None  # 'never'
+    return None
+
+
+def calculate_days_remaining(deleted_at, retention_period):
+    if not deleted_at or retention_period == 'never':
+        return None
+    period_days = {
+        '7_days': 7,
+        '14_days': 14,
+        '30_days': 30,
+        '6_weeks': 42,
+        '3_months': 90,
+        '6_months': 180,
+        '1_year': 365
+    }.get(retention_period, 30)
+    expiry_dt = deleted_at + timedelta(days=period_days)
+    remaining_seconds = (expiry_dt - timezone.now()).total_seconds()
+    return max(0, int(remaining_seconds // 86400))
+
+
+def recursive_purge_folder(folder):
+    """
+    Recursively purges a folder and all its child subfolders and files
+    from Google Drive and database.
+    """
+    # 1. Purge all child files
+    for file_obj in folder.files.all():
+        if file_obj.google_file_id:
+            try:
+                drive_service.delete_file(file_obj.google_file_id)
+            except Exception as e:
+                logger.warning(f"Google Drive file delete error for '{file_obj.name}': {e}")
+        file_obj.delete()
+
+    # 2. Purge all child subfolders recursively
+    for child in folder.children.all():
+        recursive_purge_folder(child)
+
+    # 3. Purge the folder itself from Google Drive and DB
+    if folder.google_folder_id:
+        try:
+            drive_service.delete_file(folder.google_folder_id)
+        except Exception as e:
+            logger.warning(f"Google Drive folder delete error for '{folder.name}': {e}")
+    folder.delete()
 
 
 class RecycleBinViewSet(viewsets.ViewSet):
@@ -67,42 +107,63 @@ class RecycleBinViewSet(viewsets.ViewSet):
             except Exception as e:
                 logger.error(f"Error auto-purging expired recycle bin items: {e}")
 
-        deleted_folders = Folder.objects.filter(is_deleted=True).select_related('created_by', 'deleted_by', 'parent').order_by('-deleted_at')
-        deleted_files = File.objects.filter(is_deleted=True).select_related('uploaded_by', 'deleted_by', 'folder').order_by('-deleted_at')
+        # Filter by accessibility / permissions if not Super Admin
+        user = request.user
+        is_super = user and user.is_authenticated and (user.is_superuser or (user.role and user.role.name == "Super Admin"))
+
+        deleted_folders_qs = Folder.objects.filter(is_deleted=True).select_related('created_by', 'deleted_by', 'parent', 'custom_page').order_by('-deleted_at')
+        deleted_files_qs = File.objects.filter(is_deleted=True).select_related('uploaded_by', 'deleted_by', 'folder', 'folder__custom_page').order_by('-deleted_at')
+
+        if not is_super:
+            accessible_folder_ids = [f.id for f in deleted_folders_qs if f.has_access(user) or f.created_by == user or f.deleted_by == user]
+            deleted_folders_qs = deleted_folders_qs.filter(id__in=accessible_folder_ids)
+
+            accessible_file_ids = [f.id for f in deleted_files_qs if (f.folder and f.folder.has_access(user)) or f.uploaded_by == user or f.deleted_by == user]
+            deleted_files_qs = deleted_files_qs.filter(id__in=accessible_file_ids)
 
         items = []
 
-        for folder in deleted_folders:
+        for folder in deleted_folders_qs:
             ancestors = folder.get_ancestors()
-            path_str = " > ".join([a.name for a in ancestors]) if ancestors else "Root Repository"
+            module_name = folder.custom_page.title if folder.custom_page else "MOU Repository"
+            path_str = " > ".join([a.name for a in ancestors]) if ancestors else f"{module_name} Root"
+            days_rem = calculate_days_remaining(folder.deleted_at, setting.retention_period)
+
             items.append({
                 "id": f"folder_{folder.id}",
                 "real_id": folder.id,
                 "item_type": "folder",
                 "name": folder.name,
+                "module_name": module_name,
                 "deleted_at": folder.deleted_at or folder.updated_at,
                 "deleted_by_name": folder.deleted_by.name if folder.deleted_by else (folder.created_by.name if folder.created_by else "System"),
                 "deleted_by_email": folder.deleted_by.email if folder.deleted_by else "",
                 "original_path": path_str,
                 "file_size": None,
                 "google_drive_id": folder.google_folder_id,
-                "status": folder.status
+                "status": folder.status,
+                "days_remaining": days_rem
             })
 
-        for file_obj in deleted_files:
-            folder_path = file_obj.folder.name if file_obj.folder else "Root Repository"
+        for file_obj in deleted_files_qs:
+            module_name = file_obj.folder.custom_page.title if (file_obj.folder and file_obj.folder.custom_page) else "MOU Repository"
+            folder_path = file_obj.folder.name if file_obj.folder else f"{module_name} Root"
+            days_rem = calculate_days_remaining(file_obj.deleted_at, setting.retention_period)
+
             items.append({
                 "id": f"file_{file_obj.id}",
                 "real_id": file_obj.id,
                 "item_type": "file",
                 "name": file_obj.name,
+                "module_name": module_name,
                 "deleted_at": file_obj.deleted_at or file_obj.updated_at,
                 "deleted_by_name": file_obj.deleted_by.name if file_obj.deleted_by else (file_obj.uploaded_by.name if file_obj.uploaded_by else "System"),
                 "deleted_by_email": file_obj.deleted_by.email if file_obj.deleted_by else "",
                 "original_path": folder_path,
                 "file_size": file_obj.file_size or file_obj.size,
                 "google_drive_id": file_obj.google_file_id,
-                "mime_type": file_obj.mime_type or file_obj.file_type
+                "mime_type": file_obj.mime_type or file_obj.file_type,
+                "days_remaining": days_rem
             })
 
         # Sort all combined items by deleted_at descending
@@ -150,11 +211,11 @@ class RecycleBinViewSet(viewsets.ViewSet):
                             folder.deleted_at = None
                             folder.deleted_by = None
                             folder.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
-                            
+
                             # Also restore all child files & subfolders if deleted together
                             Folder.objects.filter(parent=folder, is_deleted=True).update(is_deleted=False, deleted_at=None, deleted_by=None)
                             File.objects.filter(folder=folder, is_deleted=True).update(is_deleted=False, deleted_at=None, deleted_by=None)
-                            
+
                             restored_count += 1
                             log_activity(request.user, f"Restored folder '{folder.name}' from Recycle Bin", "folders", request)
 
@@ -209,12 +270,7 @@ class RecycleBinViewSet(viewsets.ViewSet):
                         folder = Folder.objects.filter(id=item_id).first()
                         if folder:
                             folder_name = folder.name
-                            if folder.google_folder_id:
-                                try:
-                                    drive_service.delete_file(folder.google_folder_id)
-                                except Exception as d_err:
-                                    logger.warning(f"Google Drive folder deletion note: {d_err}")
-                            folder.delete()
+                            recursive_purge_folder(folder)
                             purged_count += 1
                             log_activity(request.user, f"Permanently deleted folder '{folder_name}' from Recycle Bin", "folders", request)
 
@@ -240,6 +296,7 @@ class RecycleBinViewSet(viewsets.ViewSet):
             logger.error(f"Permanent deletion failed: {e}", exc_info=True)
             return Response({"detail": f"Permanent deletion failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
     @action(detail=False, methods=['post'], url_path='empty')
     def empty_bin(self, request):
         """
@@ -262,12 +319,7 @@ class RecycleBinViewSet(viewsets.ViewSet):
                     purged_count += 1
 
                 for folder in deleted_folders:
-                    if folder.google_folder_id:
-                        try:
-                            drive_service.delete_file(folder.google_folder_id)
-                        except Exception:
-                            pass
-                    folder.delete()
+                    recursive_purge_folder(folder)
                     purged_count += 1
 
             log_activity(request.user, "Emptied entire Recycle Bin", "recycle_bin", request)
@@ -338,12 +390,7 @@ class RecycleBinViewSet(viewsets.ViewSet):
             purged += 1
 
         for fld in expired_folders:
-            if fld.google_folder_id:
-                try:
-                    drive_service.delete_file(fld.google_folder_id)
-                except Exception:
-                    pass
-            fld.delete()
+            recursive_purge_folder(fld)
             purged += 1
 
         if purged > 0:

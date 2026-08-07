@@ -463,9 +463,11 @@ export default function RecycleBin() {
               </TableCell>
               <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Name</TableCell>
               <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Type</TableCell>
+              <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Module</TableCell>
               <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Original Path</TableCell>
               <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Date & Time Deleted</TableCell>
               <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Deleted By</TableCell>
+              <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Auto-Purge In</TableCell>
               <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Size</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700, color: '#475569' }}>Actions</TableCell>
             </TableRow>
@@ -473,7 +475,7 @@ export default function RecycleBin() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
                   <CircularProgress size={32} />
                   <Typography variant="body2" sx={{ mt: 1, color: '#64748b' }}>
                     Loading Recycle Bin contents...
@@ -482,7 +484,7 @@ export default function RecycleBin() {
               </TableRow>
             ) : filteredItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
                   <DeleteIcon sx={{ fontSize: 48, color: '#cbd5e1', mb: 1 }} />
                   <Typography variant="h6" sx={{ color: '#64748b', fontWeight: 600 }}>
                     Recycle Bin is empty
@@ -528,6 +530,9 @@ export default function RecycleBin() {
                         variant="outlined"
                       />
                     </TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: '#2563eb', fontSize: '0.85rem' }}>
+                      {row.module_name || 'MOU Repository'}
+                    </TableCell>
                     <TableCell sx={{ color: '#64748b', fontSize: '0.85rem' }}>
                       {row.original_path}
                     </TableCell>
@@ -538,9 +543,23 @@ export default function RecycleBin() {
                       {row.deleted_by_name}
                     </TableCell>
                     <TableCell sx={{ color: '#64748b', fontSize: '0.85rem' }}>
+                      {row.days_remaining !== null && row.days_remaining !== undefined ? (
+                        <Chip
+                          label={`${row.days_remaining} Days`}
+                          size="small"
+                          color={row.days_remaining <= 3 ? 'error' : 'warning'}
+                          variant="outlined"
+                          sx={{ fontWeight: 600 }}
+                        />
+                      ) : (
+                        <Typography variant="caption" sx={{ color: '#94a3b8' }}>Never</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ color: '#64748b', fontSize: '0.85rem' }}>
                       {formatFileSize(row.file_size)}
                     </TableCell>
                     <TableCell align="right">
+
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <Tooltip title="Restore to original location">
                           <IconButton
