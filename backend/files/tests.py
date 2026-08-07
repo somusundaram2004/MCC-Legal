@@ -343,13 +343,13 @@ class FileSyncAPITests(APITestCase):
         self.assertEqual(response_dup.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("Duplicate upload detected", response_dup.data['detail'])
 
-        # Test threat detection for malicious extensions
+        # Test threat detection for malicious extensions (rejected with HTTP 400)
         malicious_file = SimpleUploadedFile("malicious.exe", b"malicious code", content_type="application/octet-stream")
         response_mal = self.client.post('/api/files/', {
             'folder_id': self.folder.id,
             'file': malicious_file
         }, format='multipart')
         
-        # Since duplicate checks happen, let's make sure it checks virus status on success
-        self.assertEqual(response_mal.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response_mal.data['virus_scan_status'], 'Threat Detected')
+        self.assertEqual(response_mal.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("rejected due to suspicious executable file extension", response_mal.data['detail'])
+

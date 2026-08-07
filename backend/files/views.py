@@ -158,11 +158,17 @@ class FileViewSet(viewsets.ModelViewSet):
 
             sha256_hash = calculate_sha256(uploaded_file)
             virus_status = perform_virus_scan(uploaded_file)
+            if virus_status == 'Threat Detected':
+                return Response(
+                    {"detail": f"File '{name}' was rejected due to suspicious executable file extension."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             # Detect duplicate uploads in the same folder
             duplicate = File.objects.filter(folder=folder, sha256_hash=sha256_hash).first()
             if duplicate:
                 return Response(
+
                     {"detail": f"Duplicate upload detected. The file '{name}' has the exact same content as the existing file '{duplicate.name}' in this folder."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
