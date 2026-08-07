@@ -353,6 +353,14 @@ class FolderViewSet(viewsets.ModelViewSet):
         """
         return self.create(request)
 
+    @action(detail=False, methods=['post'], url_path='create-custom')
+    def create_custom_alias(self, request):
+        """
+        Maps to POST /api/folders/create-custom/
+        """
+        return self.create(request)
+
+
     @action(detail=False, methods=['put'], url_path='rename')
     def rename_custom(self, request):
         """
