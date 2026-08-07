@@ -88,6 +88,8 @@ const Layout = ({ children }) => {
 
   // Fetch notifications
   const fetchNotifications = async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
     try {
       const res = await api.get('/api/notifications/');
       setNotifications(res.data);
@@ -100,9 +102,12 @@ const Layout = ({ children }) => {
         sessionStorage.setItem('login_notified', 'true');
       }
     } catch (err) {
-      console.error("Failed to load notifications:", err);
+      if (err?.response?.status !== 401) {
+        console.error("Failed to load notifications:", err);
+      }
     }
   };
+
 
   // Keyboard shortcut listener for Ctrl+K
   useEffect(() => {
@@ -210,6 +215,8 @@ const Layout = ({ children }) => {
   const [customPages, setCustomPages] = useState([]);
 
   const fetchCustomPages = React.useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
     try {
       const res = await api.get('/api/users/custom-pages/');
       const rawList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
@@ -225,9 +232,12 @@ const Layout = ({ children }) => {
         return roles.some(r => r.toLowerCase() === userRole.toLowerCase()) || allowedUserIds.includes(userId);
       }));
     } catch (err) {
-      console.debug('Failed to load custom pages for sidebar:', err);
+      if (err?.response?.status !== 401) {
+        console.debug('Failed to load custom pages for sidebar:', err);
+      }
     }
   }, [user]);
+
 
   useEffect(() => {
     if (user) {
