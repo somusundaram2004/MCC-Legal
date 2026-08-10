@@ -45,7 +45,8 @@ import {
   Settings as SettingsIcon,
   CleaningServices as CleanIcon,
   Schedule as ScheduleIcon,
-  FolderZip as ArchiveIcon
+  FolderZip as ArchiveIcon,
+  ExtensionOutlined as ModuleIcon
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -218,6 +219,8 @@ export default function RecycleBin() {
 
   // Filter items
   const filteredItems = items.filter(item => {
+    if (!isSuperAdmin && item.item_type === 'module') return false;
+
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.original_path.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -225,6 +228,7 @@ export default function RecycleBin() {
     
     const matchesType =
       typeFilter === 'all' ||
+      (typeFilter === 'module' && item.item_type === 'module') ||
       (typeFilter === 'folder' && item.item_type === 'folder') ||
       (typeFilter === 'file' && item.item_type === 'file');
 
@@ -269,7 +273,9 @@ export default function RecycleBin() {
               Recycle Bin
             </Typography>
             <Typography variant="body2" sx={{ color: '#64748b' }}>
-              Restore soft-deleted folders & files or manage auto-delete retention policy
+              {isSuperAdmin
+                ? "Restore soft-deleted modules, folders & files or manage auto-delete retention policy"
+                : "Restore soft-deleted folders & files"}
             </Typography>
           </Box>
         </Box>
@@ -325,14 +331,17 @@ export default function RecycleBin() {
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mt: 1 }}>
               <Typography variant="h3" sx={{ fontWeight: 800, color: '#0f172a' }}>
-                {items.length}
+                {filteredItems.length}
               </Typography>
               <Typography variant="subtitle1" sx={{ color: '#64748b' }}>
                 deleted item(s) stored
               </Typography>
             </Box>
             <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mt: 1 }}>
-              Folders: {items.filter(i => i.item_type === 'folder').length} | Files: {items.filter(i => i.item_type === 'file').length}
+              {isSuperAdmin
+                ? `Modules: ${items.filter(i => i.item_type === 'module').length} | Folders: ${items.filter(i => i.item_type === 'folder').length} | Files: ${items.filter(i => i.item_type === 'file').length}`
+                : `Folders: ${items.filter(i => i.item_type === 'folder').length} | Files: ${items.filter(i => i.item_type === 'file').length}`
+              }
             </Typography>
           </CardContent>
         </Card>
@@ -416,12 +425,13 @@ export default function RecycleBin() {
                 }
               }}
             />
-            <FormControl size="small" sx={{ minWidth: 150 }}>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
               <Select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
               >
                 <MenuItem value="all">All Types</MenuItem>
+                {isSuperAdmin && <MenuItem value="module">Modules Only</MenuItem>}
                 <MenuItem value="folder">Folders Only</MenuItem>
                 <MenuItem value="file">Files Only</MenuItem>
               </Select>
@@ -502,7 +512,7 @@ export default function RecycleBin() {
                     Recycle Bin is empty
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#94a3b8' }}>
-                    Deleted folders and files will appear here before being permanently purged.
+                    Deleted modules, folders and files will appear here before being permanently purged.
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -524,7 +534,9 @@ export default function RecycleBin() {
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        {row.item_type === 'folder' ? (
+                        {row.item_type === 'module' ? (
+                          <ModuleIcon sx={{ color: '#8b5cf6' }} />
+                        ) : row.item_type === 'folder' ? (
                           <FolderIcon sx={{ color: '#3b82f6' }} />
                         ) : (
                           <FileIcon sx={{ color: '#64748b' }} />
@@ -536,12 +548,14 @@ export default function RecycleBin() {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={row.item_type === 'folder' ? 'Folder' : 'File'}
+                        label={row.item_type === 'module' ? 'Module' : row.item_type === 'folder' ? 'Folder' : 'File'}
                         size="small"
-                        color={row.item_type === 'folder' ? 'primary' : 'default'}
+                        color={row.item_type === 'module' ? 'secondary' : row.item_type === 'folder' ? 'primary' : 'default'}
                         variant="outlined"
+                        sx={row.item_type === 'module' ? { borderColor: '#8b5cf6', color: '#7c3aed', fontWeight: 600 } : {}}
                       />
                     </TableCell>
+
                     <TableCell sx={{ fontWeight: 600, color: '#2563eb', fontSize: '0.85rem' }}>
                       {row.module_name || 'MOU Repository'}
                     </TableCell>

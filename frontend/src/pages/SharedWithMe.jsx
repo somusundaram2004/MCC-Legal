@@ -112,11 +112,20 @@ const SharedWithMe = () => {
                     <Button 
                       size="small" 
                       variant="contained" 
-                      onClick={() => navigate(`/explorer?folder=${folder.id}`)}
+                      onClick={() => {
+                        if (folder.custom_page_slug) {
+                          navigate(`/custom-page/${folder.custom_page_slug}?folder=${folder.id}`);
+                        } else if (folder.custom_page_id) {
+                          navigate(`/custom-page/${folder.custom_page_id}?folder=${folder.id}`);
+                        } else {
+                          navigate(`/explorer?folder=${folder.id}`);
+                        }
+                      }}
                       sx={{ borderRadius: '8px', fontWeight: 700, background: 'linear-gradient(135deg, var(--indigo), var(--violet))' }}
                     >
                       Open Folder
                     </Button>
+
                   </TableCell>
                 </TableRow>
               ))}

@@ -189,7 +189,6 @@ const CustomizerHub = () => {
           }}
         >
           <Tab icon={<InfoIcon />} iconPosition="start" label="Website Info" />
-          <Tab icon={<ImageIcon />} iconPosition="start" label="Branding Assets" />
           <Tab icon={<PaletteIcon />} iconPosition="start" label="Theme & Colors" />
           <Tab icon={<LockIcon />} iconPosition="start" label="Login Page" />
           <Tab icon={<DevicesIcon />} iconPosition="start" label="Live Preview" />
@@ -229,59 +228,9 @@ const CustomizerHub = () => {
         </Card>
       )}
 
-      {/* Tab 1: Branding Assets */}
+      {/* Tab 1: Theme & Colors */}
       {activeTab === 1 && (
-        <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-            Branding Images & Logos
-          </Typography>
-          <Grid container spacing={3}>
-            {[
-              { label: 'Main Website Logo', key: 'website_logo' },
-              { label: 'Small / Compact Logo', key: 'small_logo' },
-              { label: 'White / Dark Mode Logo', key: 'white_logo' },
-              { label: 'Login Screen Logo', key: 'login_logo' },
-              { label: 'Login Background Image', key: 'login_bg' },
-              { label: 'Favicon', key: 'favicon' },
-              { label: 'Default User Avatar', key: 'default_avatar' },
-              { label: '404 Page Illustration', key: 'illustration_404' }
-            ].map((item) => (
-              <Grid xs={12} sm={6} md={4} key={item.key}>
-                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '14px', textAlign: 'center' }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                    {item.label}
-                  </Typography>
-                  {customization?.branding?.[item.key] ? (
-                    <Box
-                      component="img"
-                      src={customization.branding[item.key]}
-                      alt={item.label}
-                      sx={{ maxHeight: 70, maxWidth: '100%', objectFit: 'contain', mb: 2, borderRadius: '6px' }}
-                    />
-                  ) : (
-                    <Box sx={{ height: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover', mb: 2, borderRadius: '6px' }}>
-                      <Typography variant="caption" color="text.secondary">No asset uploaded</Typography>
-                    </Box>
-                  )}
-                  <Button
-                    variant="outlined"
-                    component="label"
-                    size="small"
-                    startIcon={<CloudUploadIcon />}
-                    sx={{ textTransform: 'none', borderRadius: '8px' }}
-                  >
-                    Upload Image
-                    <input type="file" hidden accept="image/*" onChange={(e) => handleFileUpload(e, item.key)} />
-                  </Button>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
-        </Card>
-      )}
 
-      {/* Tab 2: Theme & Colors */}
-      {activeTab === 2 && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {/* Theme Presets Section */}
           <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3 }}>
@@ -495,8 +444,8 @@ const CustomizerHub = () => {
         </Box>
       )}
 
-      {/* Tab 3: Login Page Customizer */}
-      {activeTab === 3 && (
+      {/* Tab 2: Login Page Customizer */}
+      {activeTab === 2 && (
         <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3 }}>
           <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
             Login Page Branding & Content
@@ -546,8 +495,8 @@ const CustomizerHub = () => {
         </Card>
       )}
 
-      {/* Tab 4: Live Preview */}
-      {activeTab === 4 && (
+      {/* Tab 3: Live Preview */}
+      {activeTab === 3 && (
         <Card sx={{ borderRadius: '18px', border: '1px solid', borderColor: 'divider', p: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
@@ -592,10 +541,11 @@ const CustomizerHub = () => {
         </Card>
       )}
 
-      {/* Tab 5: Website Builder */}
-      {activeTab === 5 && (
+      {/* Tab 4: Website Builder */}
+      {activeTab === 4 && (
         <WebsiteBuilderTab />
       )}
+
     </Box>
   );
 };

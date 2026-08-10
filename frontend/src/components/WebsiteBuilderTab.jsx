@@ -276,17 +276,30 @@ const WebsiteBuilderTab = () => {
   };
 
   const handleDeletePage = async (id, pageTitle) => {
-    if (!window.confirm(`Are you sure you want to delete the module "${pageTitle}"?`)) return;
+    if (!window.confirm(`Are you sure you want to move the module "${pageTitle}" to Recycle Bin?`)) return;
     try {
       await api.delete(`/api/users/custom-pages/${id}/`);
-      setSuccess(`Module "${pageTitle}" deleted successfully.`);
+      setSuccess(`Module "${pageTitle}" moved to Recycle Bin.`);
       fetchPages();
       triggerGlobalAutoRefresh(REFRESH_CATEGORIES.SETTINGS);
     } catch (err) {
-      console.error('Failed to delete module:', err);
-      setError('Failed to delete module.');
+      console.error('Failed to move module to Recycle Bin:', err);
+      setError('Failed to move module to Recycle Bin.');
     }
   };
+
+  const handleRepublishPage = async (id, pageTitle) => {
+    try {
+      await api.post(`/api/users/custom-pages/${id}/republish/`);
+      setSuccess(`Module "${pageTitle}" and all repository data retrieved & republished successfully!`);
+      fetchPages();
+      triggerGlobalAutoRefresh(REFRESH_CATEGORIES.SETTINGS);
+    } catch (err) {
+      console.error('Failed to republish module:', err);
+      setError('Failed to republish module and retrieve data.');
+    }
+  };
+
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -363,20 +376,20 @@ const WebsiteBuilderTab = () => {
       {/* Active Custom Pages List */}
       <Box>
         <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 2 }}>
-          Active Custom Sidebar Modules ({pages.length})
+          Active Custom Sidebar Modules ({pages.filter(p => p.is_published !== false && p.is_enabled !== false).length})
         </Typography>
 
         {loading ? (
           <Box sx={{ py: 6, textAlign: 'center' }}><CircularProgress /></Box>
-        ) : pages.length === 0 ? (
+        ) : pages.filter(p => p.is_published !== false && p.is_enabled !== false).length === 0 ? (
           <Paper sx={{ p: 4, textAlign: 'center', borderRadius: '16px', bgcolor: 'action.hover' }}>
             <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
-              No custom dynamic modules created yet. Click "Build New Module" or pick a Quick Start Preset above!
+              No active custom dynamic modules. Click "Build New Module" or pick a Quick Start Preset above!
             </Typography>
           </Paper>
         ) : (
           <Grid container spacing={2}>
-            {pages.map((p) => (
+            {pages.filter(p => p.is_published !== false && p.is_enabled !== false).map((p) => (
               <Grid xs={12} sm={6} md={4} key={p.id}>
                 <Card sx={{ p: 2.5, borderRadius: '16px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
@@ -522,11 +535,17 @@ const WebsiteBuilderTab = () => {
                       <MenuItem value="">
                         ✨ Auto-create / Default System Root Folder
                       </MenuItem>
+                      {rootFolderId && !availableFolders.some(f => String(f.id) === String(rootFolderId)) && (
+                        <MenuItem key={rootFolderId} value={String(rootFolderId)}>
+                          📁 {rootFolderName || `Linked Repository Folder (ID: ${rootFolderId})`}
+                        </MenuItem>
+                      )}
                       {availableFolders.map((folder) => (
                         <MenuItem key={folder.id} value={String(folder.id)}>
                           📁 {folder.name} {folder.department_name ? `(${folder.department_name})` : ''}
                         </MenuItem>
                       ))}
+
                     </Select>
                     <FormHelperText sx={{ fontWeight: 600 }}>
                       {rootFolderId ? `Linked to existing folder: "${rootFolderName}"` : '✨ Auto-creates a dedicated root folder for this module on publish'}
@@ -762,20 +781,42 @@ const WebsiteBuilderTab = () => {
         <DialogActions sx={{ p: 2.5, pt: 1, borderTop: '1px solid', borderColor: 'divider', mt: 1, justifyContent: 'space-between' }}>
           <Box>
             {editId && (
-              <Button
-                variant="outlined"
-                color="error"
-                onClick={() => {
-                  handleDeletePage(editId, title);
-                  setDialogOpen(false);
-                }}
-                startIcon={<DeleteIcon />}
-                sx={{ fontWeight: 700, textTransform: 'none', borderRadius: '12px' }}
-              >
-                Move to Recycle Bin
-              </Button>
+              isPublished ? (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => {
+                    handleDeletePage(editId, title);
+                    setDialogOpen(false);
+                  }}
+                  startIcon={<DeleteIcon />}
+                  sx={{ fontWeight: 700, textTransform: 'none', borderRadius: '12px' }}
+                >
+                  Move to Recycle Bin
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    handleRepublishPage(editId, title);
+                    setDialogOpen(false);
+                  }}
+                  startIcon={<PublishIcon />}
+                  sx={{
+                    fontWeight: 800,
+                    textTransform: 'none',
+                    borderRadius: '12px',
+                    bgcolor: '#10B981',
+                    color: '#ffffff',
+                    '&:hover': { bgcolor: '#059669' }
+                  }}
+                >
+                  🚀 Republish &amp; Retrieve Data
+                </Button>
+              )
             )}
           </Box>
+
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button onClick={() => setDialogOpen(false)} sx={{ fontWeight: 700, textTransform: 'none' }}>Cancel</Button>
             <Button

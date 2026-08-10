@@ -39,6 +39,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import BusinessIcon from '@mui/icons-material/Business';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
+import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import PushPinIcon from '@mui/icons-material/PushPin';
 import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
@@ -257,6 +258,7 @@ const Layout = ({ children }) => {
     { text: 'User Management', icon: <ManageAccountsIcon />,      path: '/users',      permission: 'manage_users',   iconColor: '#EC4899' },
     { text: 'Activity Logs',   icon: <AdminPanelSettingsIcon />,  path: '/logs',       permission: 'manage_users',   iconColor: '#F97316' },
     { text: 'Recycle Bin',     icon: <DeleteIcon />,              path: '/recycle-bin',permission: 'manage_users',   iconColor: '#EF4444' },
+    { text: 'Import & Export', icon: <SystemUpdateAltIcon />,     path: '/import-export', permission: 'manage_users', iconColor: '#10B981' },
     { text: 'System Settings', icon: <SettingsIcon />,           path: '/settings',   permission: 'view_dashboard', iconColor: '#64748B' },
     { text: 'System Map',      icon: <MapIcon />,                 path: '/system-map', permission: 'view_dashboard', iconColor: '#6366F1' },
   ];
@@ -530,19 +532,24 @@ const Layout = ({ children }) => {
                     ml: 1.2,
                     display: 'flex',
                     alignItems: 'center',
-                    justify: 'space-between',
-                    width: '100%'
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    minWidth: 0
                   }}>
                     <Typography sx={{
                       fontSize: '0.858rem',
                       fontWeight: isSelected ? 700 : 500,
                       color: isSelected ? '#ffffff' : 'text.primary',
-                      lineHeight: 1,
+                      lineHeight: 1.3,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: 1
                     }}>
                       {cp.title}
                     </Typography>
                     {cp.badge && (
-                      <Chip label={cp.badge} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 800, bgcolor: cp.badge_color || '#3B82F6', color: '#fff', ml: 0.5 }} />
+                      <Chip label={cp.badge} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 800, bgcolor: cp.badge_color || '#3B82F6', color: '#fff', ml: 0.5, flexShrink: 0 }} />
                     )}
                   </Box>
                 </ListItemButton>

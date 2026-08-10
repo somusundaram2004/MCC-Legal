@@ -34,12 +34,15 @@ import CloseIcon from '@mui/icons-material/Close';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
+import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
+
 
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSiteTime } from '../context/SiteTimeContext';
-import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
+import { useAutoRefresh, triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 import BreadcrumbNav from '../components/BreadcrumbNav';
+
 import FilePreviewModal from '../components/FilePreviewModal';
 
 const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
@@ -47,6 +50,8 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const { getFormattedSiteDateTime } = useSiteTime();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+
   const searchParamQuery = searchParams.get('search') || '';
 
   const getFolderStatusColor = (status) => {
@@ -226,12 +231,237 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const [isSignedUpload, setIsSignedUpload] = useState(false);
   const [uploadSummary, setUploadSummary] = useState('');
 
+  // Move Folder to Module Dialog state
+  const [moveModuleDialogOpen, setMoveModuleDialogOpen] = useState(false);
+  const [moveFolderTargetItem, setMoveFolderTargetItem] = useState(null);
+  const [targetModuleId, setTargetModuleId] = useState('mou_repository');
+  const [moduleOptions, setModuleOptions] = useState([]);
+  const [movingLoading, setMovingLoading] = useState(false);
+
+  // Full Folder Import state & ref
+  const folderInputRef = useRef(null);
+  const [folderImportModalOpen, setFolderImportModalOpen] = useState(false);
+  const [folderImportFiles, setFolderImportFiles] = useState([]);
+  const [folderImportLoading, setFolderImportLoading] = useState(false);
+
+
+  const handleOpenMoveModal = async (folderObj) => {
+    setMoveFolderTargetItem(folderObj);
+    setTargetModuleId(folderObj.custom_page_id ? String(folderObj.custom_page_id) : 'mou_repository');
+    try {
+      const res = await api.get('/api/users/custom-pages/');
+      const rawList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setModuleOptions(rawList);
+    } catch (err) {
+      console.error('Failed to load target module list:', err);
+    }
+    setMoveModuleDialogOpen(true);
+  };
+
+  const handleConfirmMoveModule = async () => {
+    if (!moveFolderTargetItem) return;
+    setMovingLoading(true);
+    try {
+      await api.post(`/api/folders/${moveFolderTargetItem.id}/move-module/`, {
+        target_custom_page_id: targetModuleId
+      });
+      setSuccess(`Folder "${moveFolderTargetItem.name}" moved to target repository successfully!`);
+      setMoveModuleDialogOpen(false);
+      setMoveFolderTargetItem(null);
+      fetchContents();
+      if (typeof triggerGlobalAutoRefresh === 'function') {
+        triggerGlobalAutoRefresh(REFRESH_CATEGORIES.FOLDERS);
+      }
+    } catch (err) {
+      console.error('Failed to move folder to module:', err);
+      setError(err.response?.data?.detail || 'Failed to move folder to target module.');
+    } finally {
+      setMovingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.webkitdirectory = true;
+      folderInputRef.current.directory = true;
+      folderInputRef.current.mozdirectory = true;
+      folderInputRef.current.removeAttribute('multiple');
+      folderInputRef.current.setAttribute('webkitdirectory', '');
+      folderInputRef.current.setAttribute('directory', '');
+      folderInputRef.current.setAttribute('mozdirectory', '');
+    }
+  }, []);
+
+  const handleTriggerFolderImportInput = async () => {
+    if (window.showDirectoryPicker) {
+      try {
+        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+        setFolderImportLoading(true);
+
+        const filesArr = [];
+        const scanDirectoryHandle = async (handle, path = '') => {
+          for await (const entry of handle.values()) {
+            if (entry.kind === 'file') {
+              const file = await entry.getFile();
+              try {
+                Object.defineProperty(file, 'webkitRelativePath', {
+                  value: path + entry.name,
+                  writable: false,
+                  configurable: true
+                });
+              } catch (_) {}
+              filesArr.push(file);
+            } else if (entry.kind === 'directory') {
+              await scanDirectoryHandle(entry, path + entry.name + '/');
+            }
+          }
+        };
+
+        await scanDirectoryHandle(dirHandle, dirHandle.name + '/');
+        if (filesArr.length > 0) {
+          setFolderImportFiles(filesArr);
+          setFolderImportModalOpen(true);
+        }
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          return;
+        }
+        console.warn("window.showDirectoryPicker failed, falling back to input:", err);
+      } finally {
+        setFolderImportLoading(false);
+      }
+    }
+
+    // Fallback for browsers without showDirectoryPicker
+    if (folderInputRef.current) {
+      folderInputRef.current.webkitdirectory = true;
+      folderInputRef.current.directory = true;
+      folderInputRef.current.mozdirectory = true;
+      folderInputRef.current.removeAttribute('multiple');
+      folderInputRef.current.value = null;
+      folderInputRef.current.click();
+    }
+  };
+
+  const scanEntry = async (entry, path = '') => {
+    if (!entry) return [];
+    if (entry.isFile) {
+      return new Promise((resolve) => {
+        entry.file((file) => {
+          try {
+            Object.defineProperty(file, 'webkitRelativePath', {
+              value: path + file.name,
+              writable: false,
+              configurable: true
+            });
+          } catch (_) {}
+          resolve([file]);
+        }, () => resolve([]));
+      });
+    } else if (entry.isDirectory) {
+      const dirReader = entry.createReader();
+      const readAllEntries = async () => {
+        let allEntries = [];
+        let batch;
+        do {
+          batch = await new Promise((resolve) => {
+            dirReader.readEntries((entries) => resolve(entries || []), () => resolve([]));
+          });
+          allEntries = allEntries.concat(batch);
+        } while (batch && batch.length > 0);
+        return allEntries;
+      };
+
+      const entries = await readAllEntries();
+      const filesArr = await Promise.all(
+        entries.map((e) => scanEntry(e, path + entry.name + '/'))
+      );
+      return filesArr.flat();
+    }
+    return [];
+  };
+
+  const handleFolderDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const items = e.dataTransfer?.items;
+    if (!items || items.length === 0) return;
+
+    setFolderImportLoading(true);
+    try {
+      const entries = Array.from(items)
+        .map((item) => (item.webkitGetAsEntry ? item.webkitGetAsEntry() : null))
+        .filter(Boolean);
+
+      const filesArr = await Promise.all(entries.map((entry) => scanEntry(entry)));
+      const flattenedFiles = filesArr.flat();
+
+      if (flattenedFiles.length > 0) {
+        setFolderImportFiles(flattenedFiles);
+        setFolderImportModalOpen(true);
+      }
+    } catch (err) {
+      console.error("Failed to read dropped folder:", err);
+    } finally {
+      setFolderImportLoading(false);
+    }
+  };
+
+  const handleFolderImportChange = (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setFolderImportFiles(Array.from(files));
+      setFolderImportModalOpen(true);
+    }
+  };
+
+  const handleFolderImportSubmit = async () => {
+    if (!folderImportFiles || folderImportFiles.length === 0) return;
+    setFolderImportLoading(true);
+
+    const formData = new FormData();
+    if (currentFolderId) {
+      formData.append('parent_id', currentFolderId);
+    }
+    if (customPageId) {
+      formData.append('custom_page_id', customPageId);
+    }
+
+    folderImportFiles.forEach((file) => {
+      formData.append('files', file);
+      const relPath = file.webkitRelativePath || file.name;
+      formData.append('relative_paths', relPath);
+    });
+
+    try {
+      const res = await api.post('/api/folders/import-folder/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSuccess(res.data.detail || "Directory tree imported successfully!");
+      setFolderImportModalOpen(false);
+      setFolderImportFiles([]);
+      fetchContents();
+      if (typeof triggerGlobalAutoRefresh === 'function') {
+        triggerGlobalAutoRefresh(REFRESH_CATEGORIES.FOLDERS);
+      }
+    } catch (err) {
+      console.error("Folder import error:", err);
+      setError(err.response?.data?.detail || "Failed to import folder tree.");
+    } finally {
+      setFolderImportLoading(false);
+    }
+  };
+
+
+
   useEffect(() => {
     if (fileDialogOpen) {
       setIsSignedUpload(user?.role?.name !== 'Super Admin' && user?.role?.name !== 'Admin');
       setUploadSummary('');
     }
   }, [fileDialogOpen, user]);
+
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -313,12 +543,15 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         setFolderData({ subfolders: res.data.folders, files: res.data.files });
         setCurrentFolder(null);
       } else if (currentFolderId === null) {
-        // Root Directory
-        const res = await api.get('/api/folders/root/');
+        // Root Directory for specific module or MOU Repositories
+        const params = {};
+        if (customPageId) params.custom_page_id = customPageId;
+        const res = await api.get('/api/folders/root/', { params });
         if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
         setFolderData({ subfolders: res.data.subfolders, files: [] });
         setCurrentFolder(null);
       } else {
+
         // Inner Directory
         const res = await api.get(`/api/folders/${currentFolderId}/contents/`);
         if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
@@ -986,6 +1219,36 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
             >
               New Folder
             </Button>
+          )}
+          {!searchParamQuery && (
+            <>
+              <input
+                type="file"
+                ref={(node) => {
+                  folderInputRef.current = node;
+                  if (node) {
+                    node.webkitdirectory = true;
+                    node.directory = true;
+                    node.mozdirectory = true;
+                    node.removeAttribute('multiple');
+                    node.setAttribute('webkitdirectory', '');
+                    node.setAttribute('directory', '');
+                    node.setAttribute('mozdirectory', '');
+                  }
+                }}
+                onChange={handleFolderImportChange}
+                style={{ display: 'none' }}
+              />
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<FolderIcon />}
+                onClick={handleTriggerFolderImportInput}
+                sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
+              >
+                Import Folder
+              </Button>
+            </>
           )}
           {!searchParamQuery && currentFolderId && (
             <Button
@@ -2090,6 +2353,158 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         </DialogActions>
       </Dialog>
 
+      {/* Move Folder to Module Dialog */}
+      <Dialog open={moveModuleDialogOpen} onClose={() => setMoveModuleDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DriveFileMoveIcon sx={{ color: 'primary.main' }} />
+          Move Folder to Module
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+            Select the destination repository module where you want to transfer <strong>"{moveFolderTargetItem?.name}"</strong>:
+          </Typography>
+          <FormControl fullWidth size="small">
+            <InputLabel id="destination-module-label">Destination Repository</InputLabel>
+            <Select
+              labelId="destination-module-label"
+              value={targetModuleId}
+              label="Destination Repository"
+              onChange={(e) => setTargetModuleId(e.target.value)}
+            >
+              <MenuItem value="mou_repository">
+                📁 MOU Repositories
+              </MenuItem>
+              {moduleOptions.map((mod) => (
+                <MenuItem key={mod.id} value={String(mod.id)}>
+                  📁 {mod.title}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setMoveModuleDialogOpen(false)} sx={{ textTransform: 'none', fontWeight: 700 }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleConfirmMoveModule}
+            disabled={movingLoading}
+            startIcon={<DriveFileMoveIcon />}
+            sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 800 }}
+          >
+            {movingLoading ? 'Moving...' : 'Move Folder'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Folder Import Directory Tree Dialog */}
+      <Dialog
+        open={folderImportModalOpen}
+        onClose={() => !folderImportLoading && setFolderImportModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '16px' } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <FolderIcon sx={{ color: 'secondary.main' }} />
+          Import Directory Tree
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            You are about to import a folder structure into <strong>{currentFolder ? currentFolder.name : 'Root Directory'}</strong>.
+          </Typography>
+
+          {/* Drag and Drop Zone */}
+          <Box
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={handleFolderDrop}
+            onClick={handleTriggerFolderImportInput}
+            sx={{
+              p: 3,
+              mb: 2.5,
+              border: '2px dashed',
+              borderColor: 'secondary.main',
+              borderRadius: '14px',
+              bgcolor: 'action.hover',
+              textAlign: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              '&:hover': { bgcolor: 'action.selected', transform: 'scale(1.005)' }
+            }}
+          >
+            <FolderIcon sx={{ fontSize: 42, color: 'secondary.main', mb: 1 }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+              Click to select a Folder or Drag &amp; Drop a Folder here
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Selects the complete folder directory and all subfolders automatically
+            </Typography>
+          </Box>
+
+          {folderImportFiles.length > 0 && (
+            <>
+              <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: '12px', mb: 2.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'primary.main', mb: 0.5 }}>
+                  Directory Summary:
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                  • <strong>Root Folder:</strong> {folderImportFiles[0]?.webkitRelativePath?.split('/')[0] || 'Selected Folder'}
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                  • <strong>Total Files:</strong> {folderImportFiles.length}
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                  • <strong>Total Size:</strong> {(folderImportFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(2)} MB
+                </Typography>
+              </Box>
+
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1 }}>
+                File Structure Preview (First 8 files):
+              </Typography>
+              <Box sx={{ maxHeight: 180, overflowY: 'auto', p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: '10px', bgcolor: 'background.paper' }}>
+                {folderImportFiles.slice(0, 8).map((f, i) => (
+                  <Typography key={i} variant="caption" sx={{ display: 'block', fontFamily: 'monospace', fontSize: '0.78rem', py: 0.3 }} noWrap>
+                    📄 {f.webkitRelativePath || f.name}
+                  </Typography>
+                ))}
+                {folderImportFiles.length > 8 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', pt: 1, display: 'block' }}>
+                    ... and {folderImportFiles.length - 8} more files.
+                  </Typography>
+                )}
+              </Box>
+            </>
+          )}
+
+          {folderImportLoading && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="caption" color="primary" sx={{ fontWeight: 700, display: 'block', mb: 1 }}>
+                Uploading folder tree structure &amp; creating files...
+              </Typography>
+              <LinearProgress color="secondary" />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setFolderImportModalOpen(false)} disabled={folderImportLoading} sx={{ textTransform: 'none', fontWeight: 700 }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={handleFolderImportSubmit}
+            disabled={folderImportLoading}
+            startIcon={<UploadFileIcon />}
+            sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 800 }}
+          >
+            {folderImportLoading ? 'Importing Folder...' : `Import ${folderImportFiles.length} Files`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+
+
       {/* Actions Options Menu for understandable controls */}
       <Menu
         anchorEl={menuAnchor}
@@ -2124,10 +2539,17 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                 Share Settings
               </MenuItem>
             )}
+            {hasPermission('rename_folder') && (
+              <MenuItem onClick={() => { handleOpenMoveModal(activeItem.data); handleMenuClose(); }}>
+                <ListItemIcon><DriveFileMoveIcon fontSize="small" sx={{ color: 'primary.main' }} /></ListItemIcon>
+                Move to Module / Repository
+              </MenuItem>
+            )}
             <MenuItem onClick={() => { handleOpenAudit(activeItem.data.id); }}>
               <ListItemIcon><InfoIcon fontSize="small" /></ListItemIcon>
               Folder View Option
             </MenuItem>
+
             {hasPermission('delete_folder') && (
               <MenuItem onClick={() => { triggerDelete(activeItem.data, 'folder'); handleMenuClose(); }} sx={{ color: 'error.main' }}>
                 <ListItemIcon><DeleteOutlinedIcon fontSize="small" color="error" /></ListItemIcon>

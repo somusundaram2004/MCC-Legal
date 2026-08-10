@@ -28,6 +28,7 @@ const SharedWithMe = lazy(() => import('./pages/SharedWithMe'));
 const Departments = lazy(() => import('./pages/Departments'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const Settings = lazy(() => import('./pages/Settings'));
+const ImportExportPage = lazy(() => import('./pages/ImportExportPage'));
 const RecycleBin = lazy(() => import('./pages/RecycleBin'));
 const Register = lazy(() => import('./pages/Register'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
@@ -199,6 +200,15 @@ function App() {
                       element={
                         <ProtectedRoute requiredPermission="view_dashboard">
                           <Layout><Settings /></Layout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/import-export"
+                      element={
+                        <ProtectedRoute requiredPermission="manage_users">
+                          <Layout><ImportExportPage /></Layout>
                         </ProtectedRoute>
                       }
                     />

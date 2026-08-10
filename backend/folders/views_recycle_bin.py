@@ -111,6 +111,13 @@ class RecycleBinViewSet(viewsets.ViewSet):
         user = request.user
         is_super = user and user.is_authenticated and (user.is_superuser or (user.role and user.role.name == "Super Admin"))
 
+        from users.models import CustomDynamicPage
+        from django.db.models import Q
+
+        # 1. Modules in Recycle Bin (is_published=False or is_enabled=False)
+        deleted_modules_qs = CustomDynamicPage.objects.filter(Q(is_published=False) | Q(is_enabled=False)).order_by('-updated_at')
+        deleted_module_page_ids = set(deleted_modules_qs.values_list('id', flat=True))
+
         deleted_folders_qs = Folder.objects.filter(is_deleted=True).select_related('created_by', 'deleted_by', 'parent', 'custom_page').order_by('-deleted_at')
         deleted_files_qs = File.objects.filter(is_deleted=True).select_related('uploaded_by', 'deleted_by', 'folder', 'folder__custom_page').order_by('-deleted_at')
 
@@ -123,7 +130,35 @@ class RecycleBinViewSet(viewsets.ViewSet):
 
         items = []
 
+        # Add deleted modules (Super Admin ONLY)
+        if is_super:
+            for page in deleted_modules_qs:
+                days_rem = calculate_days_remaining(page.updated_at, setting.retention_period)
+                items.append({
+                    "id": f"module_{page.id}",
+                    "real_id": str(page.id),
+                    "item_type": "module",
+                    "name": page.title,
+                    "module_name": page.title,
+                    "deleted_at": page.updated_at,
+                    "deleted_by_name": "Super Admin",
+                    "deleted_by_email": "",
+                    "original_path": f"Website Builder > {page.title}",
+                    "file_size": None,
+                    "google_drive_id": page.google_drive_folder_id,
+                    "status": "In Recycle Bin",
+                    "days_remaining": days_rem
+                })
+
+        deleted_parent_folder_ids = set(Folder.objects.filter(is_deleted=True).values_list('id', flat=True))
+
+        # Add deleted folders (exclude child folders of deleted modules or deleted parent folders)
         for folder in deleted_folders_qs:
+            if folder.custom_page_id in deleted_module_page_ids:
+                continue  # Represented by top-level deleted module item
+            if folder.parent_id and folder.parent_id in deleted_parent_folder_ids:
+                continue  # Represented by top-level deleted parent folder item
+
             ancestors = folder.get_ancestors()
             module_name = folder.custom_page.title if folder.custom_page else "MOU Repository"
             path_str = " > ".join([a.name for a in ancestors]) if ancestors else f"{module_name} Root"
@@ -145,7 +180,14 @@ class RecycleBinViewSet(viewsets.ViewSet):
                 "days_remaining": days_rem
             })
 
+        # Add deleted files (exclude child files of deleted modules or deleted parent folders)
         for file_obj in deleted_files_qs:
+            if file_obj.folder:
+                if file_obj.folder.custom_page_id in deleted_module_page_ids:
+                    continue  # Represented by top-level deleted module item
+                if file_obj.folder.is_deleted:
+                    continue  # Represented by top-level deleted parent folder item
+
             module_name = file_obj.folder.custom_page.title if (file_obj.folder and file_obj.folder.custom_page) else "MOU Repository"
             folder_path = file_obj.folder.name if file_obj.folder else f"{module_name} Root"
             days_rem = calculate_days_remaining(file_obj.deleted_at, setting.retention_period)
@@ -166,6 +208,7 @@ class RecycleBinViewSet(viewsets.ViewSet):
                 "days_remaining": days_rem
             })
 
+
         # Sort all combined items by deleted_at descending
         items.sort(key=lambda x: str(x.get('deleted_at') or ''), reverse=True)
 
@@ -184,6 +227,9 @@ class RecycleBinViewSet(viewsets.ViewSet):
         Restores selected folders or files back to active status.
         Body: { "items": [{"id": 1, "type": "folder"}, {"id": 5, "type": "file"}] }
         """
+        user = request.user
+        is_super = user and user.is_authenticated and (user.is_superuser or (user.role and user.role.name == "Super Admin"))
+
         items_payload = request.data.get('items', [])
         if not items_payload:
             return Response({"detail": "No items provided for restoration."}, status=status.HTTP_400_BAD_REQUEST)
@@ -195,7 +241,42 @@ class RecycleBinViewSet(viewsets.ViewSet):
                     item_type = item.get('type')
                     item_id = item.get('id')
 
-                    if item_type == 'folder':
+                    if item_type == 'module':
+                        if not is_super:
+                            return Response({"detail": "Only Super Admin can restore deleted modules."}, status=status.HTTP_403_FORBIDDEN)
+                        from users.models import CustomDynamicPage
+                        page = CustomDynamicPage.objects.filter(id=item_id).first()
+                        if page and (not page.is_published or not page.is_enabled):
+                            page.is_published = True
+                            page.is_enabled = True
+                            page.save(update_fields=['is_published', 'is_enabled'])
+
+                            # Restore associated root folder and its child folders/files
+                            if page.root_folder_id:
+                                root_folder = Folder.objects.filter(id=int(page.root_folder_id)).first()
+                                if root_folder:
+                                    root_folder.is_deleted = False
+                                    root_folder.deleted_at = None
+                                    root_folder.deleted_by = None
+                                    root_folder.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+                                    
+                                    subfolder_ids = list(Folder.objects.filter(parent=root_folder).values_list('id', flat=True))
+                                    Folder.objects.filter(id__in=subfolder_ids).update(is_deleted=False, deleted_at=None, deleted_by=None)
+                                    File.objects.filter(folder_id__in=[root_folder.id] + subfolder_ids).update(is_deleted=False, deleted_at=None, deleted_by=None)
+
+                            # Move module folder on Google Drive back to Application Root
+                            if page.google_drive_folder_id:
+                                try:
+                                    master_root_id = drive_service.get_root_folder_id()
+                                    if master_root_id:
+                                        drive_service.move_file(page.google_drive_folder_id, master_root_id)
+                                except Exception as d_err:
+                                    logger.warning(f"Google Drive restore move note for module '{page.title}': {d_err}")
+
+                            restored_count += 1
+                            log_activity(request.user, f"Restored module '{page.title}' from Recycle Bin", "users", request)
+
+                    elif item_type == 'folder':
                         folder = Folder.objects.filter(id=item_id, is_deleted=True).first()
                         if folder:
                             # Auto-restore parent folder chain if parent was also deleted
@@ -215,6 +296,22 @@ class RecycleBinViewSet(viewsets.ViewSet):
                             # Also restore all child files & subfolders if deleted together
                             Folder.objects.filter(parent=folder, is_deleted=True).update(is_deleted=False, deleted_at=None, deleted_by=None)
                             File.objects.filter(folder=folder, is_deleted=True).update(is_deleted=False, deleted_at=None, deleted_by=None)
+
+                            # Move folder back on Google Drive to original location
+                            if folder.google_folder_id:
+                                try:
+                                    target_drive_id = None
+                                    if folder.parent and folder.parent.google_folder_id:
+                                        target_drive_id = folder.parent.google_folder_id
+                                    elif folder.custom_page and folder.custom_page.google_drive_folder_id:
+                                        target_drive_id = folder.custom_page.google_drive_folder_id
+                                    else:
+                                        target_drive_id = drive_service.get_root_folder_id()
+                                    
+                                    if target_drive_id:
+                                        drive_service.move_file(folder.google_folder_id, target_drive_id)
+                                except Exception as d_err:
+                                    logger.warning(f"Google Drive restore move note for folder '{folder.name}': {d_err}")
 
                             restored_count += 1
                             log_activity(request.user, f"Restored folder '{folder.name}' from Recycle Bin", "folders", request)
@@ -236,8 +333,24 @@ class RecycleBinViewSet(viewsets.ViewSet):
                             file_obj.deleted_at = None
                             file_obj.deleted_by = None
                             file_obj.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+
+                            # Move file back on Google Drive to original folder location
+                            if file_obj.google_file_id:
+                                try:
+                                    target_drive_id = None
+                                    if file_obj.folder and file_obj.folder.google_folder_id:
+                                        target_drive_id = file_obj.folder.google_folder_id
+                                    else:
+                                        target_drive_id = drive_service.get_root_folder_id()
+                                    
+                                    if target_drive_id:
+                                        drive_service.move_file(file_obj.google_file_id, target_drive_id)
+                                except Exception as d_err:
+                                    logger.warning(f"Google Drive restore move note for file '{file_obj.name}': {d_err}")
+
                             restored_count += 1
                             log_activity(request.user, f"Restored file '{file_obj.name}' from Recycle Bin", "files", request)
+
 
             notify_admins("Recycle Bin Items Restored", f"{restored_count} item(s) restored from Recycle Bin by {request.user.name}.")
             return Response({
@@ -252,9 +365,12 @@ class RecycleBinViewSet(viewsets.ViewSet):
     def permanent_delete(self, request):
         """
         POST /api/recycle-bin/permanent-delete/
-        Permanently deletes selected folders/files from database and Google Drive.
-        Body: { "items": [{"id": 1, "type": "folder"}, {"id": 5, "type": "file"}] }
+        Permanently deletes selected modules/folders/files from database and Google Drive.
+        Body: { "items": [{"id": "uuid", "type": "module"}, {"id": 1, "type": "folder"}] }
         """
+        user = request.user
+        is_super = user and user.is_authenticated and (user.is_superuser or (user.role and user.role.name == "Super Admin"))
+
         items_payload = request.data.get('items', [])
         if not items_payload:
             return Response({"detail": "No items provided for permanent deletion."}, status=status.HTTP_400_BAD_REQUEST)
@@ -266,7 +382,30 @@ class RecycleBinViewSet(viewsets.ViewSet):
                     item_type = item.get('type')
                     item_id = item.get('id')
 
-                    if item_type == 'folder':
+                    if item_type == 'module':
+                        if not is_super:
+                            return Response({"detail": "Only Super Admin can permanently delete modules."}, status=status.HTTP_403_FORBIDDEN)
+                        from users.models import CustomDynamicPage
+                        page = CustomDynamicPage.objects.filter(id=item_id).first()
+                        if page:
+                            page_title = page.title
+                            if page.google_drive_folder_id:
+                                try:
+                                    drive_service.delete_file(page.google_drive_folder_id)
+                                except Exception as d_err:
+                                    logger.warning(f"Google Drive module folder deletion note for '{page_title}': {d_err}")
+
+                            if page.root_folder_id:
+                                root_folder = Folder.objects.filter(id=int(page.root_folder_id)).first()
+                                if root_folder:
+                                    recursive_purge_folder(root_folder)
+
+                            Folder.objects.filter(custom_page=page).delete()
+                            page.delete()
+                            purged_count += 1
+                            log_activity(request.user, f"Permanently deleted module '{page_title}' from Recycle Bin", "users", request)
+
+                    elif item_type == 'folder':
                         folder = Folder.objects.filter(id=item_id).first()
                         if folder:
                             folder_name = folder.name
@@ -301,14 +440,31 @@ class RecycleBinViewSet(viewsets.ViewSet):
     def empty_bin(self, request):
         """
         POST /api/recycle-bin/empty/
-        Permanently purges ALL items currently in the Recycle Bin.
+        Permanently purges ALL items (modules, folders, files) currently in the Recycle Bin.
         """
+        from users.models import CustomDynamicPage
+        from django.db.models import Q
+        deleted_pages = list(CustomDynamicPage.objects.filter(Q(is_published=False) | Q(is_enabled=False)))
         deleted_folders = list(Folder.objects.filter(is_deleted=True))
         deleted_files = list(File.objects.filter(is_deleted=True))
 
         purged_count = 0
         try:
             with transaction.atomic():
+                for page in deleted_pages:
+                    if page.google_drive_folder_id:
+                        try:
+                            drive_service.delete_file(page.google_drive_folder_id)
+                        except Exception:
+                            pass
+                    if page.root_folder_id:
+                        root_folder = Folder.objects.filter(id=int(page.root_folder_id)).first()
+                        if root_folder:
+                            recursive_purge_folder(root_folder)
+                    Folder.objects.filter(custom_page=page).delete()
+                    page.delete()
+                    purged_count += 1
+
                 for file_obj in deleted_files:
                     if file_obj.google_file_id:
                         try:
@@ -376,10 +532,27 @@ class RecycleBinViewSet(viewsets.ViewSet):
         if not cutoff_date:
             return 0
 
+        from users.models import CustomDynamicPage
+        from django.db.models import Q
+        expired_pages = CustomDynamicPage.objects.filter(Q(is_published=False) | Q(is_enabled=False), updated_at__lt=cutoff_date)
         expired_files = File.objects.filter(is_deleted=True, deleted_at__lt=cutoff_date)
         expired_folders = Folder.objects.filter(is_deleted=True, deleted_at__lt=cutoff_date)
 
         purged = 0
+        for page in expired_pages:
+            if page.google_drive_folder_id:
+                try:
+                    drive_service.delete_file(page.google_drive_folder_id)
+                except Exception:
+                    pass
+            if page.root_folder_id:
+                root_folder = Folder.objects.filter(id=int(page.root_folder_id)).first()
+                if root_folder:
+                    recursive_purge_folder(root_folder)
+            Folder.objects.filter(custom_page=page).delete()
+            page.delete()
+            purged += 1
+
         for f in expired_files:
             if f.google_file_id:
                 try:
@@ -396,3 +569,4 @@ class RecycleBinViewSet(viewsets.ViewSet):
         if purged > 0:
             logger.info(f"Auto-purged {purged} expired items from Recycle Bin (Cutoff: {cutoff_date})")
         return purged
+

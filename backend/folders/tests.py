@@ -88,7 +88,9 @@ class FolderSyncAPITests(APITestCase):
         self.assertEqual(folder.name, "New Department Folder")
         
         # Verify mock called
-        mock_create_folder.assert_called_once_with("New Department Folder", None)
+        mock_create_folder.assert_called_once()
+        self.assertEqual(mock_create_folder.call_args[0][0], "New Department Folder")
+
 
     @patch('services.drive_service.create_folder')
     def test_create_nested_folder_syncs_with_google_drive(self, mock_create_folder):

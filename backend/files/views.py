@@ -195,13 +195,23 @@ class FileViewSet(viewsets.ModelViewSet):
                         pass
 
                 # Mandatory Google Drive Upload
-                logger.info(f"Triggering upload to Google Drive for file '{name}' under folder '{folder.name}' (Google Folder ID: {folder.google_folder_id})...")
+                target_google_folder_id = folder.google_folder_id
+                master_root_id = drive_service.get_root_folder_id()
+
+                if not target_google_folder_id or (master_root_id and target_google_folder_id.strip() == master_root_id.strip()):
+                    if folder.custom_page:
+                        target_google_folder_id = drive_service.get_or_create_module_folder_id(folder.custom_page)
+                    elif folder.module_type == 'mou_repository':
+                        target_google_folder_id = drive_service.get_or_create_mou_repository_folder_id()
+
+                logger.info(f"Triggering upload to Google Drive for file '{name}' under folder '{folder.name}' (Google Folder ID: {target_google_folder_id})...")
                 drive_metadata = drive_service.upload_file(
                     uploaded_file,
                     name,
                     file_type,
-                    folder.google_folder_id
+                    target_google_folder_id
                 )
+
                 logger.info(f"Upload successful. Received metadata: {drive_metadata}")
                 file_instance.google_file_id = drive_metadata['id']
                 file_instance.mime_type = drive_metadata['mimeType']

@@ -200,7 +200,7 @@ const SuperAdminDashboard = ({ stats, user, navigate, setPreviewFile, info }) =>
           { title: 'Total Repositories', count: stats?.total_folders || 0, label: 'Department Directories', color: '#EC4899', icon: <AssignmentIcon />, grad: 'linear-gradient(90deg,#EC4899,#D946EF)' },
           { title: 'Active Agreements', count: stats?.active_mous || 0, label: 'Fully Verified & Active', color: '#10B981', icon: <CheckCircleIcon />, grad: 'linear-gradient(90deg,#10B981,#059669)' },
         ].map((item) => (
-          <Grid xs={12} sm={6} md={3} key={item.title}>
+          <Grid item xs={12} sm={6} md={3} key={item.title}>
             <Card sx={{ p: 0, borderRadius: '16px', overflow: 'hidden', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
               <Box sx={{ height: 4, background: item.grad }} />
               <Box sx={{ p: 2.5 }}>
@@ -229,7 +229,7 @@ const SuperAdminDashboard = ({ stats, user, navigate, setPreviewFile, info }) =>
       {/* Main Grid Layout */}
       <Grid container spacing={2.5} sx={{ alignItems: 'stretch' }}>
         {/* Side-by-Side Row: MOU Lifecycle Pipeline (LEFT) & Department MOU Distribution (RIGHT) */}
-        <Grid xs={12} md={7} sm={12}>
+        <Grid item xs={12} md={7} sm={12}>
           {/* MOU Lifecycle & Department Compliance Pipeline Chart */}
           <Card sx={{ p: 2.5, borderRadius: '18px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <Box>
@@ -278,7 +278,7 @@ const SuperAdminDashboard = ({ stats, user, navigate, setPreviewFile, info }) =>
           </Card>
         </Grid>
 
-        <Grid xs={12} md={5} sm={12}>
+        <Grid item xs={12} md={5} sm={12}>
           {/* Department Distribution Pie Chart */}
           <Card sx={{ p: 2.5, borderRadius: '18px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1 }}>
@@ -305,7 +305,7 @@ const SuperAdminDashboard = ({ stats, user, navigate, setPreviewFile, info }) =>
         </Grid>
 
         {/* System Activity & Audit Trail */}
-        <Grid xs={12}>
+        <Grid item xs={12}>
           <Box sx={{ mb: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -462,7 +462,7 @@ const AdminDashboard = ({ stats, user, navigate, setPreviewFile }) => {
           { title: 'Expiring in 30 Days', count: stats?.expiring_30_days || 0, label: 'Requires Renewal Action', color: '#F97316', icon: <WarningIcon />, grad: 'linear-gradient(90deg,#F97316,#EA580C)' },
           { title: 'Department Folders', count: stats?.total_folders || 0, label: 'Accessible Repositories', color: '#3B82F6', icon: <AssignmentIcon />, grad: 'linear-gradient(90deg,#3B82F6,#1D4ED8)' },
         ].map((item) => (
-          <Grid xs={12} sm={6} md={3} key={item.title}>
+          <Grid item xs={12} sm={6} md={3} key={item.title}>
             <Card sx={{ p: 0, borderRadius: '16px', overflow: 'hidden', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
               <Box sx={{ height: 4, background: item.grad }} />
               <Box sx={{ p: 2.5 }}>
@@ -491,7 +491,7 @@ const AdminDashboard = ({ stats, user, navigate, setPreviewFile }) => {
       {/* Main Admin Section */}
       <Grid container spacing={3}>
         {/* Side-by-Side Row: MOU Execution Overview (LEFT) & Department Distribution (RIGHT) */}
-        <Grid xs={12} lg={7} md={7}>
+        <Grid item xs={12} lg={7} md={7}>
           {/* Trend Chart */}
           <Card sx={{ p: 2.5, borderRadius: '18px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <Box>
@@ -524,7 +524,7 @@ const AdminDashboard = ({ stats, user, navigate, setPreviewFile }) => {
           </Card>
         </Grid>
 
-        <Grid xs={12} lg={5} md={5}>
+        <Grid item xs={12} lg={5} md={5}>
           {/* Department Distribution Pie Chart */}
           <Card sx={{ p: 2.5, borderRadius: '18px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1 }}>
@@ -551,7 +551,7 @@ const AdminDashboard = ({ stats, user, navigate, setPreviewFile }) => {
         </Grid>
 
         {/* Department Repositories Grid (Full Width) */}
-        <Grid xs={12}>
+        <Grid item xs={12}>
           <Box sx={{ mb: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1rem' }}>Department Repositories</Typography>
@@ -563,7 +563,7 @@ const AdminDashboard = ({ stats, user, navigate, setPreviewFile }) => {
               {recentFolders.slice(0, 4).map((folder) => {
                 const style = getDeptStyle(folder.name);
                 return (
-                  <Grid xs={12} sm={6} md={3} key={folder.id}>
+                  <Grid item xs={12} sm={6} md={3} key={folder.id}>
                     <Card
                       onClick={() => navigate(`/explorer?folder=${folder.id}`)}
                       sx={{
@@ -679,7 +679,7 @@ const UserDashboard = ({ stats, user, navigate, setPreviewFile }) => {
           { title: 'Accessible Repositories', count: stats?.total_folders || 0, label: 'Department Folders', color: '#3B82F6', icon: <FolderIcon />, grad: 'linear-gradient(90deg,#3B82F6,#2563EB)' },
           { title: 'Notifications', count: stats?.latest_notifications?.length || 0, label: 'Unread alerts', color: '#F59E0B', icon: <HourglassTopIcon />, grad: 'linear-gradient(90deg,#F59E0B,#D97706)' },
         ].map((item) => (
-          <Grid xs={12} sm={4} md={4} key={item.title}>
+          <Grid item xs={12} sm={4} md={4} key={item.title}>
             <Card sx={{ p: 0, borderRadius: '16px', overflow: 'hidden', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
               <Box sx={{ height: 4, background: item.grad }} />
               <Box sx={{ p: 2.5 }}>
@@ -708,7 +708,7 @@ const UserDashboard = ({ stats, user, navigate, setPreviewFile }) => {
       {/* Main User Workspace Grid (Full 100% Width) */}
       <Grid container spacing={3}>
         {/* Table of My Recent Files (Full Width) */}
-        <Grid xs={12}>
+        <Grid item xs={12}>
           <Box sx={{ mb: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1rem' }}>My Recent Document Uploads</Typography>
@@ -821,7 +821,7 @@ const UserDashboard = ({ stats, user, navigate, setPreviewFile }) => {
         </Grid>
 
         {/* Bottom CTA Cards */}
-        <Grid xs={12}>
+        <Grid item xs={12}>
           <Card sx={{ p: 3, borderRadius: '18px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', textAlign: 'center' }}>
             <Box>
               <Avatar sx={{ width: 48, height: 48, bgcolor: 'rgba(59,130,246,0.15)', color: '#2563EB', mx: 'auto', mb: 1.5, borderRadius: '14px' }}>

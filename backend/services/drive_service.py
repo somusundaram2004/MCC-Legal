@@ -91,7 +91,288 @@ def get_root_folder_id():
     info = get_service_account_info()
     return info.get('root_folder_id') or getattr(settings, 'GOOGLE_DRIVE_ROOT_FOLDER_ID', None)
 
+def get_or_create_mou_repository_folder_id():
+    """
+    Retrieves or creates a dedicated 'MOU Repository' folder directly under the Application Root folder on Google Drive.
+    """
+    try:
+        master_root_id = get_root_folder_id()
+        if not master_root_id:
+            return None
+        service = authenticate()
+        query = f"name = 'MOU Repository' and '{master_root_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        results = service.files().list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        files = results.get('files', [])
+        if files:
+            return files[0]['id']
+        
+        # Create 'MOU Repository' folder under Application Root if not present
+        return create_folder('MOU Repository', master_root_id)
+    except Exception as e:
+        logger.error(f"Failed to get or create MOU Repository folder on Google Drive: {e}")
+        return get_root_folder_id()
+
+def get_or_create_recycle_bin_folder_id():
+    """
+    Retrieves or creates a dedicated 'Recycle Bin' folder on Google Drive.
+    """
+    try:
+        master_root_id = get_root_folder_id()
+        if not master_root_id:
+            return None
+        service = authenticate()
+        query = f"name = 'Recycle Bin' and '{master_root_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        results = service.files().list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        files = results.get('files', [])
+        if files:
+            return files[0]['id']
+        
+        # Create 'Recycle Bin' folder on Google Drive if not present
+        return create_folder('Recycle Bin', master_root_id)
+    except Exception as e:
+        logger.error(f"Failed to get or create Recycle Bin folder on Google Drive: {e}")
+        return get_root_folder_id()
+
+def get_or_create_module_folder_id(custom_page):
+    """
+    Retrieves or creates a dedicated Google Drive folder for a custom dynamic page module directly under Application Root.
+    Updates the CustomDynamicPage instance and binds its root_folder model record.
+    """
+    if not custom_page:
+        return get_root_folder_id()
+    try:
+        master_root_id = get_root_folder_id()
+        if not master_root_id:
+            return None
+        
+        service = authenticate()
+        
+        # 1. Check if custom_page has an existing valid folder ID on Google Drive
+        if custom_page.google_drive_folder_id and custom_page.google_drive_folder_id.strip() != master_root_id.strip():
+            try:
+                f_meta = service.files().get(
+                    fileId=custom_page.google_drive_folder_id.strip(),
+                    fields="id, name, trashed, parents",
+                    supportsAllDrives=True
+                ).execute()
+                if f_meta and not f_meta.get('trashed', False):
+                    return f_meta['id']
+            except Exception:
+                pass
+        
+        # 2. Search for existing folder named page.title under master_root_id
+        safe_title = custom_page.title.replace("'", "\\'")
+        query = f"name = '{safe_title}' and '{master_root_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        results = service.files().list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        files = results.get('files', [])
+        if files:
+            drive_id = files[0]['id']
+        else:
+            # 3. Create folder under APPLICATION ROOT
+            drive_id = create_folder(custom_page.title, master_root_id)
+
+        if drive_id:
+            custom_page.google_drive_folder_id = drive_id
+            custom_page.save(update_fields=['google_drive_folder_id'])
+            
+            # Sync root_folder model binding
+            from folders.models import Folder
+            root_folder = None
+            if custom_page.root_folder_id:
+                root_folder = Folder.objects.filter(id=int(custom_page.root_folder_id)).first()
+            if not root_folder:
+                root_folder = Folder.objects.filter(google_folder_id=drive_id).first()
+            if not root_folder:
+                root_folder = Folder.objects.create(
+                    name=custom_page.title,
+                    google_folder_id=drive_id,
+                    module_type='custom_page',
+                    custom_page=custom_page
+                )
+            if root_folder:
+                root_folder.name = custom_page.title
+                root_folder.google_folder_id = drive_id
+                root_folder.module_type = 'custom_page'
+                root_folder.custom_page = custom_page
+                root_folder.save(update_fields=['name', 'google_folder_id', 'module_type', 'custom_page'])
+
+                if str(custom_page.root_folder_id) != str(root_folder.id) or custom_page.root_folder_name != root_folder.name:
+                    custom_page.root_folder_id = str(root_folder.id)
+                    custom_page.root_folder_name = root_folder.name
+                    custom_page.save(update_fields=['root_folder_id', 'root_folder_name'])
+        
+        return drive_id or master_root_id
+    except Exception as e:
+        logger.error(f"Failed to get or create module folder on Google Drive for '{custom_page.title}': {e}")
+        return get_root_folder_id()
+
+def sync_and_organize_drive_hierarchy():
+    """
+    Verifies that all subfolders and files on Google Drive are located inside their proper parent/module folder,
+    and moves any misplaced items from Application Root into their correct module Google Drive folder.
+    """
+    try:
+        master_root_id = get_root_folder_id()
+        if not master_root_id:
+            return False
+
+        mou_root_id = get_or_create_mou_repository_folder_id()
+        service = authenticate()
+
+        from folders.models import Folder
+        from files.models import File
+
+        bin_drive_id = get_or_create_recycle_bin_folder_id()
+
+        # 1. Organize Folders (active & soft-deleted)
+        folders = Folder.objects.all()
+        for f in folders:
+            if not f.google_folder_id or f.google_folder_id.startswith('drive_folder_'):
+                continue
+            
+            if f.is_deleted:
+                # Soft-deleted folders belong in Google Drive Recycle Bin folder
+                target_parent_id = bin_drive_id
+            elif f.name.strip().lower() == 'recycle bin' or f.module_type == 'recycle_bin':
+                # System Recycle Bin folder belongs directly under APPLICATION_ROOT
+                target_parent_id = master_root_id
+            elif f.parent:
+                target_parent_id = f.parent.google_folder_id
+                if not target_parent_id or target_parent_id.strip() == master_root_id.strip():
+                    if f.custom_page:
+                        target_parent_id = get_or_create_module_folder_id(f.custom_page)
+                    elif f.module_type == 'mou_repository':
+                        target_parent_id = mou_root_id
+            elif f.custom_page:
+                target_parent_id = get_or_create_module_folder_id(f.custom_page)
+            elif f.module_type == 'mou_repository':
+                target_parent_id = mou_root_id
+
+
+            if not target_parent_id or target_parent_id == f.google_folder_id:
+                continue
+
+            # Check item's current parents on Google Drive
+            try:
+                meta = service.files().get(
+                    fileId=f.google_folder_id,
+                    fields='id, name, parents',
+                    supportsAllDrives=True
+                ).execute()
+                current_parents = meta.get('parents', [])
+                if target_parent_id not in current_parents:
+                    logger.info(f"Moving folder '{f.name}' ({f.google_folder_id}) on Google Drive to parent '{target_parent_id}'...")
+                    move_file(f.google_folder_id, target_parent_id)
+            except Exception as item_err:
+                logger.debug(f"Drive parent check skipped for folder '{f.name}': {item_err}")
+
+        # 2. Organize Files
+        files = File.objects.filter(is_deleted=False)
+        for fi in files:
+            if not fi.google_file_id or fi.google_file_id.startswith('drive_file_') or not fi.folder:
+                continue
+
+            target_parent_id = fi.folder.google_folder_id
+            if not target_parent_id or target_parent_id.strip() == master_root_id.strip():
+                if fi.folder.custom_page:
+                    target_parent_id = get_or_create_module_folder_id(fi.folder.custom_page)
+                elif fi.folder.module_type == 'mou_repository':
+                    target_parent_id = mou_root_id
+
+            if not target_parent_id:
+                continue
+
+            try:
+                meta = service.files().get(
+                    fileId=fi.google_file_id,
+                    fields='id, name, parents',
+                    supportsAllDrives=True
+                ).execute()
+                current_parents = meta.get('parents', [])
+                if target_parent_id not in current_parents:
+                    logger.info(f"Moving file '{fi.name}' ({fi.google_file_id}) on Google Drive to parent '{target_parent_id}'...")
+                    move_file(fi.google_file_id, target_parent_id)
+            except Exception as item_err:
+                logger.debug(f"Drive parent check skipped for file '{fi.name}': {item_err}")
+
+        # 3. Organize Module Folders (CustomDynamicPage)
+        from users.models import CustomDynamicPage
+        pages = CustomDynamicPage.objects.all()
+        for page in pages:
+            drive_id = page.google_drive_folder_id
+            if not drive_id or drive_id.startswith('drive_folder_'):
+                continue
+            
+            if not page.is_enabled or not page.is_published:
+                target_parent_id = bin_drive_id
+            else:
+                target_parent_id = master_root_id
+
+            if not target_parent_id or target_parent_id == drive_id:
+                continue
+
+            try:
+                meta = service.files().get(
+                    fileId=drive_id,
+                    fields='id, name, parents',
+                    supportsAllDrives=True
+                ).execute()
+                current_parents = meta.get('parents', [])
+                if target_parent_id not in current_parents:
+                    logger.info(f"Moving module folder '{page.title}' ({drive_id}) on Google Drive to parent '{target_parent_id}'...")
+                    move_file(drive_id, target_parent_id)
+            except Exception as item_err:
+                logger.debug(f"Drive parent check skipped for module '{page.title}': {item_err}")
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to organize Google Drive hierarchy: {e}")
+        return False
+
+
+def initialize_and_sync_all_drive_modules(new_root_id=None):
+    """
+    Verifies and initializes all system modules under the Application Root folder:
+    - APPLICATION ROOT -> MOU Repository
+    - APPLICATION ROOT -> Recycle Bin
+    - APPLICATION ROOT -> All Custom Dynamic Page Modules
+    - Organizes all existing subfolders/files on Google Drive inside their correct module folder
+    """
+    try:
+        mou_id = get_or_create_mou_repository_folder_id()
+        bin_id = get_or_create_recycle_bin_folder_id()
+        
+        from users.models import CustomDynamicPage
+        active_pages = CustomDynamicPage.objects.filter(is_enabled=True)
+        for page in active_pages:
+            get_or_create_module_folder_id(page)
+            
+        sync_and_organize_drive_hierarchy()
+        logger.info("Successfully initialized Google Drive module root architecture under Application Root.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize Google Drive module architecture: {e}")
+        return False
+
+
 def authenticate():
+
+
     """
     Authenticates with Google Drive using either Web OAuth 2.0 credentials
     or Service Account credentials.
@@ -409,8 +690,12 @@ def rename_file(file_id, new_name):
     """
     Renames a folder or file on Google Drive.
     """
+    if not file_id or file_id.startswith('drive_file_') or file_id.startswith('drive_folder_'):
+        logger.warning(f"Skipping rename for fallback or empty Google Drive ID: '{file_id}'")
+        return None
     try:
         service = authenticate()
+
         file_metadata = {'name': new_name}
         updated_file = service.files().update(
             fileId=file_id, 
@@ -428,11 +713,15 @@ def move_file(file_id, new_parent_id):
     """
     Moves a folder or file to a different parent folder on Google Drive.
     """
+    if not file_id or file_id.startswith('drive_file_') or file_id.startswith('drive_folder_'):
+        logger.warning(f"Skipping move for fallback or empty Google Drive ID: '{file_id}'")
+        return None
     try:
         service = authenticate()
         # Retrieve the existing parents to remove
         file_metadata = service.files().get(fileId=file_id, fields='parents', supportsAllDrives=True).execute()
         previous_parents = ",".join(file_metadata.get('parents', []))
+
         
         # Update parents
         updated_file = service.files().update(

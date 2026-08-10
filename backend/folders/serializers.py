@@ -38,16 +38,22 @@ class FolderSerializer(serializers.ModelSerializer):
     file_count = serializers.SerializerMethodField()
     path = serializers.SerializerMethodField()
     is_viewed = serializers.SerializerMethodField()
+    custom_page_id = serializers.ReadOnlyField(source='custom_page.id')
+    custom_page_slug = serializers.ReadOnlyField(source='custom_page.slug')
+    custom_page_title = serializers.ReadOnlyField(source='custom_page.title')
 
     class Meta:
+
         model = Folder
         fields = [
             'id', 'name', 'parent_id', 'created_by', 
             'created_at', 'updated_at', 'subfolder_count', 
             'file_count', 'path', 'google_folder_id', 'status',
-            'summary', 'expiry_date', 'is_viewed'
+            'summary', 'expiry_date', 'is_viewed',
+            'custom_page_id', 'custom_page_slug', 'custom_page_title', 'module_type'
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
 
     def get_subfolder_count(self, obj):
         # We only count subfolders that the user has access to, but in serializing we can just do raw count.

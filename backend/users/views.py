@@ -61,8 +61,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         return data
 
+from rest_framework.throttling import ScopedRateThrottle
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
 
 
 import hashlib
@@ -884,7 +888,26 @@ class GoogleDriveSettingViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrSuperAdmin]
     queryset = GoogleDriveSetting.objects.all().order_by('-created_at')
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        if instance.is_active:
+            try:
+                from services import drive_service
+                drive_service.initialize_and_sync_all_drive_modules(instance.root_folder_id)
+            except Exception as e:
+                logger.warning(f"Drive module architecture auto-sync failed on settings create: {e}")
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if instance.is_active:
+            try:
+                from services import drive_service
+                drive_service.initialize_and_sync_all_drive_modules(instance.root_folder_id)
+            except Exception as e:
+                logger.warning(f"Drive module architecture auto-sync failed on settings update: {e}")
+
     @action(detail=False, methods=['get'], url_path='oauth-url')
+
     def oauth_url(self, request):
         redirect_uri = request.query_params.get('redirect_uri')
         if not redirect_uri:
@@ -1047,50 +1070,116 @@ class CustomDynamicPageViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        include_all = self.request.query_params.get('all', 'false').lower() == 'true'
+        if not include_all:
+            qs = qs.filter(is_published=True, is_enabled=True)
         from services import drive_service
-        from folders.models import Folder
-        master_root_id = drive_service.get_root_folder_id()
-
         for page in qs:
-            # 1. Provision dedicated Google Drive folder inside master_root_id if missing or mapped to root
-            if master_root_id and (not page.google_drive_folder_id or page.google_drive_folder_id.strip() == master_root_id.strip()):
-                try:
-                    drive_folder_id = drive_service.create_folder(page.title, parent_id=master_root_id)
-                    page.google_drive_folder_id = drive_folder_id
-                    page.save(update_fields=['google_drive_folder_id'])
-                except Exception as err:
-                    logger.warning(f"Dedicated drive folder check for page '{page.title}': {err}")
-
-            # 2. Ensure binding with Folder database model
-            if page.google_drive_folder_id:
-                try:
-                    root_folder = None
-                    if page.root_folder_id:
-                        root_folder = Folder.objects.filter(id=int(page.root_folder_id)).first()
-                    if not root_folder:
-                        root_folder = Folder.objects.filter(google_folder_id=page.google_drive_folder_id.strip()).first()
-                    if not root_folder:
-                        root_folder = Folder.objects.create(
-                            name=page.title,
-                            google_folder_id=page.google_drive_folder_id.strip(),
-                            module_type='custom_page',
-                            custom_page=page
-                        )
-                    
-                    if root_folder:
-                        root_folder.name = page.title
-                        root_folder.google_folder_id = page.google_drive_folder_id.strip()
-                        root_folder.module_type = 'custom_page'
-                        root_folder.custom_page = page
-                        root_folder.save(update_fields=['name', 'google_folder_id', 'module_type', 'custom_page'])
-
-                        if str(page.root_folder_id) != str(root_folder.id) or page.root_folder_name != root_folder.name:
-                            page.root_folder_id = str(root_folder.id)
-                            page.root_folder_name = root_folder.name
-                            page.save(update_fields=['root_folder_id', 'root_folder_name'])
-                except Exception as e:
-                    logger.warning(f"Root folder model sync error for '{page.title}': {e}")
+            try:
+                drive_service.get_or_create_module_folder_id(page)
+            except Exception as err:
+                logger.warning(f"Module Drive folder sync check error for '{page.title}': {err}")
         return qs
+
+    def perform_create(self, serializer):
+        page = serializer.save()
+        try:
+            from services import drive_service
+            drive_service.get_or_create_module_folder_id(page)
+        except Exception as err:
+            logger.warning(f"Module Drive folder initialization error on create for '{page.title}': {err}")
+
+
+    @action(detail=True, methods=['post'], url_path='republish')
+    def republish(self, request, pk=None):
+        """
+        Republish / Re-establish module and retrieve all associated repository data inside it.
+        """
+        page = self.get_object()
+        page.is_published = True
+        page.is_enabled = True
+        page.save(update_fields=['is_published', 'is_enabled'])
+
+        # Restore associated root folder and its child folders/files
+        if page.root_folder_id:
+            try:
+                from folders.models import Folder
+                from files.models import File
+                root_folder = Folder.objects.filter(id=int(page.root_folder_id)).first()
+                if root_folder:
+                    root_folder.is_deleted = False
+                    root_folder.deleted_at = None
+                    root_folder.deleted_by = None
+                    root_folder.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+                    
+                    subfolder_ids = list(Folder.objects.filter(parent=root_folder).values_list('id', flat=True))
+                    Folder.objects.filter(id__in=subfolder_ids).update(is_deleted=False, deleted_at=None, deleted_by=None)
+                    File.objects.filter(folder_id__in=[root_folder.id] + subfolder_ids).update(is_deleted=False, deleted_at=None, deleted_by=None)
+            except Exception as err:
+                logger.warning(f"Failed to restore repository folder data for module '{page.title}': {err}")
+
+        # Move module folder on Google Drive back to Application Root
+        try:
+            from services import drive_service
+            master_root_id = drive_service.get_root_folder_id()
+            drive_id = drive_service.get_or_create_module_folder_id(page)
+            if drive_id and master_root_id:
+                drive_service.move_file(drive_id, master_root_id)
+        except Exception as d_err:
+            logger.warning(f"Google Drive restore move note for module '{page.title}': {d_err}")
+
+        log_activity(request.user, f"Republished module '{page.title}' and retrieved repository data", "users", request)
+        return Response({
+            "detail": f"Module '{page.title}' and all associated repository data successfully retrieved & republished!",
+            "page": CustomDynamicPageSerializer(page).data
+        })
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Soft deletes/unpublishes module and moves its repository data to Recycle Bin.
+        """
+        page = self.get_object()
+        page.is_published = False
+        page.is_enabled = False
+        page.save(update_fields=['is_published', 'is_enabled'])
+
+        if page.root_folder_id:
+            try:
+                from folders.models import Folder
+                from files.models import File
+                root_folder = Folder.objects.filter(id=int(page.root_folder_id)).first()
+                if root_folder:
+                    from django.utils import timezone
+                    now = timezone.now()
+                    root_folder.is_deleted = True
+                    root_folder.deleted_at = now
+                    root_folder.deleted_by = request.user
+                    root_folder.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+
+                    subfolder_ids = list(Folder.objects.filter(parent=root_folder).values_list('id', flat=True))
+                    Folder.objects.filter(id__in=subfolder_ids).update(is_deleted=True, deleted_at=now, deleted_by=request.user)
+                    File.objects.filter(folder_id__in=[root_folder.id] + subfolder_ids).update(is_deleted=True, deleted_at=now, deleted_by=request.user)
+            except Exception as err:
+                logger.warning(f"Failed to soft delete repository folder data for module '{page.title}': {err}")
+
+        # Move module folder on Google Drive to Recycle Bin
+        try:
+            from services import drive_service
+            bin_drive_id = drive_service.get_or_create_recycle_bin_folder_id()
+            target_drive_id = page.google_drive_folder_id
+            if not target_drive_id and page.root_folder_id:
+                rf = Folder.objects.filter(id=int(page.root_folder_id)).first()
+                if rf:
+                    target_drive_id = rf.google_folder_id
+            if target_drive_id and bin_drive_id:
+                drive_service.move_file(target_drive_id, bin_drive_id)
+        except Exception as d_err:
+            logger.warning(f"Google Drive move to Recycle Bin note for module '{page.title}': {d_err}")
+
+        log_activity(request.user, f"Unpublished module '{page.title}' and moved repository data to Recycle Bin", "users", request)
+        return Response({"detail": f"Module '{page.title}' unpublished and repository data moved to Recycle Bin."}, status=status.HTTP_200_OK)
+
+
 
 
 

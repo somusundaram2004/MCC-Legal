@@ -90,3 +90,9 @@ Thumbs.db
 *.user
 *.userosscache
 *.sln.docstates
+
+staticfiles/
+backend/staticfiles/
+scratch/
+db_dump.json
+backend/db_dump.json

@@ -16,7 +16,9 @@ export const AuthProvider = ({ children }) => {
       setUser(response.data);
       localStorage.setItem('user', JSON.stringify(response.data));
     } catch (error) {
-      console.error("Failed to restore session user profile:", error);
+      if (error?.response?.status !== 401) {
+        console.debug("Failed to restore session user profile:", error);
+      }
       logout();
     } finally {
       setLoading(false);

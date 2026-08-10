@@ -218,6 +218,7 @@ USE_TZ = True
 
 # Static & Media Files
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
@@ -238,6 +239,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': env('THROTTLE_RATE_ANON', default='120/minute'),
         'user': env('THROTTLE_RATE_USER', default='600/minute'),
+        'auth': '10/minute',
     }
 }
 

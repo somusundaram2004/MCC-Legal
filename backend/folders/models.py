@@ -88,6 +88,8 @@ class Folder(models.Model):
             return True
 
         current = self
+
+
         while current is not None:
             # Creator of folder or ancestor folder always has full access
             if current.created_by == user:

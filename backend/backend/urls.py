@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/mous/', include('mous.urls')),
     path('api/customization/', include('customization.urls')),
     path('api/recycle-bin/', include('folders.urls_recycle_bin')),
+    path('api/import-export/', include('folders.urls_import_export')),
     
     # Dashboard & Global Search
     path('api/dashboard/stats/', DashboardStatsView.as_view(), name='dashboard_stats'),

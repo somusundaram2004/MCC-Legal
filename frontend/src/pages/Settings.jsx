@@ -35,7 +35,9 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import GoogleDriveSettingsTab from '../components/GoogleDriveSettingsTab';
+import ImportExportTab from '../components/ImportExportTab';
 import CustomizerHub from '../components/CustomizerHub/CustomizerHub';
 import { showCustomToast } from '../utils/customToast';
 import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
@@ -1257,6 +1259,9 @@ const Settings = () => {
             {['Super Admin', 'Admin'].includes(user?.role?.name) && (
               <Tab icon={<SecurityIcon fontSize="small" />} iconPosition="start" label="Module Permissions" sx={tabSx} />
             )}
+            {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+              <Tab icon={<SystemUpdateAltIcon fontSize="small" />} iconPosition="start" label="Import & Export" sx={tabSx} />
+            )}
           </Tabs>
         </Box>
 
@@ -1433,6 +1438,11 @@ const Settings = () => {
           {['Super Admin', 'Admin'].includes(user?.role?.name) && (
             <TabPanel value={activeTab} index={6}>
               <ModulePermissionsMatrix />
+            </TabPanel>
+          )}
+          {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+            <TabPanel value={activeTab} index={7}>
+              <ImportExportTab />
             </TabPanel>
           )}
         </Box>

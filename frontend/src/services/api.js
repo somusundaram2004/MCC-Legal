@@ -18,7 +18,8 @@ api.interceptors.request.use(
       config.url.includes('/auth/google-client-id/') ||
       config.url.includes('/auth/register/') ||
       config.url.includes('/auth/forgot-password/') ||
-      config.url.includes('/auth/reset-password/')
+      config.url.includes('/auth/reset-password/') ||
+      (config.url.includes('/customization/') && (config.method?.toLowerCase() === 'get' || !config.method))
     );
 
     const token = localStorage.getItem('access_token');

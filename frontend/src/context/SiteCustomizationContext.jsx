@@ -14,7 +14,9 @@ export const SiteCustomizationProvider = ({ children }) => {
       const response = await api.get('/api/customization/');
       setCustomization(response.data);
     } catch (err) {
-      console.error("Failed to load website customization:", err);
+      if (err?.response?.status !== 401) {
+        console.debug("Failed to load website customization:", err);
+      }
     } finally {
       setLoading(false);
     }
