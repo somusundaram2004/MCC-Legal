@@ -1,4 +1,12 @@
-BEGIN TRANSACTION;
+-- ========================================================
+-- MySQL Database Dump for MCC Legal & Data Bridge
+-- Compatible with MySQL 5.7+ / MySQL 8.0+ / phpMyAdmin / MySQL Workbench
+-- ========================================================
+
+SET FOREIGN_KEY_CHECKS = 0;
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+
 CREATE TABLE IF NOT EXISTS `activity_logs_activitylog` (`id` INT AUTO_INCREMENT PRIMARY KEY, `action` text NOT NULL, `created_at` DATETIME NOT NULL, `ip_address` CHAR(39) NULL, `user_id` BIGINT NULL REFERENCES `users_customuser` (`id`), `module` VARCHAR(100) NOT NULL);
 CREATE TABLE IF NOT EXISTS `auth_group` (`id` INT AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(150) NOT NULL UNIQUE);
 CREATE TABLE IF NOT EXISTS `auth_group_permissions` (`id` INT AUTO_INCREMENT PRIMARY KEY, `group_id` INT NOT NULL REFERENCES `auth_group` (`id`), `permission_id` INT NOT NULL REFERENCES `auth_permission` (`id`));
@@ -483,4 +491,6 @@ CREATE INDEX `mous_templatedocument_template_collection_id_4241b0ab` ON `mous_te
 CREATE INDEX `mous_templatedocument_uploaded_by_id_760bbb23` ON `mous_templatedocument` (`uploaded_by_id`);
 CREATE INDEX `notifications_notification_user_id_b5e8c0ff` ON `notifications_notification` (`user_id`);
 CREATE INDEX `django_session_expire_date_a5c62663` ON `django_session` (`expire_date`);
+
+SET FOREIGN_KEY_CHECKS = 1;
 COMMIT;
