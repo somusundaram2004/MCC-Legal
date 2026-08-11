@@ -124,7 +124,7 @@ CREATE INDEX `auth_permission_content_type_id_2f476e4b` ON `auth_permission` (`c
 CREATE UNIQUE INDEX `users_customuser_groups_customuser_id_group_id_76b619e3_uniq` ON `users_customuser_groups` (`customuser_id`, `group_id`);
 CREATE INDEX `users_customuser_groups_customuser_id_958147bf` ON `users_customuser_groups` (`customuser_id`);
 CREATE INDEX `users_customuser_groups_group_id_01390b14` ON `users_customuser_groups` (`group_id`);
-CREATE UNIQUE INDEX `users_customuser_user_permissions_customuser_id_permission_id_7a7debf6_uniq` ON `users_customuser_user_permissions` (`customuser_id`, `permission_id`);
+CREATE UNIQUE INDEX `users_customuser_user_permissions_customuser_id__5f7c3127` ON `users_customuser_user_permissions` (`customuser_id`, `permission_id`);
 CREATE INDEX `users_customuser_user_permissions_customuser_id_5771478b` ON `users_customuser_user_permissions` (`customuser_id`);
 CREATE INDEX `users_customuser_user_permissions_permission_id_baaa2f74` ON `users_customuser_user_permissions` (`permission_id`);
 CREATE UNIQUE INDEX `users_userpermission_user_id_permission_id_cfb58597_uniq` ON `users_userpermission` (`user_id`, `permission_id`);
@@ -191,7 +191,7 @@ CREATE INDEX `mous_templatecollection_created_by_id_0b488094` ON `mous_templatec
 CREATE INDEX `mous_templatecollection_department_id_90eac27c` ON `mous_templatecollection` (`department_id`);
 CREATE INDEX `mous_templatecollection_department_category_id_5dad1404` ON `mous_templatecollection` (`department_category_id`);
 CREATE INDEX `mous_templatecollection_organization_type_id_4fe958fa` ON `mous_templatecollection` (`organization_type_id`);
-CREATE UNIQUE INDEX `mous_templatecollection_tags_templatecollection_id_tag_id_e461fdcf_uniq` ON `mous_templatecollection_tags` (`templatecollection_id`, `tag_id`);
+CREATE UNIQUE INDEX `mous_templatecollection_tags_templatecollection__7bf0aa28` ON `mous_templatecollection_tags` (`templatecollection_id`, `tag_id`);
 CREATE INDEX `mous_templatecollection_tags_templatecollection_id_d66a9d6f` ON `mous_templatecollection_tags` (`templatecollection_id`);
 CREATE INDEX `mous_templatecollection_tags_tag_id_5c9500d6` ON `mous_templatecollection_tags` (`tag_id`);
 CREATE INDEX `mous_templatedocument_document_type_id_f46b981a` ON `mous_templatedocument` (`document_type_id`);
