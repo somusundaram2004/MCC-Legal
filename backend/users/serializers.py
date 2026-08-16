@@ -70,7 +70,12 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
         source='role',
         required=True
     )
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, required=True)
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    designation = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    department = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    stream = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    company_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -82,7 +87,7 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'email', 'name', 'phone', 'designation', 
-            'department', 'stream', 'role_id', 'status', 'password'
+            'department', 'stream', 'company_name', 'role_id', 'status', 'password'
         ]
 
     def create(self, validated_data):
@@ -93,10 +98,11 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
             email=validated_data['email'],
             password=password,
             name=validated_data['name'],
-            phone=validated_data.get('phone', ''),
-            designation=validated_data.get('designation', ''),
-            department=validated_data.get('department', ''),
-            stream=validated_data.get('stream', ''),
+            phone=validated_data.get('phone') or '',
+            designation=validated_data.get('designation') or '',
+            department=validated_data.get('department') or '',
+            stream=validated_data.get('stream') or '',
+            company_name=validated_data.get('company_name') or '',
             role=role,
             status=validated_data.get('status', 'Active')
         )

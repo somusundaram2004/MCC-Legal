@@ -26,7 +26,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import {
   getTemplateCollections, createTemplateCollection, getTemplateStats,
   getMasterCategories, getMasterOrgTypes, getMasterCollabTypes, getMasterDocTypes,
-  getMasterTags, getMasterDeptCategories, getMasterDepartments
+  getMasterTags, getMasterDeptCategories, getMasterDepartments, getMasterStreams
 } from '../services/templateApi';
 
 const Templates = () => {
@@ -89,6 +89,8 @@ const Templates = () => {
     }
   };
 
+  const [streams, setStreams] = useState([]);
+
   // Load masters on mount
   useEffect(() => {
     const loadMasters = async () => {
@@ -99,6 +101,7 @@ const Templates = () => {
         const tgs = await getMasterTags();
         const deptCats = await getMasterDeptCategories();
         const depts = await getMasterDepartments();
+        const strms = await getMasterStreams().catch(() => []);
         
         setCategories(cats.filter(c => c.is_active));
         setOrgTypes(orgs.filter(o => o.is_active));
@@ -106,6 +109,7 @@ const Templates = () => {
         setTags(tgs.filter(t => t.is_active));
         setDeptCategories(deptCats.filter(d => d.is_active));
         setDepartments(depts.filter(d => d.is_active));
+        setStreams(strms.filter(s => s.is_active));
       } catch (err) {
         console.error("Master tables fetch failed", err);
       }
@@ -117,10 +121,9 @@ const Templates = () => {
   // Filter departments based on selected department category
   useEffect(() => {
     if (selDeptCat) {
-      setFilteredDepts(departments.filter(d => d.category === selDeptCat));
-      setSelDept('');
+      setFilteredDepts(departments.filter(d => String(d.stream) === String(selDeptCat) || String(d.stream_id) === String(selDeptCat) || String(d.category) === String(selDeptCat)));
     } else {
-      setFilteredDepts([]);
+      setFilteredDepts(departments);
     }
   }, [selDeptCat, departments]);
 
@@ -286,16 +289,16 @@ const Templates = () => {
             <InputLabel>Stream</InputLabel>
             <Select value={filterDeptCat} label="Stream" onChange={(e) => { setFilterDeptCat(e.target.value); setFilterDept(''); }} sx={{ borderRadius: '10px' }}>
               <MenuItem value="">All Streams</MenuItem>
-              {deptCategories.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+              {streams.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
             </Select>
           </FormControl>
 
           {/* Department */}
-          <FormControl size="small" disabled={!filterDeptCat} sx={{ flex: '1 1 150px', minWidth: 130 }}>
+          <FormControl size="small" sx={{ flex: '1 1 150px', minWidth: 130 }}>
             <InputLabel>Department</InputLabel>
             <Select value={filterDept} label="Department" onChange={(e) => setFilterDept(e.target.value)} sx={{ borderRadius: '10px' }}>
               <MenuItem value="">All Departments</MenuItem>
-              {departments.filter(d => d.category === filterDeptCat).map(d => (
+              {departments.filter(d => !filterDeptCat || String(d.stream) === String(filterDeptCat) || String(d.category) === String(filterDeptCat)).map(d => (
                 <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
               ))}
             </Select>
@@ -626,7 +629,7 @@ const Templates = () => {
                 </FormControl>
               </Box>
 
-              {/* Stream (Dept Category) */}
+              {/* Stream */}
               <Box>
                 <FormControl fullWidth required>
                   <InputLabel sx={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' }}>Stream</InputLabel>
@@ -636,7 +639,7 @@ const Templates = () => {
                     onChange={(e) => setSelDeptCat(e.target.value)}
                     sx={{ borderRadius: '12px', fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' }}
                   >
-                    {deptCategories.map(d => <MenuItem key={d.id} value={d.id} sx={{ fontSize: '14px' }}>{d.name}</MenuItem>)}
+                    {streams.map(d => <MenuItem key={d.id} value={d.id} sx={{ fontSize: '14px' }}>{d.name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Box>

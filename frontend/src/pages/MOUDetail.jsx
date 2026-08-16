@@ -60,6 +60,7 @@ const MOUDetail = () => {
 
   // Dynamic Master Data states
   const [deptCategories, setDeptCategories] = useState([]);
+  const [masterStreams, setMasterStreams] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [filteredShareDepts, setFilteredShareDepts] = useState([]);
   const [shareCategory, setShareCategory] = useState('');
@@ -73,10 +74,10 @@ const MOUDetail = () => {
   const [selectedSubmissionId, setSelectedSubmissionId] = useState(null);
 
   const fetchMou = async () => {
-    setLoading(true);
     try {
       const data = await getMOU(id);
       setMou(data);
+      
       // Fetch shares as well
       const shares = await getMOUShares(id);
       setActiveShares(shares);
@@ -90,15 +91,16 @@ const MOUDetail = () => {
 
   useEffect(() => {
     fetchMou();
-    api.get('/api/mous/master/dept-categories/').then(res => setDeptCategories(res.data));
-    api.get('/api/mous/master/departments/').then(res => setDepartments(res.data));
+    api.get('/api/mous/master/streams/').then(res => setMasterStreams(res.data.filter(s => s.is_active))).catch(() => {});
+    api.get('/api/mous/master/dept-categories/').then(res => setDeptCategories(res.data)).catch(() => {});
+    api.get('/api/mous/master/departments/').then(res => setDepartments(res.data)).catch(() => {});
   }, [id]);
 
   const handleShareCategoryChange = (e) => {
-    const catId = e.target.value;
-    setShareCategory(catId);
+    const strmId = e.target.value;
+    setShareCategory(strmId);
     setShareDept('');
-    setFilteredShareDepts(departments.filter(d => d.category === catId));
+    setFilteredShareDepts(departments.filter(d => String(d.stream) === String(strmId) || String(d.stream_id) === String(strmId) || String(d.category) === String(strmId)));
   };
 
   const handleShareSubmit = async () => {
@@ -514,14 +516,14 @@ const MOUDetail = () => {
               </Typography>
 
               <FormControl fullWidth sx={{ mb: 2.5 }} required>
-                <InputLabel>Stream (Dept Category)</InputLabel>
+                <InputLabel>Stream</InputLabel>
                 <Select
                   value={shareCategory}
-                  label="Stream (Dept Category)"
+                  label="Stream"
                   onChange={handleShareCategoryChange}
                 >
-                  {deptCategories.map((c) => (
-                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                  {masterStreams.map((s) => (
+                    <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>

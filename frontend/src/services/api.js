@@ -12,6 +12,7 @@ const api = axios.create({
 // Request Interceptor: Attach access token and custom time header to requests
 api.interceptors.request.use(
   (config) => {
+    const method = (config.method || 'get').toLowerCase();
     const isPublicEndpoint = config.url && (
       config.url.includes('/auth/login/') ||
       config.url.includes('/auth/google/') ||
@@ -19,7 +20,9 @@ api.interceptors.request.use(
       config.url.includes('/auth/register/') ||
       config.url.includes('/auth/forgot-password/') ||
       config.url.includes('/auth/reset-password/') ||
-      (config.url.includes('/customization/') && (config.method?.toLowerCase() === 'get' || !config.method))
+      (config.url.includes('/users/invitation/') && method === 'get') ||
+      config.url.includes('/users/register/') ||
+      (config.url.includes('/customization/') && method === 'get')
     );
 
     const token = localStorage.getItem('access_token');
@@ -74,14 +77,17 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
+    const reqMethod = (originalRequest?.method || 'get').toLowerCase();
     
-    // Do not attempt token refresh for login/auth endpoints
+    // Do not attempt token refresh for login/auth/invitation GET endpoints
     const isAuthEndpoint = originalRequest && originalRequest.url && (
       originalRequest.url.includes('/auth/login/') ||
       originalRequest.url.includes('/auth/google/') ||
       originalRequest.url.includes('/auth/refresh/') ||
       originalRequest.url.includes('/auth/forgot-password/') ||
-      originalRequest.url.includes('/auth/reset-password/')
+      originalRequest.url.includes('/auth/reset-password/') ||
+      (originalRequest.url.includes('/users/invitation/') && reqMethod === 'get') ||
+      originalRequest.url.includes('/users/register/')
     );
 
     // Check if error is 401 (Unauthorized) and we haven't already retried
@@ -114,7 +120,8 @@ api.interceptors.response.use(
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
           localStorage.removeItem('user');
-          if (window.location.pathname !== '/login') {
+          const isPublicPage = ['/login', '/register', '/reset-password'].some(p => window.location.pathname.startsWith(p));
+          if (!isPublicPage) {
             window.location.href = '/login';
           }
           return Promise.reject(refreshError);
@@ -122,7 +129,8 @@ api.interceptors.response.use(
       } else {
         localStorage.removeItem('access_token');
         localStorage.removeItem('user');
-        if (window.location.pathname !== '/login') {
+        const isPublicPage = ['/login', '/register', '/reset-password'].some(p => window.location.pathname.startsWith(p));
+        if (!isPublicPage) {
           window.location.href = '/login';
         }
       }

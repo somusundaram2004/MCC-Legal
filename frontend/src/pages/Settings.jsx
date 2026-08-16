@@ -44,6 +44,7 @@ import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRef
 import {
   getMasterDeptCategories, createMasterDeptCategory, updateMasterDeptCategory, deleteMasterDeptCategory,
   getMasterDepartments, createMasterDepartment, updateMasterDepartment, deleteMasterDepartment,
+  getMasterStreams, createMasterStream, updateMasterStream, deleteMasterStream,
   getMasterCollabTypes, createMasterCollabType, updateMasterCollabType, deleteMasterCollabType,
   getMasterOrgTypes, createMasterOrgType, updateMasterOrgType, deleteMasterOrgType,
   getMasterDocTypes, createMasterDocType, updateMasterDocType, deleteMasterDocType,
@@ -63,6 +64,7 @@ const MASTER_TABS = [
   { label: 'Collaboration Types', fetch: getMasterCollabTypes,    create: createMasterCollabType,    update: updateMasterCollabType,    del: deleteMasterCollabType    },
   { label: 'Document Types',      fetch: getMasterDocTypes,       create: createMasterDocType,       update: updateMasterDocType,       del: deleteMasterDocType       },
   { label: 'Tags',                fetch: getMasterTags,           create: createMasterTag,           update: updateMasterTag,           del: deleteMasterTag           },
+  { label: 'Streams',             fetch: getMasterStreams,        create: createMasterStream,        update: updateMasterStream,        del: deleteMasterStream        },
   { label: 'Dept. Categories',    fetch: getMasterDeptCategories, create: createMasterDeptCategory,  update: updateMasterDeptCategory,  del: deleteMasterDeptCategory  },
   { label: 'Departments',         fetch: getMasterDepartments,    create: createMasterDepartment,    update: updateMasterDepartment,    del: deleteMasterDepartment    },
 ];
@@ -88,10 +90,12 @@ const MasterDataTab = () => {
     }
   }, [mdSuccess]);
   const [deptCategories, setDeptCategories] = useState([]);
+  const [streamsList, setStreamsList] = useState([]);
   const [mdOpen, setMdOpen] = useState(false);
   const [mdEditId, setMdEditId] = useState(null);
   const [mdName, setMdName] = useState('');
   const [mdSelectedCat, setMdSelectedCat] = useState('');
+  const [mdSelectedStream, setMdSelectedStream] = useState('');
   const [mdSaving, setMdSaving] = useState(false);
 
   // Helper to extract error message from API response
@@ -102,7 +106,7 @@ const MasterDataTab = () => {
     'An unexpected error occurred.';
 
   const currentMdTab = MASTER_TABS[activeSubTab];
-  const isDeptTab = activeSubTab === 6;
+  const isDeptTab = currentMdTab.label === 'Departments';
 
   const loadMdData = async () => {
     setMdLoading(true); setMdError(null);
@@ -110,8 +114,12 @@ const MasterDataTab = () => {
       const result = await currentMdTab.fetch();
       setMdData(result);
       if (isDeptTab) {
-        const cats = await getMasterDeptCategories();
+        const [cats, strms] = await Promise.all([
+          getMasterDeptCategories().catch(() => []),
+          getMasterStreams().catch(() => [])
+        ]);
         setDeptCategories(cats);
+        setStreamsList(strms);
       }
     } catch (err) {
       console.error(err);
@@ -123,19 +131,38 @@ const MasterDataTab = () => {
 
   useEffect(() => { loadMdData(); }, [activeSubTab]);
 
-  const openMdDialog = (item = null) => {
+  const openMdDialog = async (item = null) => {
+    if (isDeptTab && (deptCategories.length === 0 || streamsList.length === 0)) {
+      try {
+        const [cats, strms] = await Promise.all([
+          getMasterDeptCategories().catch(() => []),
+          getMasterStreams().catch(() => [])
+        ]);
+        setDeptCategories(cats);
+        setStreamsList(strms);
+      } catch (err) { console.error(err); }
+    }
     setMdEditId(item ? item.id : null);
     setMdName(item ? item.name : '');
     setMdSelectedCat(item ? (item.category || '') : '');
+    setMdSelectedStream(item ? (item.stream || '') : '');
     setMdOpen(true);
   };
 
-  const closeMdDialog = () => { setMdOpen(false); setMdName(''); setMdSelectedCat(''); };
+  const closeMdDialog = () => {
+    setMdOpen(false);
+    setMdName('');
+    setMdSelectedCat('');
+    setMdSelectedStream('');
+  };
 
   const handleMdSave = async () => {
     if (!mdName.trim()) return;
     const payload = { name: mdName.trim() };
-    if (isDeptTab) payload.category = mdSelectedCat;
+    if (isDeptTab) {
+      payload.category = mdSelectedCat || null;
+      payload.stream = mdSelectedStream || null;
+    }
     setMdSaving(true);
     try {
       if (mdEditId) await currentMdTab.update(mdEditId, { ...payload, is_active: true });
@@ -153,7 +180,10 @@ const MasterDataTab = () => {
   const handleMdToggle = async (item) => {
     try {
       const payload = { name: item.name, is_active: !item.is_active };
-      if (isDeptTab) payload.category = item.category;
+      if (isDeptTab) {
+        payload.category = item.category || null;
+        payload.stream = item.stream || null;
+      }
       await currentMdTab.update(item.id, payload);
       loadMdData();
     } catch (err) { setMdError(extractError(err)); }
@@ -219,7 +249,8 @@ const MasterDataTab = () => {
                 <TableRow>
                   <TableCell sx={{ fontWeight: 800 }}>ID</TableCell>
                   <TableCell sx={{ fontWeight: 800 }}>Lookup Value</TableCell>
-                  {isDeptTab && <TableCell sx={{ fontWeight: 800 }}>Category</TableCell>}
+                  {isDeptTab && <TableCell sx={{ fontWeight: 800 }}>Stream</TableCell>}
+                  {isDeptTab && <TableCell sx={{ fontWeight: 800 }}>Dept. Category</TableCell>}
                   <TableCell sx={{ fontWeight: 800 }}>Status</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 800 }}>Actions</TableCell>
                 </TableRow>
@@ -227,7 +258,7 @@ const MasterDataTab = () => {
               <TableBody>
                 {mdData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={isDeptTab ? 5 : 4} align="center" sx={{ py: 6 }}>
+                    <TableCell colSpan={isDeptTab ? 6 : 4} align="center" sx={{ py: 6 }}>
                       <Typography color="text.secondary">No lookup values added yet.</Typography>
                     </TableCell>
                   </TableRow>
@@ -235,7 +266,16 @@ const MasterDataTab = () => {
                   <TableRow key={item.id} hover>
                     <TableCell>{item.id}</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>{item.name}</TableCell>
-                    {isDeptTab && <TableCell><Chip label={item.category_name || 'Unassigned'} size="small" color="primary" variant="outlined" /></TableCell>}
+                    {isDeptTab && (
+                      <>
+                        <TableCell>
+                          <Chip label={item.stream_name || 'Unassigned'} size="small" color="secondary" variant="outlined" sx={{ fontWeight: 700 }} />
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={item.category_name || 'Unassigned'} size="small" color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
+                        </TableCell>
+                      </>
+                    )}
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Switch size="small" checked={item.is_active} onChange={() => handleMdToggle(item)} />
@@ -268,12 +308,27 @@ const MasterDataTab = () => {
             value={mdName} onChange={e => setMdName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleMdSave()} sx={{ mb: 2 }} />
           {isDeptTab && (
-            <FormControl fullWidth sx={{ mt: 1 }}>
-              <InputLabel>Category</InputLabel>
-              <Select value={mdSelectedCat} label="Category" onChange={e => setMdSelectedCat(e.target.value)}>
-                {deptCategories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Stream (e.g. Aided, SFS)</InputLabel>
+                <Select value={mdSelectedStream} label="Stream (e.g. Aided, SFS)" onChange={e => setMdSelectedStream(e.target.value)}>
+                  <MenuItem value="">Unassigned</MenuItem>
+                  {streamsList.filter(s => s.is_active || s.id === mdSelectedStream).map(s => (
+                    <MenuItem key={s.id} value={s.id}>{s.name}{!s.is_active ? ' (Disabled)' : ''}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <InputLabel>Dept. Category (e.g. UG, PG)</InputLabel>
+                <Select value={mdSelectedCat} label="Dept. Category (e.g. UG, PG)" onChange={e => setMdSelectedCat(e.target.value)}>
+                  <MenuItem value="">Unassigned</MenuItem>
+                  {deptCategories.filter(c => c.is_active || c.id === mdSelectedCat).map(c => (
+                    <MenuItem key={c.id} value={c.id}>{c.name}{!c.is_active ? ' (Disabled)' : ''}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </>
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>

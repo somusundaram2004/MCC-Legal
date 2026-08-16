@@ -10,7 +10,7 @@ from .views import (
     MOUSharedDashboardView,
     TemplateCategoryViewSet, OrganizationTypeViewSet, CollaborationTypeViewSet,
     DocumentTypeViewSet, TagViewSet, DepartmentCategoryViewSet, DepartmentViewSet,
-    TemplateCollectionViewSet, TemplateDocumentViewSet, MOUCategoryViewSet
+    TemplateCollectionViewSet, TemplateDocumentViewSet, MOUCategoryViewSet, StreamViewSet
 )
 
 router = DefaultRouter()
@@ -21,6 +21,7 @@ router.register('master/doc-types', DocumentTypeViewSet, basename='master-doc-ty
 router.register('master/tags', TagViewSet, basename='master-tag')
 router.register('master/dept-categories', DepartmentCategoryViewSet, basename='master-dept-category')
 router.register('master/departments', DepartmentViewSet, basename='master-department')
+router.register('master/streams', StreamViewSet, basename='master-stream')
 router.register('collections', TemplateCollectionViewSet, basename='template-collection')
 router.register('documents', TemplateDocumentViewSet, basename='template-document')
 router.register('categories', MOUCategoryViewSet, basename='mou-category')

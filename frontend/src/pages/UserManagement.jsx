@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { 
-  Box, Button, Card, Typography, Table, 
+  Box, Button, Card, Typography, Table, Avatar,
   TableBody, TableCell, TableContainer, TableHead, TableRow, 
   Paper, IconButton, Chip, Dialog, DialogTitle, DialogContent, 
   DialogActions, TextField, MenuItem, Select, FormControl, 
@@ -487,33 +487,36 @@ const UserManagement = () => {
   const [invitationFilterRole, setInvitationFilterRole] = useState('');
   const [invitationFilterStatus, setInvitationFilterStatus] = useState('');
 
+  const [masterStreams, setMasterStreams] = useState([]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [usersRes, rolesRes, permsRes, deptCatsRes, deptsRes] = await Promise.all([
-        api.get('/api/users/'),
-        api.get('/api/roles/'),
-        api.get('/api/permissions/'),
-        api.get('/api/mous/master/dept-categories/'),
-        api.get('/api/mous/master/departments/'),
+      const [usersRes, rolesRes, permsRes, deptCatsRes, deptsRes, streamsRes] = await Promise.all([
+        api.get('/api/users/').catch(err => { console.error('Failed users fetch:', err); return { data: [] }; }),
+        api.get('/api/roles/').catch(err => { console.error('Failed roles fetch:', err); return { data: [] }; }),
+        api.get('/api/permissions/').catch(err => { console.error('Failed perms fetch:', err); return { data: [] }; }),
+        api.get('/api/mous/master/dept-categories/').catch(err => { console.error('Failed deptCats fetch:', err); return { data: [] }; }),
+        api.get('/api/mous/master/departments/').catch(err => { console.error('Failed depts fetch:', err); return { data: [] }; }),
+        api.get('/api/mous/master/streams/').catch(err => { console.error('Failed streams fetch:', err); return { data: [] }; }),
       ]);
-      setUsers(usersRes.data);
-      let rolesData = rolesRes.data;
+      setUsers(usersRes.data || []);
+      let rolesData = rolesRes.data || [];
       if (user?.role?.name === 'Admin') {
         rolesData = rolesData.filter(r => r.name !== 'Super Admin');
       }
       setRoles(rolesData);
-      setAllPermissions(permsRes.data);
-      setDeptCategories(deptCatsRes.data);
-      setDepartments(deptsRes.data);
+      setAllPermissions(permsRes.data || []);
+      setDeptCategories(deptCatsRes.data || []);
+      setDepartments(deptsRes.data || []);
+      setMasterStreams(streamsRes.data || []);
     } catch (err) {
       console.error('Failed to load user management data:', err);
-      setError('Failed to load users list. Please check permission authorization.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -672,16 +675,30 @@ const UserManagement = () => {
     showToast('Invitation link copied to clipboard.', 'success');
   };
 
-  const handleDeleteInvite = async (inviteItem) => {
-    if (!window.confirm(`Are you sure you want to delete the invitation record for ${inviteItem.email}?`)) return;
+  const [deleteInviteConfirmOpen, setDeleteInviteConfirmOpen] = useState(false);
+  const [inviteToDelete, setInviteToDelete] = useState(null);
+
+  const handleDeleteInviteOpen = (inviteItem) => {
+    setInviteToDelete(inviteItem);
+    setDeleteInviteConfirmOpen(true);
+  };
+
+  const handleDeleteInviteConfirm = async () => {
+    if (!inviteToDelete) return;
     try {
-      await api.delete(`/api/users/invitation/${inviteItem.id}/`);
-      loadInvitations();
+      await api.delete(`/api/users/invitation/${inviteToDelete.id}/`);
+      setDeleteInviteConfirmOpen(false);
       showToast('Invitation deleted successfully.', 'success');
+      loadInvitations();
     } catch (err) {
+      console.error('Failed to delete invitation:', err);
       showToast(err.response?.data?.detail || 'Failed to delete invitation.', 'error');
     }
   };
+
+  const [selectedFormStream, setSelectedFormStream] = useState('');
+  const [selectedFormCategory, setSelectedFormCategory] = useState('');
+  const [companyName, setCompanyName] = useState('');
 
   // Open creation dialog
   const handleCreateOpen = () => {
@@ -692,9 +709,11 @@ const UserManagement = () => {
     setName('');
     setPhone('');
     setDesignation('');
-    setDeptCategory('');
+    setCompanyName('');
+    setSelectedFormStream('');
+    setSelectedFormCategory('');
     setDepartment('');
-    setFilteredFormDepts([]);
+    setFilteredFormDepts(departments);
     setRoleId('');
     setStatus('Active');
     setSaveAttempted(false);
@@ -709,15 +728,21 @@ const UserManagement = () => {
     setName(userItem.name);
     setPhone(userItem.phone || '');
     setDesignation(userItem.designation || '');
+    setCompanyName(userItem.company_name || '');
     setDepartment(userItem.department || '');
     const userDept = userItem.department || '';
     const foundDept = departments.find(d => d.name === userDept);
     if (foundDept) {
-      setDeptCategory(foundDept.category);
-      setFilteredFormDepts(departments.filter(d => d.category === foundDept.category));
+      setSelectedFormCategory(foundDept.category || '');
+      setSelectedFormStream(foundDept.stream || '');
+      let filtered = departments;
+      if (foundDept.stream) filtered = filtered.filter(d => String(d.stream) === String(foundDept.stream));
+      if (foundDept.category) filtered = filtered.filter(d => String(d.category) === String(foundDept.category));
+      setFilteredFormDepts(filtered);
     } else {
-      setDeptCategory('');
-      setFilteredFormDepts([]);
+      setSelectedFormCategory('');
+      setSelectedFormStream('');
+      setFilteredFormDepts(departments);
     }
     setRoleId(userItem.role?.id || '');
     setStatus(userItem.status);
@@ -725,24 +750,38 @@ const UserManagement = () => {
     setUserDialogOpen(true);
   };
 
-  const handleCategoryChange = (e) => {
-    const catId = e.target.value;
-    setDeptCategory(catId);
+  const filterFormDepartments = (streamId, catId) => {
+    let filtered = departments;
+    if (streamId) {
+      filtered = filtered.filter(d => String(d.stream) === String(streamId) || String(d.stream_id) === String(streamId));
+    }
+    if (catId) {
+      filtered = filtered.filter(d => String(d.category) === String(catId) || String(d.category_id) === String(catId));
+    }
+    setFilteredFormDepts(filtered);
+  };
+
+  const handleFormStreamChange = (e) => {
+    const strmId = e.target.value;
+    setSelectedFormStream(strmId);
     setDepartment('');
-    setFilteredFormDepts(departments.filter(d => d.category === catId));
+    filterFormDepartments(strmId, selectedFormCategory);
+  };
+
+  const handleFormCategoryChange = (e) => {
+    const catId = e.target.value;
+    setSelectedFormCategory(catId);
+    setDepartment('');
+    filterFormDepartments(selectedFormStream, catId);
   };
 
   // User creation/edit submission
   const handleUserSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    if (!department) {
-      setSaveAttempted(true);
-      return;
-    }
-    const foundStream = deptCategories.find(c => c.id === deptCategory);
+    const foundStream = masterStreams.find(c => c.id === selectedFormStream);
     const streamName = foundStream ? foundStream.name : '';
-    const payload = { email, name, phone, designation, department, stream: streamName, role_id: roleId, status };
+    const payload = { email, name, phone, designation, company_name: companyName, department, stream: streamName, role_id: roleId, status };
     try {
       if (isEditMode) {
         await api.put(`/api/users/${selectedUser.id}/`, payload);
@@ -754,7 +793,20 @@ const UserManagement = () => {
       loadData();
     } catch (err) {
       console.error('Failed to save user:', err);
-      setError(err.response?.data?.email?.[0] || err.response?.data?.detail || 'Failed to save user account details.');
+      const data = err.response?.data;
+      let errMsg = 'Failed to save user account details.';
+      if (data && typeof data === 'object') {
+        const firstKey = Object.keys(data)[0];
+        if (firstKey) {
+          const val = data[firstKey];
+          const text = Array.isArray(val) ? val.join(', ') : String(val);
+          const formattedKey = firstKey.replace('_id', '').replace('_', ' ');
+          errMsg = `${formattedKey.charAt(0).toUpperCase() + formattedKey.slice(1)}: ${text}`;
+        }
+      } else if (data?.detail) {
+        errMsg = data.detail;
+      }
+      setError(errMsg);
     }
   };
 
@@ -818,13 +870,16 @@ const UserManagement = () => {
   });
 
   // Compute dept options for DepartmentSelect
-  const deptSelectOptions = filteredFormDepts.map(d => {
-    const catObj = deptCategories.find(c => c.id === deptCategory);
-    let lbl = d.name;
-    if (catObj?.name === 'Aided' && lbl.endsWith(' (Aided)')) lbl = lbl.slice(0, -8);
-    if (catObj?.name === 'Self-Financed (SFS)' && lbl.endsWith(' (SFS)')) lbl = lbl.slice(0, -6);
-    return { value: d.name, label: lbl };
-  }).sort((a, b) => a.label.localeCompare(b.label));
+  const deptSelectOptions = [
+    { value: '', label: 'Unassigned (Optional)' },
+    ...filteredFormDepts.map(d => {
+      const catObj = deptCategories.find(c => c.id === deptCategory);
+      let lbl = d.name;
+      if (catObj?.name === 'Aided' && lbl.endsWith(' (Aided)')) lbl = lbl.slice(0, -8);
+      if (catObj?.name === 'Self-Financed (SFS)' && lbl.endsWith(' (SFS)')) lbl = lbl.slice(0, -6);
+      return { value: d.name, label: lbl };
+    }).sort((a, b) => a.label.localeCompare(b.label))
+  ];
 
   return (
     <Box sx={{ flexGrow: 1 }}>
@@ -980,7 +1035,7 @@ const UserManagement = () => {
                   sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Streams</MenuItem>
-                  {deptCategories.map(c => (
+                  {masterStreams.map(c => (
                     <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
                   ))}
                 </Select>
@@ -1206,7 +1261,7 @@ const UserManagement = () => {
                   sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Streams</MenuItem>
-                  {deptCategories.map(c => (
+                  {masterStreams.map(c => (
                     <MenuItem key={c.id} value={c.name}>{c.name}</MenuItem>
                   ))}
                 </Select>
@@ -1337,7 +1392,7 @@ const UserManagement = () => {
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Delete Invitation Record">
-                                <IconButton size="small" onClick={() => handleDeleteInvite(invite)} color="default">
+                                <IconButton size="small" onClick={() => handleDeleteInviteOpen(invite)} color="default">
                                   <DeleteIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
@@ -1668,35 +1723,17 @@ const UserManagement = () => {
                 />
               </Box>
 
-              {/* Row 3: Stream + Department (custom portal) */}
+              {/* Row 3: Company / Organization Name + System Role */}
               <Box>
-                <FormControl fullWidth required>
-                  <InputLabel sx={LABEL_SX}>Stream</InputLabel>
-                  <Select
-                    value={deptCategory}
-                    label="Stream"
-                    onChange={handleCategoryChange}
-                    sx={SELECT_SX}
-                  >
-                    {deptCategories.map(c => (
-                      <MenuItem key={c.id} value={c.id} sx={MENU_ITEM_SX}>{c.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Box>
-              <Box>
-                <DepartmentSelect
-                  value={department}
-                  onChange={setDepartment}
-                  options={deptSelectOptions}
-                  disabled={!deptCategory}
-                  label="Department"
-                  required
-                  saveAttempted={saveAttempted}
+                <TextField
+                  label="Company / Organization Name (Optional)"
+                  fullWidth
+                  value={companyName}
+                  onChange={e => setCompanyName(e.target.value)}
+                  placeholder="e.g. TCS, Infosys, Apollo Hospitals"
+                  sx={FIELD_SX}
                 />
               </Box>
-
-              {/* Row 4: System Role + Account Status */}
               <Box>
                 <FormControl fullWidth required>
                   <InputLabel sx={LABEL_SX}>System Role</InputLabel>
@@ -1711,6 +1748,51 @@ const UserManagement = () => {
                     ))}
                   </Select>
                 </FormControl>
+              </Box>
+
+              {/* Row 4: Stream (Optional) + Dept. Category (Optional) */}
+              <Box>
+                <FormControl fullWidth>
+                  <InputLabel sx={LABEL_SX}>Stream (Optional)</InputLabel>
+                  <Select
+                    value={selectedFormStream}
+                    label="Stream (Optional)"
+                    onChange={handleFormStreamChange}
+                    sx={SELECT_SX}
+                  >
+                    <MenuItem value="" sx={MENU_ITEM_SX}>All Streams (Optional)</MenuItem>
+                    {masterStreams.map(s => (
+                      <MenuItem key={s.id} value={s.id} sx={MENU_ITEM_SX}>{s.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box>
+                <FormControl fullWidth>
+                  <InputLabel sx={LABEL_SX}>Dept. Category (Optional)</InputLabel>
+                  <Select
+                    value={selectedFormCategory}
+                    label="Dept. Category (Optional)"
+                    onChange={handleFormCategoryChange}
+                    sx={SELECT_SX}
+                  >
+                    <MenuItem value="" sx={MENU_ITEM_SX}>All Categories (Optional)</MenuItem>
+                    {deptCategories.map(c => (
+                      <MenuItem key={c.id} value={c.id} sx={MENU_ITEM_SX}>{c.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+
+              {/* Row 5: Department (Optional) */}
+              <Box>
+                <DepartmentSelect
+                  value={department}
+                  onChange={setDepartment}
+                  options={deptSelectOptions}
+                  label="Department (Optional)"
+                  saveAttempted={saveAttempted}
+                />
               </Box>
               <Box>
                 <FormControl fullWidth required>
@@ -1803,6 +1885,54 @@ const UserManagement = () => {
             <Button type="submit" color="primary" variant="contained">Update Password</Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Custom Site Popup: Delete Invitation Confirmation Dialog */}
+      <Dialog
+        open={deleteInviteConfirmOpen}
+        onClose={() => setDeleteInviteConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{
+          paper: { sx: { borderRadius: '20px', p: 1, boxShadow: '0 24px 80px rgba(0,0,0,0.2)' } }
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
+          <Avatar sx={{ bgcolor: 'error.lighter', color: 'error.main', width: 44, height: 44 }}>
+            <DeleteIcon />
+          </Avatar>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1.1rem' }}>
+              Delete Invitation Record
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              This action cannot be undone
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ py: 1.5 }}>
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to permanently delete the invitation record for{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>{inviteToDelete?.email}</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, pt: 1, gap: 1 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setDeleteInviteConfirmOpen(false)}
+            sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 600 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteInviteConfirm}
+            sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, px: 2.5 }}
+          >
+            Delete Invitation
+          </Button>
+        </DialogActions>
       </Dialog>
 
 

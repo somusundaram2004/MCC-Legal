@@ -187,10 +187,12 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
 
   // MOU Global Filter states
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterStream, setFilterStream] = useState('');
   const [filterDept, setFilterDept] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   
+  const [masterStreams, setMasterStreams] = useState([]);
   const [deptCategories, setDeptCategories] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [filteredExplorerDepts, setFilteredExplorerDepts] = useState([]);
@@ -478,11 +480,27 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) return;
+    api.get('/api/mous/master/streams/').then(res => setMasterStreams(res.data.filter(s => s.is_active))).catch(() => {});
     api.get('/api/mous/master/dept-categories/').then(res => setDeptCategories(res.data)).catch(() => {});
     api.get('/api/mous/master/departments/').then(res => setDepartments(res.data)).catch(() => {});
     api.get('/api/mous/templates/').then(res => setMouTypes(res.data)).catch(() => {});
   }, [user]);
 
+
+  const handleFilterStreamChange = (e) => {
+    const streamId = e.target.value;
+    setFilterStream(streamId);
+    setFilterDept('');
+    if (streamId) {
+      setFilteredExplorerDepts(departments.filter(d => 
+        String(d.stream) === String(streamId) || 
+        String(d.stream_id) === String(streamId) ||
+        d.stream_name === masterStreams.find(s => s.id === streamId)?.name
+      ));
+    } else {
+      setFilteredExplorerDepts(departments);
+    }
+  };
 
   const handleFilterCategoryChange = (e) => {
     const catId = e.target.value;
@@ -492,7 +510,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   };
 
   const fetchFilteredMOUs = useCallback(async () => {
-    const hasFilters = !!filterCategory || !!filterDept || !!filterStatus || !!filterType;
+    const hasFilters = !!filterStream || !!filterCategory || !!filterDept || !!filterStatus || !!filterType;
     setIsFilteredView(hasFilters);
     
     if (!hasFilters) {
@@ -502,10 +520,14 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
     
     setLoading(true);
     try {
+      const streamObj = masterStreams.find(s => s.id === filterStream);
+      const streamName = streamObj ? streamObj.name : (filterStream || '');
+      
       const catObj = deptCategories.find(c => c.id === filterCategory);
       const catName = catObj ? catObj.name : '';
       
       const params = {};
+      if (streamName) params.stream = streamName;
       if (catName) params.department_category = catName;
       if (filterDept) params.department_name = filterDept;
       if (filterStatus) params.status = filterStatus;
@@ -519,7 +541,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
     } finally {
       setLoading(false);
     }
-  }, [filterCategory, filterDept, filterStatus, filterType, deptCategories, departments]);
+  }, [filterStream, filterCategory, filterDept, filterStatus, filterType, masterStreams, deptCategories, departments]);
 
   useEffect(() => {
     fetchFilteredMOUs();
@@ -1047,18 +1069,18 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
           <FormControl size="small" sx={{ flex: '1 1 145px', minWidth: 130 }}>
             <InputLabel>Stream</InputLabel>
             <Select
-              value={filterCategory}
+              value={filterStream}
               label="Stream"
-              onChange={handleFilterCategoryChange}
+              onChange={handleFilterStreamChange}
               sx={{ borderRadius: '10px' }}
             >
               <MenuItem value="">All Streams</MenuItem>
-              {deptCategories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+              {masterStreams.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
             </Select>
           </FormControl>
 
           {/* Department */}
-          <FormControl size="small" disabled={!filterCategory} sx={{ flex: '1 1 145px', minWidth: 130 }}>
+          <FormControl size="small" disabled={!filterStream && !filterCategory} sx={{ flex: '1 1 145px', minWidth: 130 }}>
             <InputLabel>Department</InputLabel>
             <Select
               value={filterDept}
@@ -1174,10 +1196,11 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         </Box>
 
         {/* Active filter chips */}
-        {(filterCategory || filterDept || filterStatus || filterType) && (
+        {(filterStream || filterCategory || filterDept || filterStatus || filterType) && (
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider', alignItems: 'center' }}>
             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, mr: 0.5 }}>Active:</Typography>
-            {filterCategory && <Chip size="small" label={deptCategories.find(c => c.id === filterCategory)?.name} onDelete={() => { setFilterCategory(''); setFilterDept(''); setFilteredExplorerDepts([]); }} color="primary" variant="outlined" />}
+            {filterStream && <Chip size="small" label={masterStreams.find(s => s.id === filterStream)?.name || 'Stream'} onDelete={() => { setFilterStream(''); setFilterDept(''); setFilteredExplorerDepts(departments); }} color="primary" variant="outlined" />}
+            {filterCategory && <Chip size="small" label={deptCategories.find(c => c.id === filterCategory)?.name} onDelete={() => { setFilterCategory(''); setFilterDept(''); setFilteredExplorerDepts(departments); }} color="secondary" variant="outlined" />}
             {filterDept && <Chip size="small" label={filterDept} onDelete={() => setFilterDept('')} variant="outlined" />}
             {filterStatus && <Chip size="small" label={filterStatus} onDelete={() => setFilterStatus('')} color="success" variant="outlined" />}
             {filterType && <Chip size="small" label={mouTypes.find(t => t.id === filterType)?.name} onDelete={() => setFilterType('')} color="info" variant="outlined" />}

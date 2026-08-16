@@ -261,14 +261,17 @@ class DepartmentCategory(models.Model):
 
 class Department(models.Model):
     name = models.CharField(max_length=100)
-    category = models.ForeignKey(DepartmentCategory, on_delete=models.CASCADE, related_name='departments')
+    category = models.ForeignKey(DepartmentCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='departments')
+    stream = models.ForeignKey('Stream', on_delete=models.SET_NULL, null=True, blank=True, related_name='departments')
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        unique_together = ('name', 'category')
+        ordering = ['name']
 
     def __str__(self):
-        return f"{self.name} ({self.category.name})"
+        cat_str = f" ({self.category.name})" if self.category else ""
+        stream_str = f" [{self.stream.name}]" if self.stream else ""
+        return f"{self.name}{stream_str}{cat_str}"
 
 
 class TemplateCollection(models.Model):
@@ -330,6 +333,17 @@ class MOUCategory(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.code})"
+
+
+class Stream(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
 
 
 

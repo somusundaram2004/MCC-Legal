@@ -705,22 +705,32 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_invitation(self, request, token=None):
-        invitation = get_object_or_404(UserInvitation, token=token)
+        token_val = token or request.query_params.get('token')
+        if not token_val:
+            return Response({"detail": "Invitation token is required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        invitation = UserInvitation.objects.filter(token=token_val).first()
+        if not invitation:
+            import urllib.parse
+            unquoted = urllib.parse.unquote(token_val)
+            invitation = UserInvitation.objects.filter(token=unquoted).first()
+
+        if not invitation:
+            return Response({"detail": "This invitation link is invalid or no longer exists. Please ask an admin to send a new invitation link."}, status=status.HTTP_404_NOT_FOUND)
+
         now = timezone.now()
-        
-        # Return state details if token is expired, cancelled, or used
         status_val = 'Pending'
         detail_msg = ''
         
         if invitation.is_used:
             status_val = 'Accepted'
-            detail_msg = 'Invitation Already Used'
+            detail_msg = 'This invitation link has already been used to register an account.'
         elif invitation.is_cancelled:
             status_val = 'Cancelled'
-            detail_msg = 'Invitation Invalid'
+            detail_msg = 'This invitation link has been cancelled by an administrator.'
         elif invitation.expires_at < now:
             status_val = 'Expired'
-            detail_msg = 'Invitation Expired'
+            detail_msg = 'This invitation link has expired (valid for 24 hours). Please request a new link.'
             
         data = UserInvitationSerializer(invitation).data
         if status_val != 'Pending':

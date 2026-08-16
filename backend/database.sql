@@ -27,9 +27,10 @@ CREATE TABLE IF NOT EXISTS `folders_folder` (`id` BIGINT NOT NULL AUTO_INCREMENT
 CREATE TABLE IF NOT EXISTS `folders_folderpermission` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `is_granted` TINYINT(1) NOT NULL DEFAULT 0, `folder_id` BIGINT NOT NULL, `user_id` BIGINT NOT NULL, `can_delete_own_uploads` TINYINT(1) NOT NULL DEFAULT 0, `can_download` TINYINT(1) NOT NULL DEFAULT 0, `can_read` TINYINT(1) NOT NULL DEFAULT 0, `can_upload` TINYINT(1) NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS `folders_folderview` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `viewed_at` DATETIME NOT NULL, `folder_id` BIGINT NOT NULL, `user_id` BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS `folders_recyclebinsetting` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `retention_period` VARCHAR(50) NOT NULL, `auto_delete_enabled` TINYINT(1) NOT NULL DEFAULT 0, `updated_at` DATETIME NOT NULL, `updated_by_id` BIGINT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE TABLE IF NOT EXISTS `mous_collaborationtype` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL UNIQUE, `is_active` TINYINT(1) NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE TABLE IF NOT EXISTS `mous_department` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `is_active` TINYINT(1) NOT NULL DEFAULT 0, `category_id` BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE TABLE IF NOT EXISTS `mous_departmentcategory` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL UNIQUE, `is_active` TINYINT(1) NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `mous_stream` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL UNIQUE, `description` text NULL, `is_active` TINYINT(1) NOT NULL DEFAULT 1, `created_at` DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `mous_departmentcategory` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL UNIQUE, `is_active` TINYINT(1) NOT NULL DEFAULT 1) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `mous_department` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `is_active` TINYINT(1) NOT NULL DEFAULT 1, `category_id` BIGINT NULL, `stream_id` BIGINT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `mous_collaborationtype` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL UNIQUE, `is_active` TINYINT(1) NOT NULL DEFAULT 1) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS `mous_departmentsubmission` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `signed_date` DATE NOT NULL, `mou_month` VARCHAR(20) NOT NULL, `mou_year` INT NOT NULL, `summary` text NOT NULL, `purpose` text NOT NULL, `benefits` text NOT NULL, `remarks` text NULL, `uploaded_at` DATETIME NOT NULL, `review_status` VARCHAR(50) NOT NULL, `reviewer_comments` text NULL, `department_id` BIGINT NULL, `mou_id` BIGINT NOT NULL, `signed_file_id` BIGINT NULL, `uploaded_by_id` BIGINT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS `mous_documenttype` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL UNIQUE, `is_active` TINYINT(1) NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS `mous_mou` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` VARCHAR(255) NOT NULL, `mou_number` VARCHAR(100) NOT NULL UNIQUE, `partner_organization` VARCHAR(255) NOT NULL, `department_name` VARCHAR(255) NULL, `effective_date` DATE NULL, `signed_date` DATE NULL, `expiry_date` DATE NULL, `duration_months` INT NOT NULL, `status` VARCHAR(50) NOT NULL, `summary` text NULL, `purpose` text NULL, `objectives` text NULL, `beneficiaries` text NULL, `opportunities` text NULL, `custom_fields_data` text NULL, `coordinator_name` VARCHAR(255) NULL, `coordinator_designation` VARCHAR(255) NULL, `coordinator_email` VARCHAR(254) NULL, `coordinator_phone` VARCHAR(50) NULL, `partner_name` VARCHAR(255) NULL, `partner_designation` VARCHAR(255) NULL, `partner_email` VARCHAR(254) NULL, `partner_phone` VARCHAR(50) NULL, `additional_notes` text NULL, `remarks` text NULL, `version_number` INT NOT NULL, `is_renewed` TINYINT(1) NOT NULL DEFAULT 0, `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL, `created_by_id` BIGINT NULL, `department_id` BIGINT NULL, `original_mou_id` BIGINT NULL, `renewed_from_id` BIGINT NULL, `signed_mou_id` BIGINT NULL, `mou_type_id` BIGINT NULL, `mou_file` VARCHAR(100) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -188,6 +189,7 @@ CREATE INDEX `mous_moushare_shared_by_id_5c714b9f` ON `mous_moushare` (`shared_b
 CREATE INDEX `mous_moushare_user_id_8390be36` ON `mous_moushare` (`user_id`);
 CREATE UNIQUE INDEX `mous_department_name_category_id_3b3100b3_uniq` ON `mous_department` (`name`, `category_id`);
 CREATE INDEX `mous_department_category_id_5830ed6c` ON `mous_department` (`category_id`);
+CREATE INDEX `mous_department_stream_id_692138ad` ON `mous_department` (`stream_id`);
 CREATE INDEX `mous_templatecollection_category_id_fef6a88e` ON `mous_templatecollection` (`category_id`);
 CREATE INDEX `mous_templatecollection_collaboration_type_id_678ccf2e` ON `mous_templatecollection` (`collaboration_type_id`);
 CREATE INDEX `mous_templatecollection_created_by_id_0b488094` ON `mous_templatecollection` (`created_by_id`);
@@ -202,6 +204,50 @@ CREATE INDEX `mous_templatedocument_template_collection_id_4241b0ab` ON `mous_te
 CREATE INDEX `mous_templatedocument_uploaded_by_id_760bbb23` ON `mous_templatedocument` (`uploaded_by_id`);
 CREATE INDEX `notifications_notification_user_id_b5e8c0ff` ON `notifications_notification` (`user_id`);
 CREATE INDEX `django_session_expire_date_a5c62663` ON `django_session` (`expire_date`);
+
+-- ========================================================
+-- Seed Master Data for Streams & Master Lookups
+-- ========================================================
+INSERT INTO `mous_stream` (`id`, `name`, `description`, `is_active`, `created_at`) VALUES
+(1, 'Aided', 'Aided Stream Departments', 1, '2026-08-16 00:00:00'),
+(2, 'Self-Financed (SFS)', 'Self-Financed Stream Departments', 1, '2026-08-16 00:00:00'),
+(3, 'Administrative', 'Administrative & Support Units', 1, '2026-08-16 00:00:00');
+
+INSERT INTO `mous_departmentcategory` (`id`, `name`, `is_active`) VALUES
+(1, 'Arts & Humanities', 1),
+(2, 'Science & Technology', 1),
+(3, 'Commerce & Management', 1),
+(4, 'Administrative Units', 1);
+
+INSERT INTO `mous_templatecategory` (`id`, `name`, `is_active`) VALUES
+(1, 'Academic MoU', 1),
+(2, 'Research MoU', 1),
+(3, 'Industry MoU', 1),
+(4, 'Student Exchange', 1);
+
+INSERT INTO `mous_organizationtype` (`id`, `name`, `is_active`) VALUES
+(1, 'University / Academic', 1),
+(2, 'Corporate / Industry', 1),
+(3, 'Research Institution', 1),
+(4, 'Government Agency', 1);
+
+INSERT INTO `mous_collaborationtype` (`id`, `name`, `is_active`) VALUES
+(1, 'Joint Research', 1),
+(2, 'Student Exchange', 1),
+(3, 'Faculty Development', 1),
+(4, 'Placement & Internship', 1);
+
+INSERT INTO `mous_documenttype` (`id`, `name`, `is_active`) VALUES
+(1, 'Draft Agreement', 1),
+(2, 'Signed MoU Document', 1),
+(3, 'Annexure / Exhibit', 1),
+(4, 'Renewal Copy', 1);
+
+INSERT INTO `mous_tag` (`id`, `name`, `is_active`) VALUES
+(1, 'High Priority', 1),
+(2, 'International', 1),
+(3, 'STEM', 1),
+(4, 'Placement Guaranteed', 1);
 
 SET FOREIGN_KEY_CHECKS = 1;
 COMMIT;

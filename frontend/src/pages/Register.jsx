@@ -24,7 +24,8 @@ import { useAuth } from '../context/AuthContext';
 const Register = () => {
   const { login } = useAuth();
   const [searchParams] = useSearchParams();
-  const token = searchParams.get('token') || '';
+  const rawToken = searchParams.get('token') || '';
+  const token = rawToken.trim().replace(/^["']|["']$/g, '');
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -51,81 +52,76 @@ const Register = () => {
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
 
-  const deptCategories = [
-    { id: 'aided', name: 'Aided' },
-    { id: 'sfs', name: 'Self-Financed (SFS)' }
-  ];
+  const [streamsList, setStreamsList] = useState([]);
+  const [masterCategories, setMasterCategories] = useState([]);
+  const [departmentsList, setDepartmentsList] = useState([]);
+  const [selectedStream, setSelectedStream] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
 
-  const departmentsList = [
-    { id: 1, name: 'Tamil (Aided)', category: 'aided' },
-    { id: 2, name: 'English (Aided)', category: 'aided' },
-    { id: 3, name: 'History (Aided)', category: 'aided' },
-    { id: 4, name: 'Economics (Aided)', category: 'aided' },
-    { id: 5, name: 'Mathematics (Aided)', category: 'aided' },
-    { id: 6, name: 'Physics (Aided)', category: 'aided' },
-    { id: 7, name: 'Chemistry (Aided)', category: 'aided' },
-    { id: 8, name: 'Plant Biology & Plant Biotechnology (Aided)', category: 'aided' },
-    { id: 9, name: 'Advanced Zoology & Biotechnology (Aided)', category: 'aided' },
-    { id: 10, name: 'Commerce (Aided)', category: 'aided' },
-    { id: 11, name: 'Physical Education (Aided)', category: 'aided' },
-    { id: 12, name: 'Tamil (SFS)', category: 'sfs' },
-    { id: 13, name: 'English (SFS)', category: 'sfs' },
-    { id: 14, name: 'Mathematics (SFS)', category: 'sfs' },
-    { id: 15, name: 'Physics (SFS)', category: 'sfs' },
-    { id: 16, name: 'Chemistry (SFS)', category: 'sfs' },
-    { id: 17, name: 'Computer Science (SFS)', category: 'sfs' },
-    { id: 18, name: 'Computer Applications (BCA) (SFS)', category: 'sfs' },
-    { id: 19, name: 'Bio-Chemistry (SFS)', category: 'sfs' },
-    { id: 20, name: 'Micro-Biology (SFS)', category: 'sfs' },
-    { id: 21, name: 'Biotechnology (SFS)', category: 'sfs' },
-    { id: 22, name: 'Visual Communication (SFS)', category: 'sfs' },
-    { id: 23, name: 'Commerce (General) (SFS)', category: 'sfs' },
-    { id: 24, name: 'Commerce (Corporate Secretaryship) (SFS)', category: 'sfs' },
-    { id: 25, name: 'Commerce (Computer Applications) (SFS)', category: 'sfs' },
-    { id: 26, name: 'Commerce (Honours) (SFS)', category: 'sfs' },
-    { id: 27, name: 'Commerce (Accounting & Finance) (SFS)', category: 'sfs' },
-    { id: 28, name: 'Business Administration (BBA) (SFS)', category: 'sfs' },
-    { id: 29, name: 'Social Work (BSW) (SFS)', category: 'sfs' },
-    { id: 30, name: 'Social Work (MSW) (SFS)', category: 'sfs' },
-  ];
+  useEffect(() => {
+    Promise.all([
+      api.get('/api/mous/master/streams/').then(r => r.data).catch(() => []),
+      api.get('/api/mous/master/dept-categories/').then(r => r.data).catch(() => []),
+      api.get('/api/mous/master/departments/').then(r => r.data).catch(() => [])
+    ]).then(([strms, cats, depts]) => {
+      setStreamsList(strms.filter(s => s.is_active));
+      setMasterCategories(cats.filter(c => c.is_active));
+      setDepartmentsList(depts.filter(d => d.is_active));
+      setFilteredDepts(depts.filter(d => d.is_active));
+    });
+  }, []);
+
+  const filterRegistrationDepts = (strmId, catId) => {
+    let filtered = departmentsList;
+    if (strmId) {
+      filtered = filtered.filter(d => String(d.stream) === String(strmId) || String(d.stream_id) === String(strmId));
+    }
+    if (catId) {
+      filtered = filtered.filter(d => String(d.category) === String(catId) || String(d.category_id) === String(catId));
+    }
+    setFilteredDepts(filtered);
+  };
 
   const handleStreamChange = (e) => {
-    const catId = e.target.value;
-    setStream(catId);
+    const strmId = e.target.value;
+    setSelectedStream(strmId);
     setDepartment('');
-    const foundStream = deptCategories.find(c => c.id === catId);
-    if (foundStream) {
-      setFilteredDepts(departmentsList.filter(d => d.category === catId));
-    } else {
-      setFilteredDepts([]);
-    }
+    filterRegistrationDepts(strmId, selectedCategory);
+  };
+
+  const handleCategoryChange = (e) => {
+    const catId = e.target.value;
+    setSelectedCategory(catId);
+    setDepartment('');
+    filterRegistrationDepts(selectedStream, catId);
   };
 
   // Validate invitation token on load
   useEffect(() => {
     if (!token) {
-      navigate('/login', { 
-        state: { 
-          successMessage: 'The invitation token is missing. Please sign in or request a new link.' 
-        } 
+      setValidationError({
+        title: 'Invitation Link Missing',
+        detail: 'The invitation link appears incomplete or missing a valid token. Please request a new invitation link from your administrator.'
       });
+      setLoading(false);
       return;
     }
 
-    api.get(`/api/users/invitation/${token}/`)
+    api.get(`/api/users/invitation/${encodeURIComponent(token)}/`)
       .then(res => {
         setInvitation(res.data);
-        setLoading(false);
       })
       .catch(err => {
-        // Redirect directly to login if invalid, expired, used, or cancelled
-        navigate('/login', { 
-          state: { 
-            successMessage: 'This invitation link has already been used or is no longer valid. Please sign in.' 
-          } 
+        const errorDetail = err.response?.data?.detail || 'This invitation link is invalid, expired, used, or cancelled. Please request a new link.';
+        setValidationError({
+          title: 'Invalid or Expired Invitation',
+          detail: errorDetail
         });
+      })
+      .finally(() => {
+        setLoading(false);
       });
-  }, [token, navigate]);
+  }, [token]);
 
   // Field validation helpers
   const validateName = (val) => {
@@ -205,7 +201,7 @@ const Register = () => {
     setSubmitting(true);
     setFormError('');
 
-    const resolvedStream = invitation?.stream || (deptCategories.find(c => c.id === stream)?.name || stream || '');
+    const resolvedStream = invitation?.stream || (streamsList.find(s => s.id === selectedStream)?.name || selectedStream || '');
 
     try {
       await api.post('/api/users/register/', {
@@ -307,7 +303,7 @@ const Register = () => {
             <Box sx={{ bgcolor: 'rgba(255,255,255,0.06)', p: 3, borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>INCLUDED ASSIGNMENTS</Typography>
               <Typography variant="body2" sx={{ mb: 1 }}>
-                <strong>Stream:</strong> {invitation?.stream || (deptCategories.find(c => c.id === stream)?.name) || '—'}
+                <strong>Stream:</strong> {invitation?.stream || (streamsList.find(s => s.id === selectedStream)?.name) || '—'}
               </Typography>
               <Typography variant="body2" sx={{ mb: 1 }}>
                 <strong>Department:</strong> {invitation?.department || department || '—'}
@@ -497,31 +493,48 @@ const Register = () => {
                 }}
               />
 
-              {/* Dynamic Stream and Department selectors (if not pre-defined in invitation) */}
+              {/* Dynamic Stream, Category, and Department selectors (if not pre-defined in invitation) */}
               {!invitation?.stream && (
                 <>
                   <FormControl fullWidth>
-                    <InputLabel>Stream</InputLabel>
+                    <InputLabel>Stream (Optional)</InputLabel>
                     <Select
-                      value={stream}
-                      label="Stream"
+                      value={selectedStream}
+                      label="Stream (Optional)"
                       onChange={handleStreamChange}
                       sx={{ borderRadius: '14px' }}
                     >
-                      {deptCategories.map(c => (
+                      <MenuItem value="">All Streams (Optional)</MenuItem>
+                      {streamsList.map(s => (
+                        <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth>
+                    <InputLabel>Dept. Category (Optional)</InputLabel>
+                    <Select
+                      value={selectedCategory}
+                      label="Dept. Category (Optional)"
+                      onChange={handleCategoryChange}
+                      sx={{ borderRadius: '14px' }}
+                    >
+                      <MenuItem value="">All Categories (Optional)</MenuItem>
+                      {masterCategories.map(c => (
                         <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
 
-                  <FormControl fullWidth disabled={!stream}>
-                    <InputLabel>Department</InputLabel>
+                  <FormControl fullWidth>
+                    <InputLabel>Department (Optional)</InputLabel>
                     <Select
                       value={department}
-                      label="Department"
+                      label="Department (Optional)"
                       onChange={e => setDepartment(e.target.value)}
                       sx={{ borderRadius: '14px' }}
                     >
+                      <MenuItem value="">Unassigned (Optional)</MenuItem>
                       {filteredDepts.map(d => (
                         <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
                       ))}

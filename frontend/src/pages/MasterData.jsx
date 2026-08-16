@@ -19,7 +19,8 @@ import {
   getMasterDocTypes, createMasterDocType, updateMasterDocType, deleteMasterDocType,
   getMasterTags, createMasterTag, updateMasterTag, deleteMasterTag,
   getMasterDeptCategories, createMasterDeptCategory, updateMasterDeptCategory, deleteMasterDeptCategory,
-  getMasterDepartments, createMasterDepartment, updateMasterDepartment, deleteMasterDepartment
+  getMasterDepartments, createMasterDepartment, updateMasterDepartment, deleteMasterDepartment,
+  getMasterStreams, createMasterStream, updateMasterStream, deleteMasterStream
 } from '../services/templateApi';
 
 const MasterData = () => {
@@ -43,12 +44,14 @@ const MasterData = () => {
   }, [success]);
   const [data, setData] = useState([]);
   const [deptCategories, setDeptCategories] = useState([]); // Loaded for departments categorization
+  const [streams, setStreams] = useState([]); // Loaded for department streams mapping
 
   // Dialog State
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [name, setName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(''); // For Department category mapping
+  const [selectedStream, setSelectedStream] = useState(''); // For Department stream mapping
 
   const TABS_CONFIG = [
     { label: 'Template Categories', fetch: getMasterCategories, create: createMasterCategory, update: updateMasterCategory, delete: deleteMasterCategory },
@@ -56,7 +59,8 @@ const MasterData = () => {
     { label: 'Collaboration Types', fetch: getMasterCollabTypes, create: createMasterCollabType, update: updateMasterCollabType, delete: deleteMasterCollabType },
     { label: 'Document Types', fetch: getMasterDocTypes, create: createMasterDocType, update: updateMasterDocType, delete: deleteMasterDocType },
     { label: 'Tags', fetch: getMasterTags, create: createMasterTag, update: updateMasterTag, delete: deleteMasterTag },
-    { label: 'Department Categories', fetch: getMasterDeptCategories, create: createMasterDeptCategory, update: updateMasterDeptCategory, delete: deleteMasterDeptCategory },
+    { label: 'Streams', fetch: getMasterStreams, create: createMasterStream, update: updateMasterStream, delete: deleteMasterStream },
+    { label: 'Dept. Categories', fetch: getMasterDeptCategories, create: createMasterDeptCategory, update: updateMasterDeptCategory, delete: deleteMasterDeptCategory },
     { label: 'Departments', fetch: getMasterDepartments, create: createMasterDepartment, update: updateMasterDepartment, delete: deleteMasterDepartment }
   ];
 
@@ -69,9 +73,13 @@ const MasterData = () => {
       const result = await currentTab.fetch();
       setData(result);
 
-      if (activeTab === 6) { // Departments loaded, load categories too
-        const cats = await getMasterDeptCategories();
+      if (currentTab.label === 'Departments') { // Departments loaded, load categories and streams too
+        const [cats, strms] = await Promise.all([
+          getMasterDeptCategories().catch(() => []),
+          getMasterStreams().catch(() => [])
+        ]);
         setDeptCategories(cats);
+        setStreams(strms);
       }
     } catch (err) {
       console.error(err);
@@ -85,15 +93,30 @@ const MasterData = () => {
     loadData();
   }, [activeTab]);
 
-  const handleOpen = (item = null) => {
+  const handleOpen = async (item = null) => {
+    if (currentTab.label === 'Departments' && (deptCategories.length === 0 || streams.length === 0)) {
+      try {
+        const [cats, strms] = await Promise.all([
+          getMasterDeptCategories().catch(() => []),
+          getMasterStreams().catch(() => [])
+        ]);
+        setDeptCategories(cats);
+        setStreams(strms);
+      } catch (err) {
+        console.error('Failed to load department dependencies:', err);
+      }
+    }
+
     if (item) {
       setEditId(item.id);
       setName(item.name);
       setSelectedCategory(item.category || '');
+      setSelectedStream(item.stream || '');
     } else {
       setEditId(null);
       setName('');
       setSelectedCategory('');
+      setSelectedStream('');
     }
     setOpen(true);
   };
@@ -102,14 +125,16 @@ const MasterData = () => {
     setOpen(false);
     setName('');
     setSelectedCategory('');
+    setSelectedStream('');
   };
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
     try {
       const payload = { name: name.trim() };
-      if (activeTab === 6) { // For department
-        payload.category = selectedCategory;
+      if (currentTab.label === 'Departments') { // For department
+        payload.category = selectedCategory || null;
+        payload.stream = selectedStream || null;
       }
 
       if (editId) {
@@ -128,8 +153,9 @@ const MasterData = () => {
   const handleToggleActive = async (item) => {
     try {
       const payload = { name: item.name, is_active: !item.is_active };
-      if (activeTab === 6) {
-        payload.category = item.category;
+      if (currentTab.label === 'Departments') {
+        payload.category = item.category || null;
+        payload.stream = item.stream || null;
       }
       await currentTab.update(item.id, payload);
       loadData();
@@ -161,7 +187,7 @@ const MasterData = () => {
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 800 }}>Master Data Management</Typography>
             <Typography variant="body2" color="text.secondary">
-              Add, update, or deactivate dropdown items throughout college user creation forms and MOU documents dynamically.
+              Add, update, or deactivate dynamic lookup options (Streams, Categories, Departments, Templates) system-wide.
             </Typography>
           </Box>
         </Box>
@@ -208,7 +234,8 @@ const MasterData = () => {
                 <TableRow>
                   <TableCell sx={{ fontWeight: 800 }}>ID</TableCell>
                   <TableCell sx={{ fontWeight: 800 }}>Lookup Value</TableCell>
-                  {activeTab === 6 && <TableCell sx={{ fontWeight: 800 }}>Category</TableCell>}
+                  {currentTab.label === 'Departments' && <TableCell sx={{ fontWeight: 800 }}>Stream</TableCell>}
+                  {currentTab.label === 'Departments' && <TableCell sx={{ fontWeight: 800 }}>Dept. Category</TableCell>}
                   <TableCell sx={{ fontWeight: 800 }}>Status</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 800 }}>Actions</TableCell>
                 </TableRow>
@@ -216,7 +243,7 @@ const MasterData = () => {
               <TableBody>
                 {data.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={activeTab === 6 ? 5 : 4} align="center" sx={{ py: 6 }}>
+                    <TableCell colSpan={currentTab.label === 'Departments' ? 6 : 4} align="center" sx={{ py: 6 }}>
                       <Typography color="text.secondary">No lookup values added yet.</Typography>
                     </TableCell>
                   </TableRow>
@@ -225,10 +252,15 @@ const MasterData = () => {
                     <TableRow key={item.id} hover>
                       <TableCell>{item.id}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>{item.name}</TableCell>
-                      {activeTab === 6 && (
-                        <TableCell>
-                          <Chip label={item.category_name || 'Unassigned'} size="small" color="primary" variant="outlined" />
-                        </TableCell>
+                      {currentTab.label === 'Departments' && (
+                        <>
+                          <TableCell>
+                            <Chip label={item.stream_name || 'Unassigned'} size="small" color="secondary" variant="outlined" sx={{ fontWeight: 700 }} />
+                          </TableCell>
+                          <TableCell>
+                            <Chip label={item.category_name || 'Unassigned'} size="small" color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
+                          </TableCell>
+                        </>
                       )}
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -280,19 +312,36 @@ const MasterData = () => {
             sx={{ mb: 2 }}
           />
 
-          {activeTab === 6 && (
-            <FormControl fullWidth sx={{ mt: 1 }}>
-              <InputLabel>Category</InputLabel>
-              <Select
-                value={selectedCategory}
-                label="Category"
-                onChange={(e) => setSelectedCategory(e.target.value)}
-              >
-                {deptCategories.map((c) => (
-                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+          {currentTab.label === 'Departments' && (
+            <>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Stream (e.g. Aided, SFS)</InputLabel>
+                <Select
+                  value={selectedStream}
+                  label="Stream (e.g. Aided, SFS)"
+                  onChange={(e) => setSelectedStream(e.target.value)}
+                >
+                  <MenuItem value="">Unassigned</MenuItem>
+                  {streams.filter(s => s.is_active || s.id === selectedStream).map((s) => (
+                    <MenuItem key={s.id} value={s.id}>{s.name}{!s.is_active ? ' (Disabled)' : ''}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <InputLabel>Dept. Category (e.g. UG, PG)</InputLabel>
+                <Select
+                  value={selectedCategory}
+                  label="Dept. Category (e.g. UG, PG)"
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                >
+                  <MenuItem value="">Unassigned</MenuItem>
+                  {deptCategories.filter(c => c.is_active || c.id === selectedCategory).map((c) => (
+                    <MenuItem key={c.id} value={c.id}>{c.name}{!c.is_active ? ' (Disabled)' : ''}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </>
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>

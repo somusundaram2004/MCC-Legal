@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     MOUTemplate, MOU, MOUDocument, MOURenewal,
     TemplateCategory, OrganizationType, CollaborationType, DocumentType, Tag,
-    DepartmentCategory, Department, TemplateCollection, TemplateDocument, MOUCategory
+    DepartmentCategory, Department, TemplateCollection, TemplateDocument, MOUCategory, Stream
 )
 from files.serializers import FileSerializer
 from folders.serializers import FolderSerializer
@@ -154,10 +154,11 @@ class DepartmentCategorySerializer(serializers.ModelSerializer):
 
 class DepartmentSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    stream_name = serializers.CharField(source='stream.name', read_only=True)
 
     class Meta:
         model = Department
-        fields = ['id', 'name', 'category', 'category_name', 'is_active']
+        fields = ['id', 'name', 'category', 'category_name', 'stream', 'stream_name', 'is_active']
 
 
 class TemplateDocumentSerializer(serializers.ModelSerializer):
@@ -189,6 +190,13 @@ class MOUCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = MOUCategory
         fields = '__all__'
+
+
+class StreamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Stream
+        fields = '__all__'
+
 
 
 

@@ -36,6 +36,12 @@ export const createMasterDepartment = (data) => api.post('/api/mous/master/depar
 export const updateMasterDepartment = (id, data) => api.put(`/api/mous/master/departments/${id}/`, data).then(res => res.data);
 export const deleteMasterDepartment = (id) => api.delete(`/api/mous/master/departments/${id}/`).then(res => res.data);
 
+export const getMasterStreams = (params = {}) => api.get('/api/mous/master/streams/', { params }).then(res => res.data);
+export const createMasterStream = (data) => api.post('/api/mous/master/streams/', data).then(res => res.data);
+export const updateMasterStream = (id, data) => api.put(`/api/mous/master/streams/${id}/`, data).then(res => res.data);
+export const deleteMasterStream = (id) => api.delete(`/api/mous/master/streams/${id}/`).then(res => res.data);
+
+
 // --- Template Collections Endpoints ---
 export const getTemplateCollections = (params = {}) => api.get('/api/mous/collections/', { params }).then(res => res.data);
 export const getTemplateCollection = (id) => api.get(`/api/mous/collections/${id}/`).then(res => res.data);

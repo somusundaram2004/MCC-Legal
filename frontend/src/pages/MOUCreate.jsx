@@ -28,6 +28,7 @@ const MOUCreate = () => {
   const [partnerOrganization, setPartnerOrganization] = useState('');
   const [departmentName, setDepartmentName] = useState('');
   const [deptCategories, setDeptCategories] = useState([]);
+  const [masterStreams, setMasterStreams] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [filteredFormDepts, setFilteredFormDepts] = useState([]);
   const [deptCategory, setDeptCategory] = useState('');
@@ -61,15 +62,16 @@ const MOUCreate = () => {
       }
     });
 
-    api.get('/api/mous/master/dept-categories/').then(res => setDeptCategories(res.data));
-    api.get('/api/mous/master/departments/').then(res => setDepartments(res.data));
+    api.get('/api/mous/master/streams/').then(res => setMasterStreams(res.data.filter(s => s.is_active))).catch(() => {});
+    api.get('/api/mous/master/dept-categories/').then(res => setDeptCategories(res.data)).catch(() => {});
+    api.get('/api/mous/master/departments/').then(res => setDepartments(res.data)).catch(() => {});
   }, []);
 
   const handleCategoryChange = (e) => {
-    const catId = e.target.value;
-    setDeptCategory(catId);
+    const strmId = e.target.value;
+    setDeptCategory(strmId);
     setDepartmentName('');
-    setFilteredFormDepts(departments.filter(d => d.category === catId));
+    setFilteredFormDepts(departments.filter(d => String(d.stream) === String(strmId) || String(d.stream_id) === String(strmId) || String(d.category) === String(strmId)));
   };
 
   const handleTemplateChange = (tmplId) => {
@@ -187,14 +189,14 @@ const MOUCreate = () => {
 
               <Grid xs={12} sm={6}>
                 <FormControl fullWidth required>
-                  <InputLabel>Department Category (Stream)</InputLabel>
+                  <InputLabel>Stream</InputLabel>
                   <Select
                     value={deptCategory}
-                    label="Department Category (Stream)"
+                    label="Stream"
                     onChange={handleCategoryChange}
                   >
-                    {deptCategories.map((c) => (
-                      <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                    {masterStreams.map((s) => (
+                      <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>

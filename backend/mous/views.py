@@ -1,8 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from rest_framework import status, generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import status, generics, viewsets, permissions
+from rest_framework.permissions import IsAuthenticated, AllowAny, SAFE_METHODS
 from django.db.models import Q, Count
 from django.db import transaction
 from django.db import IntegrityError
@@ -12,8 +12,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from .models import MOUTemplate, MOU, MOUDocument, MOURenewal, MOUShare, DepartmentSubmission
-from .serializers import MOUTemplateSerializer, MOUSerializer, MOUDocumentSerializer
+from .models import MOUTemplate, MOU, MOUDocument, MOURenewal, MOUShare, DepartmentSubmission, Stream
+from .serializers import MOUTemplateSerializer, MOUSerializer, MOUDocumentSerializer, StreamSerializer
 from activity_logs.models import ActivityLog
 from notifications.models import Notification
 from notifications.utils import create_notification, notify_admins
@@ -70,6 +70,7 @@ class MOUListCreateView(APIView):
         dept_filter = request.query_params.get('department')
         dept_name_filter = request.query_params.get('department_name')
         dept_category_filter = request.query_params.get('department_category')
+        stream_filter = request.query_params.get('stream')
         search_query = request.query_params.get('q', '').strip()
 
         if status_filter:
@@ -80,6 +81,15 @@ class MOUListCreateView(APIView):
             qs = qs.filter(department_id=dept_filter)
         if dept_name_filter:
             qs = qs.filter(department_name__iexact=dept_name_filter)
+        if stream_filter:
+            from .models import Department
+            matching_depts = Department.objects.filter(
+                Q(stream_id=stream_filter) | Q(stream__name__iexact=stream_filter)
+            ).values_list('name', flat=True)
+            if matching_depts:
+                qs = qs.filter(Q(department_name__in=matching_depts) | Q(department_name__icontains=stream_filter))
+            else:
+                qs = qs.filter(Q(department_name__icontains=stream_filter))
         if dept_category_filter:
             if dept_category_filter == 'Aided':
                 qs = qs.filter(department_name__endswith='(Aided)')
@@ -860,10 +870,20 @@ class DepartmentCategoryViewSet(MasterDataMixin, viewsets.ModelViewSet):
     queryset = DepartmentCategory.objects.all().order_by('name')
     serializer_class = DepartmentCategorySerializer
 
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
+
 class DepartmentViewSet(MasterDataMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = Department.objects.all().order_by('name')
     serializer_class = DepartmentSerializer
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -871,6 +891,26 @@ class DepartmentViewSet(MasterDataMixin, viewsets.ModelViewSet):
         if category_id:
             qs = qs.filter(category_id=category_id)
         return qs
+
+
+class StreamViewSet(MasterDataMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = Stream.objects.all().order_by('name')
+    serializer_class = StreamSerializer
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        is_active_param = self.request.query_params.get('is_active')
+        if is_active_param is not None:
+            is_active_bool = is_active_param.lower() in ['true', '1']
+            qs = qs.filter(is_active=is_active_bool)
+        return qs
+
 
 
 class MOUCategoryViewSet(viewsets.ModelViewSet):

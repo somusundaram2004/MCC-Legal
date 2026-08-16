@@ -13,6 +13,10 @@ User = get_user_model()
 
 def seed_data():
     print("Starting minimal Super Admin seeding...")
+    # NOTE: All Master Data (Streams, Template Categories, Organization Types,
+    # Collaboration Types, Document Types, Tags, Department Categories, Departments)
+    # are managed dynamically via Master Data Management and are excluded from seed.py.
+
 
     # 1. Essential System Permissions
     permissions_list = [

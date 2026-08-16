@@ -152,8 +152,8 @@ class UserPermission(models.Model):
 class UserInvitation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField()
-    stream = models.CharField(max_length=100)
-    department = models.CharField(max_length=100)
+    stream = models.CharField(max_length=100, blank=True, null=True)
+    department = models.CharField(max_length=100, blank=True, null=True)
     system_role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name='invitations')
     token = models.CharField(max_length=255, unique=True)
     expires_at = models.DateTimeField()
