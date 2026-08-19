@@ -247,7 +247,10 @@ def get_or_create_module_folder_id(custom_page):
             from folders.models import Folder
             root_folder = None
             if custom_page.root_folder_id:
-                root_folder = Folder.objects.filter(id=int(custom_page.root_folder_id)).first()
+                try:
+                    root_folder = Folder.objects.filter(id=int(custom_page.root_folder_id)).first()
+                except (ValueError, TypeError):
+                    root_folder = None
             if not root_folder:
                 root_folder = Folder.objects.filter(google_folder_id=drive_id).first()
             if not root_folder:

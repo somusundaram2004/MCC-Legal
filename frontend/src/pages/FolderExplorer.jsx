@@ -659,7 +659,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   // Background polling for dynamic updates (real-time updates of files/folders)
   useEffect(() => {
     const fetchContentsBackground = async () => {
-      if (isFilteredView) return;
+      if (isFilteredView || !localStorage.getItem('access_token')) return;
       try {
         if (searchParamQuery) {
           const res = await api.get(`/api/search/?q=${encodeURIComponent(searchParamQuery)}`);

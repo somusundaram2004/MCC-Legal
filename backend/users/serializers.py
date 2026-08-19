@@ -241,8 +241,7 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
                 instance.save(update_fields=['google_drive_folder_id'])
                 logger.info(f"Drive Folder ID saved: '{drive_folder_id}'")
             except Exception as e:
-                logger.error(f"Failed to create Google Drive folder for module '{instance.title}': {e}", exc_info=True)
-                raise serializers.ValidationError({"google_drive_folder_id": f"Failed to create Google Drive folder: {str(e)}"})
+                logger.warning(f"Google Drive folder initialization warning for module '{instance.title}': {e}")
         else:
             # Sync folder name on Google Drive if title was updated
             try:
@@ -255,14 +254,15 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
         if instance.root_folder_id:
             try:
                 from folders.models import Folder
-                Folder.objects.filter(id=int(instance.root_folder_id)).update(
+                rf_id = int(instance.root_folder_id)
+                Folder.objects.filter(id=rf_id).update(
                     name=instance.title,
-                    google_folder_id=instance.google_drive_folder_id.strip(),
-                    module_type='custom_page',
-                    custom_page=instance
+                    google_folder_id=instance.google_drive_folder_id.strip() if instance.google_drive_folder_id else None,
+                    custom_page=instance,
+                    module_type='custom_page'
                 )
-            except Exception as e:
-                logger.warning(f"Failed to sync root_folder_id for page '{instance.title}': {e}")
+            except (ValueError, TypeError, Exception) as folder_err:
+                logger.warning(f"Note on folder binding for module '{instance.title}': {folder_err}")
         elif instance.google_drive_folder_id:
             try:
                 from folders.models import Folder

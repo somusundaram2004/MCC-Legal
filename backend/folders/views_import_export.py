@@ -63,13 +63,26 @@ class ImportExportTreeView(APIView):
         user = request.user
         tree = []
 
-        def build_folder_tree(folder):
+        def build_folder_tree(folder, visited=None):
+            if visited is None:
+                visited = set()
+            if folder.id in visited:
+                return {
+                    'id': f"folder_{folder.id}",
+                    'real_id': folder.id,
+                    'name': folder.name,
+                    'item_type': 'folder',
+                    'folder_count': 0,
+                    'file_count': 0,
+                    'children': []
+                }
+            visited.add(folder.id)
             sub_folders = Folder.objects.filter(parent=folder, is_deleted=False)
             files = File.objects.filter(folder=folder, is_deleted=False)
             
             children = []
             for sf in sub_folders:
-                children.append(build_folder_tree(sf))
+                children.append(build_folder_tree(sf, visited))
             for fi in files:
                 children.append({
                     'id': f"file_{fi.id}",
@@ -101,13 +114,25 @@ class ImportExportTreeView(APIView):
             }
 
         # 1. Predefined System Modules
+        from django.db.models import Q
         predefined = drive_service.get_predefined_modules()
         for pm in predefined:
             if pm['id'] == 'recycle_bin':
                 continue
-            mod_folders = Folder.objects.filter(
-                module_type=pm['id'], parent__isnull=True, is_deleted=False
-            )
+            mou_sys_folder = None
+            if pm['id'] == 'mou_repository':
+                mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+                if mou_root_id:
+                    mou_sys_folder = Folder.objects.filter(google_folder_id=mou_root_id).first()
+            if mou_sys_folder:
+                mod_folders = Folder.objects.filter(
+                    Q(parent=mou_sys_folder) | Q(module_type=pm['id'], parent__isnull=True, custom_page__isnull=True),
+                    is_deleted=False
+                ).exclude(id=mou_sys_folder.id)
+            else:
+                mod_folders = Folder.objects.filter(
+                    module_type=pm['id'], parent__isnull=True, custom_page__isnull=True, is_deleted=False
+                )
             mod_children = [build_folder_tree(f) for f in mod_folders]
             mod_f_count = sum(c.get('folder_count', 0) + 1 for c in mod_children)
             mod_file_count = sum(c.get('file_count', 0) for c in mod_children)
@@ -126,7 +151,23 @@ class ImportExportTreeView(APIView):
         # 2. Dynamic Custom Page Modules
         custom_pages = CustomDynamicPage.objects.filter(is_published=True, is_enabled=True)
         for cp in custom_pages:
-            cp_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
+            rf = None
+            if cp.root_folder_id:
+                try:
+                    rf = Folder.objects.filter(id=int(cp.root_folder_id)).first()
+                except (ValueError, TypeError):
+                    pass
+            if not rf and cp.google_drive_folder_id:
+                rf = Folder.objects.filter(google_folder_id=cp.google_drive_folder_id).first()
+            
+            if rf:
+                cp_folders = Folder.objects.filter(
+                    Q(parent=rf) | Q(custom_page=cp, parent__isnull=True),
+                    is_deleted=False
+                ).exclude(id=rf.id)
+            else:
+                cp_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
+
             cp_children = [build_folder_tree(f) for f in cp_folders]
             
             cp_f_count = sum(c.get('folder_count', 0) + 1 for c in cp_children)

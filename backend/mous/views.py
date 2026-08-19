@@ -676,8 +676,11 @@ class DepartmentSubmissionView(APIView):
             custom_created_at = request.data.get('created_at')
             if custom_created_at:
                 from django.utils.dateparse import parse_datetime
+                from django.utils import timezone
                 parsed_dt = parse_datetime(custom_created_at)
                 if parsed_dt:
+                    if timezone.is_naive(parsed_dt):
+                        parsed_dt = timezone.make_aware(parsed_dt)
                     DepartmentSubmission.objects.filter(pk=submission.pk).update(uploaded_at=parsed_dt)
                     if signed_file:
                         File.objects.filter(pk=signed_file.pk).update(created_at=parsed_dt)

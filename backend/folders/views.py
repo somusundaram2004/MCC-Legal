@@ -50,14 +50,31 @@ def sync_drive_directory(parent_google_id=None, parent_folder_obj=None, user=Non
                 continue
             
             if mime_type == 'application/vnd.google-apps.folder':
+                defaults = {'name': item_name, 'parent': parent_folder_obj, 'created_by': user}
+                if parent_folder_obj:
+                    defaults['module_type'] = parent_folder_obj.module_type
+                    defaults['custom_page'] = parent_folder_obj.custom_page
+
                 folder_obj, created = Folder.objects.get_or_create(
                     google_folder_id=item_id,
-                    defaults={'name': item_name, 'parent': parent_folder_obj, 'created_by': user}
+                    defaults=defaults
                 )
-                if not created and (folder_obj.name != item_name or folder_obj.parent != parent_folder_obj):
+                updates = []
+                if folder_obj.name != item_name:
                     folder_obj.name = item_name
+                    updates.append('name')
+                if folder_obj.parent != parent_folder_obj:
                     folder_obj.parent = parent_folder_obj
-                    folder_obj.save(update_fields=['name', 'parent'])
+                    updates.append('parent')
+                if parent_folder_obj and folder_obj.module_type != parent_folder_obj.module_type:
+                    folder_obj.module_type = parent_folder_obj.module_type
+                    updates.append('module_type')
+                if parent_folder_obj and folder_obj.custom_page != parent_folder_obj.custom_page:
+                    folder_obj.custom_page = parent_folder_obj.custom_page
+                    updates.append('custom_page')
+
+                if updates:
+                    folder_obj.save(update_fields=updates)
             else:
                 if parent_folder_obj:
                     file_obj, created = File.objects.get_or_create(
@@ -237,8 +254,13 @@ class FolderViewSet(viewsets.ModelViewSet):
                 else:
                     folder.module_type = 'mou_repository'
                     folder.custom_page = None
-                    folder.save(update_fields=['module_type', 'custom_page'])
-                    parent_google_id = drive_service.get_or_create_mou_repository_folder_id()
+                    mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+                    if mou_root_id and not folder.parent:
+                        mou_sys_folder = Folder.objects.filter(google_folder_id=mou_root_id).first()
+                        if mou_sys_folder:
+                            folder.parent = mou_sys_folder
+                    folder.save(update_fields=['module_type', 'custom_page', 'parent'])
+                    parent_google_id = mou_root_id
 
 
 
@@ -253,8 +275,11 @@ class FolderViewSet(viewsets.ModelViewSet):
                 custom_created_at = request.data.get('created_at')
                 if custom_created_at:
                     from django.utils.dateparse import parse_datetime
+                    from django.utils import timezone
                     parsed_dt = parse_datetime(custom_created_at)
                     if parsed_dt:
+                        if timezone.is_naive(parsed_dt):
+                            parsed_dt = timezone.make_aware(parsed_dt)
                         Folder.objects.filter(pk=folder.pk).update(created_at=parsed_dt)
                         folder.refresh_from_db()
 
@@ -856,19 +881,21 @@ class FolderViewSet(viewsets.ModelViewSet):
         """
         custom_page_id = request.query_params.get('custom_page_id')
         user = request.user
+        from django.db.models import Q
 
+        target_module_folder = None
         if custom_page_id:
             from users.models import CustomDynamicPage
-            from django.db.models import Q
             cp = CustomDynamicPage.objects.filter(id=custom_page_id).first()
             if cp:
                 root_folder = Folder.objects.filter(id=int(cp.root_folder_id)).first() if cp.root_folder_id else None
                 if cp.google_drive_folder_id:
                     self.sync_drive_directory(cp.google_drive_folder_id, root_folder, request.user)
                 
+                target_module_folder = root_folder
                 if root_folder:
                     root_folders = Folder.objects.filter(
-                        Q(parent=root_folder) | Q(custom_page=cp, parent=None),
+                        parent=root_folder,
                         is_deleted=False
                     ).exclude(id=root_folder.id).order_by('name')
                 else:
@@ -878,20 +905,51 @@ class FolderViewSet(viewsets.ModelViewSet):
         else:
             # Trigger sync from Google Drive using dedicated MOU Repository folder ID under Application Root
             mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+            mou_sys_folder = None
             if mou_root_id:
-                self.sync_drive_directory(mou_root_id, None, request.user)
+                mou_sys_folder = Folder.objects.filter(google_folder_id=mou_root_id).first()
+                if not mou_sys_folder:
+                    mou_sys_folder = Folder.objects.filter(name='MOU Repository', module_type='mou_repository', custom_page=None, parent=None).first()
+                if not mou_sys_folder:
+                    mou_sys_folder = Folder.objects.create(
+                        name='MOU Repository',
+                        google_folder_id=mou_root_id,
+                        module_type='mou_repository',
+                        custom_page=None,
+                        parent=None
+                    )
+                self.sync_drive_directory(mou_root_id, mou_sys_folder, request.user)
 
-            # Base query for root folders (no parent) isolated strictly to mou_repository with no custom_page
-            root_folders = Folder.objects.filter(parent=None, is_deleted=False, module_type='mou_repository', custom_page=None).exclude(name__iexact='Recycle Bin').exclude(module_type='recycle_bin').order_by('name')
+            target_module_folder = mou_sys_folder
+            # Base query for root folders isolated strictly to mou_sys_folder
+            if mou_sys_folder:
+                root_folders = Folder.objects.filter(
+                    parent=mou_sys_folder,
+                    is_deleted=False
+                ).exclude(id=mou_sys_folder.id).exclude(name__iexact='Recycle Bin').exclude(module_type='recycle_bin').order_by('name')
+            else:
+                root_folders = Folder.objects.filter(parent=None, is_deleted=False, module_type='mou_repository', custom_page=None).exclude(name__iexact='Recycle Bin').exclude(module_type='recycle_bin').order_by('name')
 
+            # Strictly exclude any folders associated with or named after custom dynamic pages
+            from users.models import CustomDynamicPage
+            cp_titles = list(CustomDynamicPage.objects.values_list('title', flat=True))
+            root_folders = root_folders.exclude(custom_page__isnull=False).exclude(module_type='custom_page')
+            for cpt in cp_titles:
+                if cpt:
+                    root_folders = root_folders.exclude(name__iexact=cpt.strip())
 
+        # Retrieve direct files inside this module's root folder
+        from files.models import File
+        from files.serializers import FileSerializer
+        root_files = File.objects.filter(folder=target_module_folder, is_deleted=False) if target_module_folder else File.objects.none()
+        root_files_data = FileSerializer(root_files, many=True, context={'request': request}).data
 
-        # If user is Super Admin, they see all root folders for this module context
+        # If user is Super Admin, they see all root folders and files for this module context
         if user.role and user.role.name == "Super Admin":
             subfolders_data = FolderSerializer(root_folders, many=True, context={'request': request}).data
             return Response({
                 "subfolders": subfolders_data,
-                "files": []
+                "files": root_files_data
             })
 
             
@@ -930,7 +988,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         
         return Response({
             "subfolders": subfolders_data,
-            "files": []
+            "files": root_files_data
         })
 
     @action(detail=False, methods=['get'], url_path='shared')

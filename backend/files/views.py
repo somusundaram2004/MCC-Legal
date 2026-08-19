@@ -238,8 +238,11 @@ class FileViewSet(viewsets.ModelViewSet):
                 custom_created_at = request.data.get('created_at')
                 if custom_created_at:
                     from django.utils.dateparse import parse_datetime
+                    from django.utils import timezone
                     parsed_dt = parse_datetime(custom_created_at)
                     if parsed_dt:
+                        if timezone.is_naive(parsed_dt):
+                            parsed_dt = timezone.make_aware(parsed_dt)
                         File.objects.filter(pk=file_instance.pk).update(created_at=parsed_dt)
                         file_instance.refresh_from_db()
 
@@ -584,8 +587,11 @@ class FileViewSet(viewsets.ModelViewSet):
                 custom_created_at = request.data.get('created_at')
                 if custom_created_at:
                     from django.utils.dateparse import parse_datetime
+                    from django.utils import timezone
                     parsed_dt = parse_datetime(custom_created_at)
                     if parsed_dt:
+                        if timezone.is_naive(parsed_dt):
+                            parsed_dt = timezone.make_aware(parsed_dt)
                         File.objects.filter(pk=file_instance.pk).update(created_at=parsed_dt)
                         file_instance.refresh_from_db()
                         latest_version = FileVersion.objects.filter(file=file_instance).order_by('-version_number').first()

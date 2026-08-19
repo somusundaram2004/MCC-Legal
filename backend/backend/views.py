@@ -60,13 +60,10 @@ class DashboardStatsView(APIView):
             files_qs = File.objects.filter(folder_id__in=accessible_ids)
             
             user_dept_name = getattr(user, 'department', '') or ''
-            mous_qs = MOU.objects.filter(
-                Q(department__in=folders_qs) | 
-                Q(created_by=user) | 
-                Q(department_name__iexact=user_dept_name) |
-                Q(shares__department__name=user_dept_name) | 
-                Q(shares__user=user)
-            ).distinct()
+            mous_filters = Q(created_by=user) | Q(shares__user=user)
+            if user_dept_name:
+                mous_filters |= Q(department_name__iexact=user_dept_name) | Q(department__name__iexact=user_dept_name) | Q(shares__department__name=user_dept_name)
+            mous_qs = MOU.objects.filter(mous_filters).distinct()
 
         total_folders = folders_qs.count()
         total_files = files_qs.count()
@@ -107,9 +104,11 @@ class DashboardStatsView(APIView):
 
         drive_setting = GoogleDriveSetting.objects.filter(is_active=True).first()
         if drive_setting and drive_setting.connection_status == 'Connected':
-            disk_total = drive_setting.storage_limit or 0
-            disk_used = drive_setting.storage_usage or 0
+            disk_total = drive_setting.storage_limit if drive_setting.storage_limit is not None else 0
+            disk_used = drive_setting.storage_usage if drive_setting.storage_usage is not None else 0
             disk_free = (disk_total - disk_used) if disk_total >= disk_used else 0
+            storage_type = "google_drive"
+            drive_connected = True
             storage_type = "google_drive"
             drive_connected = True
         else:

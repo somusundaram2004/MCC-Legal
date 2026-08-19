@@ -437,3 +437,27 @@ select:-webkit-autofill:active {
   }
 }
 
+/* ── Tablet Responsiveness (768px - 1024px) ──────────────────────────── */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .MuiDialog-paper {
+    margin: 24px !important;
+    max-width: calc(100vw - 48px) !important;
+    width: 100% !important;
+    max-height: calc(100vh - 48px) !important;
+  }
+  .MuiGrid-container {
+    width: 100% !important;
+  }
+  .MuiTableContainer-root {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tablet-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .tablet-full-width {
+    width: 100% !important;
+  }
+}
+

@@ -28,11 +28,8 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # Verify required configuration variables
 required_vars = [
     'SECRET_KEY',
-    'GOOGLE_SERVICE_ACCOUNT_FILE',
-    'GOOGLE_DRIVE_ROOT_FOLDER_ID',
     'DB_NAME',
     'DB_USER',
-    'DB_PASSWORD',
 ]
 for var in required_vars:
     if not env(var, default=None):
@@ -43,7 +40,12 @@ for var in required_vars:
 
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-+=t3a@n8j5g#$-rdym+*70zi*_8fvf=r*-jh5fm^u8#-6f%j7o')
 DEBUG = env.bool('DEBUG', default=True)
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
+    'localhost',
+    '127.0.0.1',
+    'legal.mccmrfip.in',
+    '.mccmrfip.in'
+])
 
 # Google Drive API Configuration
 GOOGLE_DRIVE_TYPE = env('GOOGLE_DRIVE_TYPE', default='service_account')
@@ -135,61 +137,76 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-# Database Configuration (PostgreSQL with SQLite fallback)
+# Database Configuration (Environment-driven: MySQL / PostgreSQL / SQLite)
+DB_ENGINE = env('DB_ENGINE', default='django.db.backends.mysql')
 DB_NAME = env('DB_NAME', default='mou_dashboard')
-DB_USER = env('DB_USER', default='postgres')
-DB_PASSWORD = env('DB_PASSWORD', default='password')
+DB_USER = env('DB_USER', default='root')
+DB_PASSWORD = env('DB_PASSWORD', default='')
 DB_HOST = env('DB_HOST', default='localhost')
-DB_PORT = env('DB_PORT', default='5432')
+env_port = env('DB_PORT', default=None)
+if env_port:
+    DB_PORT = env_port
+else:
+    DB_PORT = '3306' if 'mysql' in DB_ENGINE else '5432'
+if 'mysql' in DB_ENGINE and DB_PORT == '5432':
+    DB_PORT = '3306'
 
 DATABASES = {}
 
-try:
-    # Attempt to connect to PostgreSQL to test configuration
-    conn = psycopg2.connect(
-        dbname="postgres",
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT,
-        connect_timeout=2
-    )
-    conn.close()
-    
-    # If connection succeeds, verify/create mou_dashboard database
-    conn = psycopg2.connect(
-        dbname="postgres",
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT
-    )
-    conn.autocommit = True
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{DB_NAME}';")
-    exists = cursor.fetchone()
-    if not exists:
-        cursor.execute(f"CREATE DATABASE {DB_NAME};")
-    cursor.close()
-    conn.close()
-
+if DB_ENGINE == 'django.db.backends.sqlite3':
     DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / env('DB_NAME_SQLITE', default='db.sqlite3'),
+    }
+else:
+    db_config = {
+        'ENGINE': DB_ENGINE,
         'NAME': DB_NAME,
         'USER': DB_USER,
         'PASSWORD': DB_PASSWORD,
         'HOST': DB_HOST,
         'PORT': DB_PORT,
     }
-    print("Database Configured: PostgreSQL database 'mou_dashboard' is ready.")
-except Exception as e:
-    if not DEBUG:
-        raise ImproperlyConfigured(f"PostgreSQL database connection failed in production mode (DEBUG=False): {e}")
-    print(f"PostgreSQL connection failed ({e}). Falling back to SQLite for local development.")
-    DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    
+    if 'mysql' in DB_ENGINE:
+        db_config['OPTIONS'] = {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'charset': 'utf8mb4',
+        }
+    
+    try:
+        if 'mysql' in DB_ENGINE:
+            import pymysql
+            pymysql.install_as_MySQLdb()
+            conn = pymysql.connect(
+                host=DB_HOST,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                port=int(DB_PORT),
+                connect_timeout=2
+            )
+            conn.close()
+        elif 'postgresql' in DB_ENGINE:
+            conn = psycopg2.connect(
+                dbname="postgres",
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST,
+                port=DB_PORT,
+                connect_timeout=2
+            )
+            conn.close()
+        
+        DATABASES['default'] = db_config
+        print(f"Database Configured: {DB_ENGINE} database '{DB_NAME}' on '{DB_HOST}:{DB_PORT}'.")
+    except Exception as db_err:
+        if not DEBUG and os.environ.get('STRICT_DB_CHECK') == 'true':
+            raise ImproperlyConfigured(f"Database connection to {DB_ENGINE} ({DB_HOST}:{DB_PORT}) failed in production mode: {db_err}")
+        print(f"Configured DB connection ({DB_ENGINE}) failed ({db_err}). Falling back to SQLite for development/testing.")
+        DATABASES['default'] = {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -263,6 +280,16 @@ CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
     'http://127.0.0.1:5173',
     'http://localhost:8000',
     'http://127.0.0.1:8000',
+    'https://legal.mccmrfip.in',
+    'http://legal.mccmrfip.in',
+])
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+    'https://legal.mccmrfip.in',
+    'http://legal.mccmrfip.in',
 ])
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
@@ -299,10 +326,3 @@ FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 GOOGLE_DRIVE_CLIENT_ID = env('GOOGLE_DRIVE_CLIENT_ID', default='')
 GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default=GOOGLE_DRIVE_CLIENT_ID)
 GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default='')
-
-CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-])

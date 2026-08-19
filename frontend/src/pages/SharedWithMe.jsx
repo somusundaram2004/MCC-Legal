@@ -37,6 +37,7 @@ const SharedWithMe = () => {
   // Background polling to dynamically sync newly shared folders
   useEffect(() => {
     const fetchSharedBackground = async () => {
+      if (!localStorage.getItem('access_token')) return;
       try {
         const foldersResponse = await api.get('/api/folders/shared/');
         setSharedFoldersList(foldersResponse.data);
