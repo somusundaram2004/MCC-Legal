@@ -1,7 +1,7 @@
 -- ========================================================
--- Fully Validated MySQL Dump for phpMyAdmin / MySQL Workbench
+-- Fully Validated Comprehensive MySQL / phpMyAdmin Dump
 -- Engine: InnoDB | Charset: utf8mb4
--- Generated with full Master Data (Streams, Categories, Depts)
+-- Includes Full Schema, Master Data & Seed Content
 -- ========================================================
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -123,7 +123,7 @@ INSERT INTO `roles_rolepermission` VALUES(36, 10, 3);
 INSERT INTO `roles_rolepermission` VALUES(37, 11, 3);
 INSERT INTO `roles_rolepermission` VALUES(38, 12, 3);
 
--- Seed Super Admin User
+-- Seed Custom Users (Super Admin & Staff)
 INSERT INTO `users_customuser` VALUES(1, 'pbkdf2_sha256$1000000$uEOqMJOBSaTrMcJ4XfoaKh$B1D8m+LZFGAz5K2mLPVjaQI67hn+aPap+Q8qQiaG9ro=', '2026-08-14 10:37:24', 1, 'superadmin@college.edu', 'Super Admin', NULL, 'Super Administrator', 'Principal Office', 'Active', '2026-08-14 02:33:37', '2026-08-14 09:46:03', 1, 1, 1, NULL, NULL, '2026-08-14 02:33:36');
 
 -- Seed Website Customization
@@ -239,7 +239,7 @@ INSERT INTO `mous_department` (`id`, `name`, `is_active`, `category_id`, `stream
 INSERT INTO `mous_department` (`id`, `name`, `is_active`, `category_id`, `stream_id`) VALUES (138, 'Public Relations / Communications', 1, 17, 10);
 INSERT INTO `mous_department` (`id`, `name`, `is_active`, `category_id`, `stream_id`) VALUES (139, 'Alumni Office', 1, 17, 10);
 
--- Seed MOU Categories (Department Cards)
+-- Seed MOU Categories (Department Directory Cards)
 INSERT INTO `mous_moucategory` (`id`, `name`, `code`, `color`, `icon_type`, `coordinator_name`, `coordinator_email`, `category_type`, `is_active`, `created_at`, `stream_id`) VALUES (12, 'Commerce', 'A-PhD-COMME', '#F59E0B', 'business', '', NULL, 'Department', 1, '2026-08-18 18:03:06', 8);
 INSERT INTO `mous_moucategory` (`id`, `name`, `code`, `color`, `icon_type`, `coordinator_name`, `coordinator_email`, `category_type`, `is_active`, `created_at`, `stream_id`) VALUES (13, 'B.A. English Language and Literature', 'A-UG-BELA', '#3B82F6', 'school', NULL, NULL, 'Department', 1, '2026-08-18 18:20:10', 8);
 INSERT INTO `mous_moucategory` (`id`, `name`, `code`, `color`, `icon_type`, `coordinator_name`, `coordinator_email`, `category_type`, `is_active`, `created_at`, `stream_id`) VALUES (14, 'B.A. Tamil Literature', 'A-UG-BTL', '#3B82F6', 'school', NULL, NULL, 'Department', 1, '2026-08-18 18:20:10', 8);
@@ -469,6 +469,46 @@ INSERT INTO `mous_tag` (`id`, `name`, `is_active`) VALUES (33, 'Signed', 1);
 INSERT INTO `mous_tag` (`id`, `name`, `is_active`) VALUES (34, 'Active Agreement', 1);
 INSERT INTO `mous_tag` (`id`, `name`, `is_active`) VALUES (35, 'Expired', 1);
 INSERT INTO `mous_tag` (`id`, `name`, `is_active`) VALUES (36, 'Terminated', 1);
+
+-- Seed Custom Dynamic Pages & Modules
+
+-- Seed Folders
+INSERT INTO `folders_folder` VALUES(17, 'somu demo', '2026-08-16 14:47:00', '2026-08-16 09:17:44', 1, '1YrwhpwZkwh2lZkEfk8Rpcn5OW6I1BkfZ', 'Active', '2026-08-21', 'gvgjvj', NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(18, 'new', '2026-08-16 14:52:00', '2026-08-16 09:22:08', 1, '1ggjWj7hZ1zIlVtzrqrO_Xb9AA1AJocSu', 'Active', '2026-08-29', 'sadas', NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(19, 'daddys home', '2026-08-16 14:54:00', '2026-08-16 09:24:33', 1, '1yGzcmNvbtVkPJhyYcdCJK5sls1DxKq3a', 'Active', '2026-12-17', 'asdjnjas', NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(20, 'Recycle Bin', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1OG4qygQnVXkccG9pkSP0wo7AOcX6zgi6', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(21, 'Legal Notices', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1Pq95z8MFf-2pIavoxbkxi4GzwZUQ230R', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(22, 'Legal Notices', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '18imcwvKwTlDUh2Ag2WaWzagSSvzdfp42', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(23, 'Agreements', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '13Mee1X-8Q5JU14-6CDcwuh3g3yyPagnJ', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(24, 'Agreements', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '131XTOJgQQRheRiqPkcfeNuUeJvC6WitD', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(25, 'Legal Cases', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1CY-4tihTlCziqXDXM1SnU6hkVyi3NFnM', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(26, 'Administrative Documents', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1xYhaZ0e3__QZiEPsAzYjlZ88RrudlFlc', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(27, 'Administrative Documents', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1dnjelYx-L1hTXhppZ5LAuT-_lUqOzpGV', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(28, 'Templates', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1TEeNwraFzxYqQd4xxKfErbJNbzLX5Nte', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(29, 'Templates', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1ViFWPwK_rG855eke3_1ypN-h8bSzMsIS', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(30, 'Compliance', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1Fqy0A_L5IiaO2EqX73iJd-ML20-VOgMC', 'Active', NULL, NULL, '2026-08-18 06:21:26', 1, 1, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(31, 'MOU Repository', '2026-08-18 06:07:53', '2026-08-18 06:07:53', 1, '1QV9-meELLdPYVs5JSDwV79MQzG15GytS', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(32, 'Administrative Documents', '2026-08-18 07:05:08', '2026-08-18 07:05:08', 1, '1QaZ_8QhXZ1-8zj7hb-3nEDz-piCg5Wf1', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(33, 'MOU Repository', '2026-08-18 07:16:02', '2026-08-18 07:16:02', 1, '1lLBYiqytCgdowepGxtTkJBT9zvuNfGz2', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(34, 'Recycle Bin', '2026-08-18 14:06:58', '2026-08-18 14:06:58', 1, '15nCWtLiiAWvs5fkScJKsBCBsIoqsoBHi', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(35, 'Recycle Bin', '2026-08-18 14:06:58', '2026-08-18 14:06:58', 1, '1tJG4BClJ9r4aLzoB9cHwlYrgaN5ohfzj', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(36, 'KFA', '2026-08-18 15:00:58', '2026-08-18 15:00:58', 1, '1RbOtH0eash8fmlKr6qkN6et0jhL1oYtJ', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(37, 'Computer Science', '2026-08-18 16:00:28', '2026-08-18 16:00:28', 1, '1Bo5ojfsYSrBmEXXsBZonGkTahGDhT3J7', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+INSERT INTO `folders_folder` VALUES(38, 'Commerce', '2026-08-18 18:03:06', '2026-08-18 18:03:06', 1, '1AnGsO-FtlBJZp2x4ORydwPTDDa2MW_9f', 'Active', NULL, NULL, NULL, NULL, 0, NULL, 'mou_repository', NULL);
+
+-- Seed Files
+
+-- Seed Template Collections
+
+-- Seed Template Documents
+
+-- Seed MOUs
+
+-- Seed SMTP Settings
+INSERT INTO `users_smtpsetting` VALUES(1, 'smtp.gmail.com', 587, 'somusuraj72@gmail.com', 1, 0, 'somusuraj72@gmail.com', 1, '2026-08-14 09:38:58', '2026-08-14 09:40:54', 1, NULL);
+
+-- Seed Google Drive Settings (Secrets Sanitized)
+INSERT INTO `users_googledrivesetting` VALUES(1, 'Web OAuth Project', NULL, NULL, NULL, 'YOUR_GOOGLE_CLIENT_ID', 'YOUR_GOOGLE_ROOT_FOLDER_ID', 'service_account', 'https://accounts.google.com/o/oauth2/auth', 'https://oauth2.googleapis.com/token', 'https://www.googleapis.com/oauth2/v1/certs', NULL, 'googleapis.com', 1, '2026-08-16 08:59:39', '2026-08-18 07:15:30', NULL, 'YOUR_GOOGLE_CLIENT_SECRET', 'somusuraj72@gmail.com', NULL, 16106127360, 25161396865, NULL, 'Connected', 'Root Repository', NULL, 0, NULL);
 
 SET FOREIGN_KEY_CHECKS = 1;
 COMMIT;

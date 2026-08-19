@@ -10,9 +10,16 @@ from permissions.models import Permission
 from roles.models import Role, RolePermission
 from mous.models import (
     Stream, DepartmentCategory, Department, MOUCategory,
-    TemplateCategory, OrganizationType, CollaborationType, DocumentType, Tag
+    TemplateCategory, OrganizationType, CollaborationType, DocumentType, Tag,
+    MOU, DepartmentSubmission, MOUShare,
+    MOUDocument, MOURenewal, MOUTemplate, TemplateCollection, TemplateDocument
 )
 from customization.models import WebsiteCustomization
+from users.models import CustomDynamicPage, SMTPSetting, GoogleDriveSetting, UserInvitation
+from folders.models import Folder, FolderPermission, FolderView, RecycleBinSetting
+from files.models import File, FileVersion
+from notifications.models import Notification
+from activity_logs.models import ActivityLog
 
 User = get_user_model()
 
@@ -28,12 +35,22 @@ def escape_sql(val):
     s = str(val).replace("\\", "\\\\").replace("'", "''")
     return f"'{s}'"
 
+def format_dt(dt):
+    if not dt:
+        return "NULL"
+    return f"'{dt.strftime('%Y-%m-%d %H:%M:%S')}'"
+
+def format_date(d):
+    if not d:
+        return "NULL"
+    return f"'{d.strftime('%Y-%m-%d')}'"
+
 def generate_dump():
     lines = []
     lines.append("-- ========================================================")
-    lines.append("-- Fully Validated MySQL Dump for phpMyAdmin / MySQL Workbench")
+    lines.append("-- Fully Validated Comprehensive MySQL / phpMyAdmin Dump")
     lines.append("-- Engine: InnoDB | Charset: utf8mb4")
-    lines.append("-- Generated with full Master Data (Streams, Categories, Depts)")
+    lines.append("-- Includes Full Schema, Master Data & Seed Content")
     lines.append("-- ========================================================")
     lines.append("")
     lines.append("SET FOREIGN_KEY_CHECKS = 0;")
@@ -46,7 +63,7 @@ def generate_dump():
     lines.append("START TRANSACTION;")
     lines.append("")
 
-    # Schema Table Definitions
+    # 1. Schema Definitions
     lines.append("CREATE TABLE IF NOT EXISTS `activity_logs_activitylog` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `action` text NOT NULL, `created_at` DATETIME NOT NULL, `ip_address` CHAR(39) NULL, `user_id` BIGINT NULL, `module` VARCHAR(100) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;")
     lines.append("CREATE TABLE IF NOT EXISTS `auth_group` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(150) NOT NULL UNIQUE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;")
     lines.append("CREATE TABLE IF NOT EXISTS `auth_group_permissions` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `group_id` INT NOT NULL, `permission_id` INT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;")
@@ -94,6 +111,7 @@ def generate_dump():
     lines.append("CREATE TABLE IF NOT EXISTS `users_userinvitation` (`id` CHAR(32) NOT NULL PRIMARY KEY, `email` VARCHAR(254) NOT NULL, `stream` VARCHAR(100) NOT NULL, `department` VARCHAR(100) NOT NULL, `token` VARCHAR(255) NOT NULL UNIQUE, `expires_at` DATETIME NOT NULL, `is_used` TINYINT(1) NOT NULL DEFAULT 0, `is_cancelled` TINYINT(1) NOT NULL DEFAULT 0, `created_at` DATETIME NOT NULL, `accepted_at` DATETIME NULL, `ip_address` CHAR(39) NULL, `user_agent` text NULL, `created_by_id` BIGINT NULL, `system_role_id` BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;")
     lines.append("CREATE TABLE IF NOT EXISTS `users_userpermission` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `is_granted` TINYINT(1) NOT NULL DEFAULT 0, `permission_id` BIGINT NOT NULL, `user_id` BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;")
 
+    # 2. System Roles & Permissions
     lines.append("")
     lines.append("-- Seed System Permissions")
     for perm in Permission.objects.all().order_by('id'):
@@ -109,28 +127,31 @@ def generate_dump():
     for rp in RolePermission.objects.all().order_by('id'):
         lines.append(f"INSERT INTO `roles_rolepermission` VALUES({rp.id}, {rp.permission_id}, {rp.role_id});")
 
+    # 3. System Users
     lines.append("")
-    lines.append("-- Seed Super Admin User")
-    for u in User.objects.filter(is_superuser=True).order_by('id'):
-        last_login_str = f"'{u.last_login.strftime('%Y-%m-%d %H:%M:%S')}'" if u.last_login else "NULL"
-        created_at_str = f"'{u.created_at.strftime('%Y-%m-%d %H:%M:%S')}'" if u.created_at else "'2026-08-11 10:00:00'"
-        updated_at_str = f"'{u.updated_at.strftime('%Y-%m-%d %H:%M:%S')}'" if u.updated_at else "'2026-08-11 10:00:00'"
-        pwd_changed_str = f"'{u.password_changed_at.strftime('%Y-%m-%d %H:%M:%S')}'" if getattr(u, 'password_changed_at', None) else created_at_str
+    lines.append("-- Seed Custom Users (Super Admin & Staff)")
+    for u in User.objects.all().order_by('id'):
+        last_login_str = format_dt(u.last_login)
+        created_at_str = format_dt(u.created_at) if u.created_at else "'2026-08-11 10:00:00'"
+        updated_at_str = format_dt(u.updated_at) if u.updated_at else "'2026-08-11 10:00:00'"
+        pwd_changed_str = format_dt(getattr(u, 'password_changed_at', None)) if getattr(u, 'password_changed_at', None) else created_at_str
         role_id_str = str(u.role_id) if u.role_id else "1"
         lines.append(f"INSERT INTO `users_customuser` VALUES({u.id}, {escape_sql(u.password)}, {last_login_str}, {1 if u.is_superuser else 0}, {escape_sql(u.email)}, {escape_sql(u.name)}, {escape_sql(u.phone)}, {escape_sql(u.designation)}, {escape_sql(u.department)}, {escape_sql(u.status)}, {created_at_str}, {updated_at_str}, {1 if u.is_staff else 0}, {1 if u.is_active else 0}, {role_id_str}, {escape_sql(u.stream)}, {escape_sql(u.company_name)}, {pwd_changed_str});")
 
+    # 4. Website Customization
     lines.append("")
     lines.append("-- Seed Website Customization")
     for cust in WebsiteCustomization.objects.all().order_by('id'):
-        created_str = f"'{cust.created_at.strftime('%Y-%m-%d %H:%M:%S')}'" if cust.created_at else "'2026-08-11 10:00:00'"
-        updated_str = f"'{cust.updated_at.strftime('%Y-%m-%d %H:%M:%S')}'" if cust.updated_at else "'2026-08-11 10:00:00'"
+        created_str = format_dt(cust.created_at) if cust.created_at else "'2026-08-11 10:00:00'"
+        updated_str = format_dt(cust.updated_at) if cust.updated_at else "'2026-08-11 10:00:00'"
         upd_by_str = str(cust.updated_by_id) if cust.updated_by_id else "NULL"
         lines.append(f"INSERT INTO `customization_websitecustomization` VALUES({cust.id}, {escape_sql(cust.name)}, {1 if cust.is_active else 0}, {escape_sql(cust.info)}, {escape_sql(cust.branding)}, {escape_sql(cust.theme)}, {escape_sql(cust.navigation)}, {escape_sql(cust.pages)}, {escape_sql(cust.login)}, {escape_sql(cust.dashboard)}, {escape_sql(cust.footer)}, {escape_sql(cust.notification)}, {escape_sql(cust.email_templates)}, {escape_sql(cust.error_pages)}, {escape_sql(cust.dynamic_text)}, {escape_sql(cust.custom_code)}, {created_str}, {updated_str}, {upd_by_str});")
 
+    # 5. Master Data Structure
     lines.append("")
     lines.append("-- Seed Streams")
     for s in Stream.objects.all().order_by('id'):
-        created_str = f"'{s.created_at.strftime('%Y-%m-%d %H:%M:%S')}'" if s.created_at else "'2026-08-16 00:00:00'"
+        created_str = format_dt(s.created_at) if s.created_at else "'2026-08-16 00:00:00'"
         lines.append(f"INSERT INTO `mous_stream` (`id`, `name`, `description`, `is_active`, `created_at`) VALUES ({s.id}, {escape_sql(s.name)}, {escape_sql(s.description)}, {1 if s.is_active else 0}, {created_str});")
 
     lines.append("")
@@ -146,9 +167,9 @@ def generate_dump():
         lines.append(f"INSERT INTO `mous_department` (`id`, `name`, `is_active`, `category_id`, `stream_id`) VALUES ({d.id}, {escape_sql(d.name)}, {1 if d.is_active else 0}, {cat_id_str}, {strm_id_str});")
 
     lines.append("")
-    lines.append("-- Seed MOU Categories (Department Cards)")
+    lines.append("-- Seed MOU Categories (Department Directory Cards)")
     for mc in MOUCategory.objects.all().order_by('id'):
-        created_str = f"'{mc.created_at.strftime('%Y-%m-%d %H:%M:%S')}'" if mc.created_at else "'2026-08-16 00:00:00'"
+        created_str = format_dt(mc.created_at) if mc.created_at else "'2026-08-16 00:00:00'"
         strm_id_str = str(mc.stream_id) if mc.stream_id else "NULL"
         lines.append(f"INSERT INTO `mous_moucategory` (`id`, `name`, `code`, `color`, `icon_type`, `coordinator_name`, `coordinator_email`, `category_type`, `is_active`, `created_at`, `stream_id`) VALUES ({mc.id}, {escape_sql(mc.name)}, {escape_sql(mc.code)}, {escape_sql(mc.color)}, {escape_sql(mc.icon_type)}, {escape_sql(mc.coordinator_name)}, {escape_sql(mc.coordinator_email)}, {escape_sql(mc.category_type)}, {1 if mc.is_active else 0}, {created_str}, {strm_id_str});")
 
@@ -165,6 +186,89 @@ def generate_dump():
     for t in Tag.objects.all().order_by('id'):
         lines.append(f"INSERT INTO `mous_tag` (`id`, `name`, `is_active`) VALUES ({t.id}, {escape_sql(t.name)}, {1 if t.is_active else 0});")
 
+    # 6. Custom Dynamic Pages & Sidebar Modules
+    lines.append("")
+    lines.append("-- Seed Custom Dynamic Pages & Modules")
+    for p in CustomDynamicPage.objects.all().order_by('id'):
+        created_str = format_dt(p.created_at)
+        updated_str = format_dt(p.updated_at)
+        lines.append(f"INSERT INTO `users_customdynamicpage` VALUES({escape_sql(p.id)}, {escape_sql(p.title)}, {escape_sql(p.slug)}, {escape_sql(p.icon)}, {escape_sql(p.route)}, {escape_sql(p.parent_slug)}, {escape_sql(p.description)}, {p.order}, {escape_sql(p.badge)}, {escape_sql(p.badge_color)}, {escape_sql(p.page_type)}, {1 if p.is_published else 0}, {1 if p.is_enabled else 0}, {1 if p.open_new_tab else 0}, {escape_sql(p.allowed_roles)}, {escape_sql(p.allowed_permissions)}, {escape_sql(p.theme_colors)}, {escape_sql(p.crud_permissions)}, {escape_sql(p.entity_schema)}, {created_str}, {updated_str}, {escape_sql(p.root_folder_id)}, {escape_sql(p.root_folder_name)}, {escape_sql(p.google_drive_folder_id)});")
+
+    # 7. Folders & Files
+    lines.append("")
+    lines.append("-- Seed Folders")
+    for f in Folder.objects.all().order_by('id'):
+        created_str = format_dt(f.created_at)
+        updated_str = format_dt(f.updated_at)
+        expiry_str = format_date(f.expiry_date)
+        deleted_at_str = format_dt(f.deleted_at)
+        created_by_str = str(f.created_by_id) if f.created_by_id else "NULL"
+        deleted_by_str = str(f.deleted_by_id) if f.deleted_by_id else "NULL"
+        parent_id_str = str(f.parent_id) if f.parent_id else "NULL"
+        custom_page_id_str = escape_sql(f.custom_page_id) if f.custom_page_id else "NULL"
+        lines.append(f"INSERT INTO `folders_folder` VALUES({f.id}, {escape_sql(f.name)}, {created_str}, {updated_str}, {created_by_str}, {escape_sql(f.google_folder_id)}, {escape_sql(f.status)}, {expiry_str}, {escape_sql(f.summary)}, {deleted_at_str}, {deleted_by_str}, {1 if f.is_deleted else 0}, {custom_page_id_str}, {escape_sql(f.module_type)}, {parent_id_str});")
+
+    lines.append("")
+    lines.append("-- Seed Files")
+    for fi in File.objects.all().order_by('id'):
+        created_str = format_dt(fi.created_at)
+        updated_str = format_dt(fi.updated_at)
+        deleted_at_str = format_dt(fi.deleted_at)
+        uploaded_by_str = str(fi.uploaded_by_id) if fi.uploaded_by_id else "NULL"
+        deleted_by_str = str(fi.deleted_by_id) if fi.deleted_by_id else "NULL"
+        lines.append(f"INSERT INTO `files_file` VALUES({fi.id}, {escape_sql(fi.name)}, {fi.size}, {escape_sql(fi.file_type)}, {escape_sql(fi.file_field)}, {fi.version_number}, {created_str}, {updated_str}, {fi.folder_id}, {uploaded_by_str}, {fi.file_size or 'NULL'}, {escape_sql(fi.google_file_id)}, {escape_sql(fi.mime_type)}, {escape_sql(fi.web_content_link)}, {escape_sql(fi.web_view_link)}, {1 if fi.is_signed else 0}, {1 if fi.encrypted else 0}, {escape_sql(fi.encryption_key_id)}, {escape_sql(fi.sha256_hash)}, {escape_sql(fi.virus_scan_status)}, {deleted_at_str}, {deleted_by_str}, {1 if fi.is_deleted else 0});")
+
+    # 8. Template Collections & Template Documents
+    lines.append("")
+    lines.append("-- Seed Template Collections")
+    for tc in TemplateCollection.objects.all().order_by('id'):
+        created_str = format_dt(tc.created_at)
+        updated_str = format_dt(tc.updated_at)
+        created_by_str = str(tc.created_by_id) if tc.created_by_id else "NULL"
+        lines.append(f"INSERT INTO `mous_templatecollection` VALUES({tc.id}, {escape_sql(tc.template_name)}, {escape_sql(tc.description)}, {created_str}, {updated_str}, {tc.category_id}, {tc.collaboration_type_id}, {created_by_str}, {tc.department_id}, {tc.department_category_id}, {tc.organization_type_id});")
+
+    lines.append("")
+    lines.append("-- Seed Template Documents")
+    for td in TemplateDocument.objects.all().order_by('id'):
+        uploaded_str = format_dt(td.uploaded_at)
+        eff_str = format_date(td.effective_date)
+        exp_str = format_date(td.expiry_date)
+        rev_str = format_date(td.revision_date)
+        uploaded_by_str = str(td.uploaded_by_id) if td.uploaded_by_id else "NULL"
+        lines.append(f"INSERT INTO `mous_templatedocument` VALUES({td.id}, {escape_sql(td.document_name)}, {escape_sql(td.version)}, {eff_str}, {exp_str}, {rev_str}, {escape_sql(td.remarks)}, {uploaded_str}, {escape_sql(td.status)}, {td.document_type_id}, {td.template_collection_id}, {uploaded_by_str}, {escape_sql(td.google_file_id)}, {escape_sql(td.file_path)});")
+
+    # 9. MOUs
+    lines.append("")
+    lines.append("-- Seed MOUs")
+    for mou in MOU.objects.all().order_by('id'):
+        eff_str = format_date(mou.effective_date)
+        sig_str = format_date(mou.signed_date)
+        exp_str = format_date(mou.expiry_date)
+        created_str = format_dt(mou.created_at)
+        updated_str = format_dt(mou.updated_at)
+        created_by_str = str(mou.created_by_id) if mou.created_by_id else "NULL"
+        dept_id_str = str(mou.department_id) if mou.department_id else "NULL"
+        orig_id_str = str(mou.original_mou_id) if mou.original_mou_id else "NULL"
+        renew_id_str = str(mou.renewed_from_id) if mou.renewed_from_id else "NULL"
+        signed_id_str = str(mou.signed_mou_id) if mou.signed_mou_id else "NULL"
+        mou_type_id_str = str(mou.mou_type_id) if mou.mou_type_id else "NULL"
+        lines.append(f"INSERT INTO `mous_mou` VALUES({mou.id}, {escape_sql(mou.title)}, {escape_sql(mou.mou_number)}, {escape_sql(mou.partner_organization)}, {escape_sql(mou.department_name)}, {eff_str}, {sig_str}, {exp_str}, {mou.duration_months}, {escape_sql(mou.status)}, {escape_sql(mou.summary)}, {escape_sql(mou.purpose)}, {escape_sql(mou.objectives)}, {escape_sql(mou.beneficiaries)}, {escape_sql(mou.opportunities)}, {escape_sql(mou.custom_fields_data)}, {escape_sql(mou.coordinator_name)}, {escape_sql(mou.coordinator_designation)}, {escape_sql(mou.coordinator_email)}, {escape_sql(mou.coordinator_phone)}, {escape_sql(mou.partner_name)}, {escape_sql(mou.partner_designation)}, {escape_sql(mou.partner_email)}, {escape_sql(mou.partner_phone)}, {escape_sql(mou.additional_notes)}, {escape_sql(mou.remarks)}, {mou.version_number}, {1 if mou.is_renewed else 0}, {created_str}, {updated_str}, {created_by_str}, {dept_id_str}, {orig_id_str}, {renew_id_str}, {signed_id_str}, {mou_type_id_str}, {escape_sql(mou.mou_file)});")
+
+    # 10. SMTP Settings & Google Drive Settings
+    lines.append("")
+    lines.append("-- Seed SMTP Settings")
+    for smtp in SMTPSetting.objects.all().order_by('id'):
+        created_str = format_dt(smtp.created_at)
+        updated_str = format_dt(smtp.updated_at)
+        lines.append(f"INSERT INTO `users_smtpsetting` VALUES({smtp.id}, {escape_sql(smtp.host)}, {smtp.port}, {escape_sql(smtp.username)}, {1 if smtp.use_tls else 0}, {1 if smtp.use_ssl else 0}, {escape_sql(smtp.sender_email)}, {1 if smtp.is_active else 0}, {created_str}, {updated_str}, {1 if smtp.auth_required else 0}, NULL);")
+
+    lines.append("")
+    lines.append("-- Seed Google Drive Settings (Secrets Sanitized)")
+    for gds in GoogleDriveSetting.objects.all().order_by('id'):
+        created_str = format_dt(gds.created_at)
+        updated_str = format_dt(gds.updated_at)
+        lines.append(f"INSERT INTO `users_googledrivesetting` VALUES({gds.id}, 'Web OAuth Project', NULL, NULL, NULL, 'YOUR_GOOGLE_CLIENT_ID', 'YOUR_GOOGLE_ROOT_FOLDER_ID', 'service_account', 'https://accounts.google.com/o/oauth2/auth', 'https://oauth2.googleapis.com/token', 'https://www.googleapis.com/oauth2/v1/certs', NULL, 'googleapis.com', {1 if gds.is_active else 0}, {created_str}, {updated_str}, NULL, 'YOUR_GOOGLE_CLIENT_SECRET', {escape_sql(gds.connected_email)}, NULL, {gds.storage_limit or 'NULL'}, {gds.storage_usage or 'NULL'}, NULL, {escape_sql(gds.connection_status)}, 'Root Repository', NULL, 0, NULL);")
+
     lines.append("")
     lines.append("SET FOREIGN_KEY_CHECKS = 1;")
     lines.append("COMMIT;")
@@ -173,7 +277,7 @@ def generate_dump():
     dump_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database.sql")
     with open(dump_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-    print(f"Successfully exported database dump to '{dump_path}'. Total lines: {len(lines)}")
+    print(f"Successfully exported comprehensive database dump to '{dump_path}'. Total lines: {len(lines)}")
 
 if __name__ == "__main__":
     generate_dump()
