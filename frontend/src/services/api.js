@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
@@ -43,8 +44,6 @@ api.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
-
-import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 // Helper to determine affected category from API URL
 const getCategoryFromUrl = (url = '') => {

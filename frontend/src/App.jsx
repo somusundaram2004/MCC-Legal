@@ -59,8 +59,12 @@ const DynamicGoogleOAuthProvider = ({ children }) => {
   // Dynamically update Google Client ID whenever Super Admin changes OAuth settings
   useAutoRefresh(REFRESH_CATEGORIES.SETTINGS, fetchGoogleClientId);
 
+  if (!googleClientId) {
+    return <>{children}</>;
+  }
+
   return (
-    <GoogleOAuthProvider clientId={googleClientId || '1234567890-placeholder.apps.googleusercontent.com'}>
+    <GoogleOAuthProvider clientId={googleClientId}>
       {children}
     </GoogleOAuthProvider>
   );

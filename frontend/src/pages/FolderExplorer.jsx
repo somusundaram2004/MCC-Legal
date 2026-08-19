@@ -597,7 +597,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
     } finally {
       setLoading(false);
     }
-  }, [filterStream, filterCategory, filterDept, filterStatus, filterType, masterStreams, deptCategories, departments]);
+  }, [filterStream, filterCategory, filterDept, filterStatus, filterType, masterStreams, deptCategories]);
 
   useEffect(() => {
     fetchFilteredMOUs();
@@ -647,7 +647,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         setLoading(false);
       }
     }
-  }, [currentFolderId, searchParamQuery, isFilteredView]);
+  }, [currentFolderId, searchParamQuery, isFilteredView, customPageId]);
 
   useEffect(() => {
     fetchContents();
