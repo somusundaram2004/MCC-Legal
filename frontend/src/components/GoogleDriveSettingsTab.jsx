@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, TextField,
-  Alert, Avatar, Chip, LinearProgress, CircularProgress, Paper
+  Alert, Avatar, Chip, LinearProgress, CircularProgress, Paper,
+  Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import StorageIcon from '@mui/icons-material/Storage';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import WarningIcon from '@mui/icons-material/Warning';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import SaveIcon from '@mui/icons-material/Save';
 import api from '../services/api';
@@ -23,8 +25,41 @@ const GoogleDriveSettingsTab = () => {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [savingCreds, setSavingCreds] = useState(false);
+  const [confirmDisconnectOpen, setConfirmDisconnectOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const codeExchangeRef = useRef(null);
+
+  const [hierarchyStatuses, setHierarchyStatuses] = useState([]);
+  const [hierarchyLoading, setHierarchyLoading] = useState(false);
+  const [repairingModule, setRepairingModule] = useState(null);
+
+  const fetchHierarchyStatus = useCallback(async () => {
+    setHierarchyLoading(true);
+    try {
+      const res = await api.get('/api/google-drive/hierarchy-status/');
+      setHierarchyStatuses(res.data.statuses || []);
+    } catch (err) {
+      console.error("Failed to fetch hierarchy status:", err);
+    } finally {
+      setHierarchyLoading(false);
+    }
+  }, []);
+
+  const handleRepairHierarchy = async (moduleId) => {
+    setRepairingModule(moduleId);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await api.post('/api/google-drive/repair-hierarchy/', { module_id: moduleId });
+      setSuccess(res.data.detail || "Repaired module folder hierarchy.");
+      fetchHierarchyStatus();
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Repair operation failed.");
+    } finally {
+      setRepairingModule(null);
+    }
+  };
 
   const fetchStatus = useCallback(async () => {
     setLoading(true);
@@ -35,12 +70,13 @@ const GoogleDriveSettingsTab = () => {
       setRootFolderId(response.data.root_folder_id || '');
       setClientId(response.data.client_id || '');
       setClientSecret(response.data.client_secret || '');
+      fetchHierarchyStatus();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to fetch Google Drive status.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchHierarchyStatus]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -135,16 +171,24 @@ const GoogleDriveSettingsTab = () => {
     }
   };
 
-  const handleDisconnect = async () => {
-    if (!window.confirm('Are you sure you want to disconnect Google Drive? This will revoke file storage sync.')) return;
+  const handleDisconnectClick = () => {
+    setConfirmDisconnectOpen(true);
+  };
+
+  const executeDisconnect = async () => {
+    setDisconnecting(true);
     setError(null);
     setSuccess(null);
     try {
       await api.post('/api/google-drive/disconnect/');
       setSuccess('Google Drive disconnected successfully.');
+      setConfirmDisconnectOpen(false);
       fetchStatus();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to disconnect Google Drive.');
+      setConfirmDisconnectOpen(false);
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -248,7 +292,7 @@ const GoogleDriveSettingsTab = () => {
 
           {isConnected && (
             <Button
-              onClick={handleDisconnect}
+              onClick={handleDisconnectClick}
               variant="outlined"
               color="error"
               startIcon={<LinkOffIcon />}
@@ -454,6 +498,100 @@ const GoogleDriveSettingsTab = () => {
             </Box>
           </Paper>
 
+          {/* Module Google Drive Folder Mapping & Integrity Status */}
+          <Paper variant="outlined" sx={{ p: 4, borderRadius: '20px', border: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'text.primary', mb: 0.5 }}>
+                  📁 Module → Google Drive Root Folder Hierarchy Mapping
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Every top-level application module must be mapped directly under APPLICATION ROOT. Misplaced folders can be repaired below.
+                </Typography>
+              </Box>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={fetchHierarchyStatus}
+                disabled={hierarchyLoading}
+                startIcon={hierarchyLoading ? <CircularProgress size={14} /> : <CheckCircleIcon />}
+                sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
+              >
+                Check Integrity
+              </Button>
+            </Box>
+
+            {hierarchyLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress size={28} />
+              </Box>
+            ) : hierarchyStatuses.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', py: 2 }}>
+                Click "Check Integrity" to validate module folder parent locations on Google Drive.
+              </Typography>
+            ) : (
+              <Box sx={{ overflowX: 'auto' }}>
+                <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', '& th, & td': { p: 1.5, textAlign: 'left', borderBottom: '1px solid', borderColor: 'divider' } }}>
+                  <thead>
+                    <tr>
+                      <Typography component="th" variant="caption" sx={{ fontWeight: 800, color: 'text.secondary' }}>Module Name</Typography>
+                      <Typography component="th" variant="caption" sx={{ fontWeight: 800, color: 'text.secondary' }}>Module Type</Typography>
+                      <Typography component="th" variant="caption" sx={{ fontWeight: 800, color: 'text.secondary' }}>Google Drive Folder ID</Typography>
+                      <Typography component="th" variant="caption" sx={{ fontWeight: 800, color: 'text.secondary' }}>Hierarchy Status</Typography>
+                      <Typography component="th" variant="caption" sx={{ fontWeight: 800, color: 'text.secondary' }}>Actions</Typography>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hierarchyStatuses.map((item) => {
+                      const isOk = item.status === 'Connected';
+                      const isMisplaced = item.status === 'Incorrect Location';
+                      return (
+                        <tr key={item.module_id}>
+                          <td>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>{item.module_name}</Typography>
+                          </td>
+                          <td>
+                            <Chip label={item.type} size="small" variant="outlined" sx={{ fontSize: '0.7rem', fontWeight: 700 }} />
+                          </td>
+                          <td>
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                              {item.drive_folder_id ? (item.drive_folder_id.length > 20 ? item.drive_folder_id.slice(0, 18) + '...' : item.drive_folder_id) : 'Not Provisioned'}
+                            </Typography>
+                          </td>
+                          <td>
+                            <Chip
+                              label={item.status}
+                              size="small"
+                              color={isOk ? 'success' : isMisplaced ? 'warning' : 'error'}
+                              sx={{ fontWeight: 800, borderRadius: '6px' }}
+                            />
+                          </td>
+                          <td>
+                            {isMisplaced && (
+                              <Button
+                                size="small"
+                                variant="contained"
+                                color="warning"
+                                disabled={repairingModule === item.module_id}
+                                onClick={() => handleRepairHierarchy(item.module_id)}
+                                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, fontSize: '0.75rem' }}
+                              >
+                                {repairingModule === item.module_id ? 'Repairing...' : 'Repair Location'}
+                              </Button>
+                            )}
+                            {isOk && (
+                              <Typography variant="caption" color="success.main" sx={{ fontWeight: 700 }}>✓ Verified Direct Child</Typography>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Box>
+              </Box>
+            )}
+          </Paper>
+
           {/* Guidelines & Step-by-Step Setup Guide */}
           <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', bgcolor: 'action.hover', p: 4 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: 'text.primary' }}>
@@ -488,6 +626,48 @@ const GoogleDriveSettingsTab = () => {
           </Card>
         </Box>
       )}
+
+      {/* Disconnect Confirmation Modal */}
+      <Dialog
+        open={confirmDisconnectOpen}
+        onClose={() => setConfirmDisconnectOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Disconnect Google Drive
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Are you sure you want to disconnect Google Drive?
+          </Typography>
+          <Alert severity="warning" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            This will revoke automatic cloud synchronization for uploaded documents and agreements.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setConfirmDisconnectOpen(false)}
+            variant="outlined"
+            disabled={disconnecting}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeDisconnect}
+            color="error"
+            variant="contained"
+            disabled={disconnecting}
+            startIcon={disconnecting ? <CircularProgress size={18} color="inherit" /> : <LinkOffIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {disconnecting ? 'Disconnecting...' : 'Disconnect Account'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

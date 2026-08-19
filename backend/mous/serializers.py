@@ -159,6 +159,29 @@ class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
         fields = ['id', 'name', 'category', 'category_name', 'stream', 'stream_name', 'is_active']
+        validators = []
+
+    def validate(self, attrs):
+        name = attrs.get('name', getattr(self.instance, 'name', '') if self.instance else '').strip()
+        stream = attrs.get('stream', getattr(self.instance, 'stream', None) if self.instance else None)
+        category = attrs.get('category', getattr(self.instance, 'category', None) if self.instance else None)
+
+        qs = Department.objects.filter(
+            name__iexact=name,
+            stream=stream,
+            category=category
+        )
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        if qs.exists():
+            stream_str = f" under stream '{stream.name}'" if stream else ""
+            cat_str = f" ({category.name})" if category else ""
+            raise serializers.ValidationError(
+                {"detail": f"A department named '{name}' already exists{stream_str}{cat_str}."}
+            )
+
+        return attrs
 
 
 class TemplateDocumentSerializer(serializers.ModelSerializer):
@@ -187,6 +210,8 @@ class TemplateCollectionSerializer(serializers.ModelSerializer):
 
 
 class MOUCategorySerializer(serializers.ModelSerializer):
+    stream_name = serializers.CharField(source='stream.name', read_only=True)
+
     class Meta:
         model = MOUCategory
         fields = '__all__'

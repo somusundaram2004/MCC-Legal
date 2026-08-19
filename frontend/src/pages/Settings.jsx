@@ -27,6 +27,8 @@ import HandshakeIcon from '@mui/icons-material/Handshake';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 import SecurityIcon from '@mui/icons-material/Security';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { useThemeMode } from '../context/ThemeContext';
 import MailIcon from '@mui/icons-material/Mail';
@@ -189,14 +191,33 @@ const MasterDataTab = () => {
     } catch (err) { setMdError(extractError(err)); }
   };
 
-  const handleMdDelete = async (id, name) => {
-    if (!window.confirm(`Delete "${name}"? Items linked to active records cannot be removed — deactivate them instead.`)) return;
+  const [mdDeleteTarget, setMdDeleteTarget] = useState(null);
+  const [mdDeleting, setMdDeleting] = useState(false);
+  const [mdAnimatingId, setMdAnimatingId] = useState(null);
+
+  const confirmMdDelete = (item) => {
+    setMdDeleteTarget(item);
+  };
+
+  const executeMdDelete = async () => {
+    if (!mdDeleteTarget) return;
+    setMdDeleting(true);
     try {
-      await currentMdTab.del(id);
-      setMdSuccess(`"${name}" deleted successfully.`);
-      loadMdData();
+      await currentMdTab.del(mdDeleteTarget.id);
+      setMdAnimatingId(mdDeleteTarget.id);
+      setMdSuccess(`"${mdDeleteTarget.name}" deleted successfully.`);
+      setMdDeleteTarget(null);
+      setTimeout(() => {
+        setMdData(prev => prev.filter(d => d.id !== mdDeleteTarget.id));
+        setMdAnimatingId(null);
+        loadMdData();
+      }, 300);
+    } catch (err) {
+      setMdError(extractError(err));
+      setMdDeleteTarget(null);
+    } finally {
+      setMdDeleting(false);
     }
-    catch (err) { setMdError(extractError(err)); }
   };
 
   return (
@@ -217,7 +238,7 @@ const MasterDataTab = () => {
       {mdError && (
         <Alert
           severity="error"
-          sx={{ mb: 2, borderRadius: '12px' }}
+          sx={{ mb: 2, borderRadius: '12px', fontWeight: 600 }}
           onClose={() => setMdError(null)}
         >
           {mdError}
@@ -227,7 +248,7 @@ const MasterDataTab = () => {
       {mdSuccess && (
         <Alert
           severity="success"
-          sx={{ mb: 2, borderRadius: '12px' }}
+          sx={{ mb: 2, borderRadius: '12px', fontWeight: 600 }}
           onClose={() => setMdSuccess(null)}
         >
           {mdSuccess}
@@ -262,37 +283,51 @@ const MasterDataTab = () => {
                       <Typography color="text.secondary">No lookup values added yet.</Typography>
                     </TableCell>
                   </TableRow>
-                ) : mdData.map(item => (
-                  <TableRow key={item.id} hover>
-                    <TableCell>{item.id}</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>{item.name}</TableCell>
-                    {isDeptTab && (
-                      <>
-                        <TableCell>
-                          <Chip label={item.stream_name || 'Unassigned'} size="small" color="secondary" variant="outlined" sx={{ fontWeight: 700 }} />
-                        </TableCell>
-                        <TableCell>
-                          <Chip label={item.category_name || 'Unassigned'} size="small" color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
-                        </TableCell>
-                      </>
-                    )}
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Switch size="small" checked={item.is_active} onChange={() => handleMdToggle(item)} />
-                        <Chip label={item.is_active ? 'Active' : 'Disabled'} size="small"
-                          color={item.is_active ? 'success' : 'default'} sx={{ fontWeight: 800, height: 20 }} />
-                      </Box>
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton size="small" onClick={() => openMdDialog(item)} sx={{ mr: 1, color: 'primary.main' }}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton size="small" onClick={() => handleMdDelete(item.id, item.name)} sx={{ color: 'error.main' }}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                ) : (
+                  <AnimatePresence>
+                    {mdData.map(item => {
+                      const isAnimatingOut = mdAnimatingId === item.id;
+                      return (
+                        <TableRow
+                          key={item.id}
+                          hover
+                          component={motion.tr}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: isAnimatingOut ? 0 : 1, y: 0, scale: isAnimatingOut ? 0.95 : 1 }}
+                          exit={{ opacity: 0, height: 0, transition: { duration: 0.3 } }}
+                        >
+                          <TableCell>{item.id}</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>{item.name}</TableCell>
+                          {isDeptTab && (
+                            <>
+                              <TableCell>
+                                <Chip label={item.stream_name || 'Unassigned'} size="small" color="secondary" variant="outlined" sx={{ fontWeight: 700 }} />
+                              </TableCell>
+                              <TableCell>
+                                <Chip label={item.category_name || 'Unassigned'} size="small" color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
+                              </TableCell>
+                            </>
+                          )}
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Switch size="small" checked={item.is_active} onChange={() => handleMdToggle(item)} />
+                              <Chip label={item.is_active ? 'Active' : 'Disabled'} size="small"
+                                color={item.is_active ? 'success' : 'default'} sx={{ fontWeight: 800, height: 20 }} />
+                            </Box>
+                          </TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => openMdDialog(item)} sx={{ mr: 1, color: 'primary.main' }}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" onClick={() => confirmMdDelete(item)} sx={{ color: 'error.main' }}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </AnimatePresence>
+                )}
               </TableBody>
             </Table>
           </TableContainer>
@@ -336,6 +371,48 @@ const MasterDataTab = () => {
           <Button onClick={handleMdSave} variant="contained" sx={{ borderRadius: '12px', fontWeight: 700 }}
             disabled={mdSaving} startIcon={mdSaving ? <CircularProgress size={14} color="inherit" /> : null}>
             {mdSaving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog
+        open={Boolean(mdDeleteTarget)}
+        onClose={() => setMdDeleteTarget(null)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Confirm Delete
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Delete <strong>"{mdDeleteTarget?.name}"</strong>?
+          </Typography>
+          <Alert severity="warning" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            Items linked to active records cannot be removed — deactivate them instead.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setMdDeleteTarget(null)}
+            variant="outlined"
+            disabled={mdDeleting}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeMdDelete}
+            color="error"
+            variant="contained"
+            disabled={mdDeleting}
+            startIcon={mdDeleting ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {mdDeleting ? 'Deleting...' : 'Delete Option'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -409,10 +486,26 @@ const MasterList = ({ icon, title, color, fetchFn, createFn, updateFn, deleteFn,
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this item? Items linked to active records cannot be removed.')) return;
-    try { await deleteFn(id); load(); }
-    catch { setErr('Cannot delete — item is currently in use.'); }
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDelete = (item) => {
+    setDeleteTarget(item);
+  };
+
+  const executeDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteFn(deleteTarget.id);
+      setDeleteTarget(null);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Cannot delete — item is currently in use.');
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -487,7 +580,7 @@ const MasterList = ({ icon, title, color, fetchFn, createFn, updateFn, deleteFn,
                     <IconButton size="small" onClick={() => openEdit(item)} sx={{ color: 'primary.main', p: 0.5 }}>
                       <EditIcon sx={{ fontSize: '0.85rem' }} />
                     </IconButton>
-                    <IconButton size="small" onClick={() => handleDelete(item.id)} sx={{ color: 'error.main', p: 0.5 }}>
+                    <IconButton size="small" onClick={() => confirmDelete(item)} sx={{ color: 'error.main', p: 0.5 }}>
                       <DeleteIcon sx={{ fontSize: '0.85rem' }} />
                     </IconButton>
                   </Box>
@@ -675,16 +768,28 @@ const EmailSettingsTab = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this configuration?')) return;
+  const [smtpDeleteTarget, setSmtpDeleteTarget] = useState(null);
+  const [deletingSmtp, setDeletingSmtp] = useState(false);
+
+  const confirmSmtpDelete = (smtp) => {
+    setSmtpDeleteTarget(smtp);
+  };
+
+  const executeSmtpDelete = async () => {
+    if (!smtpDeleteTarget) return;
+    setDeletingSmtp(true);
     setError(null);
     setSuccess(null);
     try {
-      await api.delete(`/api/users/smtp-settings/${id}/`);
+      await api.delete(`/api/users/smtp-settings/${smtpDeleteTarget.id}/`);
       setSuccess('SMTP configuration deleted successfully.');
+      setSmtpDeleteTarget(null);
       fetchSettings();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to delete SMTP configuration.');
+      setSmtpDeleteTarget(null);
+    } finally {
+      setDeletingSmtp(false);
     }
   };
 
@@ -808,7 +913,7 @@ const EmailSettingsTab = () => {
                       <IconButton size="small" color="info" onClick={() => handleOpenTest(smtp.id)}>
                         <SendIcon fontSize="small" />
                       </IconButton>
-                      <IconButton size="small" color="error" onClick={() => handleDelete(smtp.id)}>
+                      <IconButton size="small" color="error" onClick={() => confirmSmtpDelete(smtp)}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Box>
@@ -974,6 +1079,48 @@ const EmailSettingsTab = () => {
             sx={{ borderRadius: '10px', fontWeight: 700 }}
           >
             {testingConnection ? 'Sending...' : 'Send Test Email'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Smtp Delete Confirmation Modal */}
+      <Dialog
+        open={Boolean(smtpDeleteTarget)}
+        onClose={() => setSmtpDeleteTarget(null)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Delete SMTP Server
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Are you sure you want to delete SMTP config for <strong>"{smtpDeleteTarget?.sender_email || smtpDeleteTarget?.host}"</strong>?
+          </Typography>
+          <Alert severity="warning" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            This will remove outgoing mail delivery configuration for this server.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setSmtpDeleteTarget(null)}
+            variant="outlined"
+            disabled={deletingSmtp}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeSmtpDelete}
+            color="error"
+            variant="contained"
+            disabled={deletingSmtp}
+            startIcon={deletingSmtp ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {deletingSmtp ? 'Deleting...' : 'Delete SMTP Config'}
           </Button>
         </DialogActions>
       </Dialog>

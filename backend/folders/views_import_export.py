@@ -28,14 +28,18 @@ def sanitize_filename(filename):
 
 def get_module_destinations():
     """Returns all active module destinations for Import."""
-    modules = [
-        {
-            'id': 'mou_repository',
-            'name': 'MOU Repository',
+    modules = []
+    predefined = drive_service.get_predefined_modules()
+    for pm in predefined:
+        if pm['id'] == 'recycle_bin':
+            continue
+        drive_id = drive_service.get_or_create_predefined_module_folder_id(pm['id'])
+        modules.append({
+            'id': pm['id'],
+            'name': pm['name'],
             'type': 'system',
-            'drive_id': drive_service.get_or_create_mou_repository_folder_id()
-        }
-    ]
+            'drive_id': drive_id
+        })
     custom_pages = CustomDynamicPage.objects.filter(is_published=True, is_enabled=True)
     for cp in custom_pages:
         drive_id = drive_service.get_or_create_module_folder_id(cp)
@@ -59,11 +63,6 @@ class ImportExportTreeView(APIView):
         user = request.user
         tree = []
 
-        # 1. MOU Repository Module
-        mou_folders = Folder.objects.filter(
-            module_type='mou_repository', parent__isnull=True, is_deleted=False
-        )
-        
         def build_folder_tree(folder):
             sub_folders = Folder.objects.filter(parent=folder, is_deleted=False)
             files = File.objects.filter(folder=folder, is_deleted=False)
@@ -101,21 +100,28 @@ class ImportExportTreeView(APIView):
                 'children': children
             }
 
-        mou_children = [build_folder_tree(f) for f in mou_folders]
-        mou_f_count = sum(c.get('folder_count', 0) + 1 for c in mou_children)
-        mou_file_count = sum(c.get('file_count', 0) for c in mou_children)
+        # 1. Predefined System Modules
+        predefined = drive_service.get_predefined_modules()
+        for pm in predefined:
+            if pm['id'] == 'recycle_bin':
+                continue
+            mod_folders = Folder.objects.filter(
+                module_type=pm['id'], parent__isnull=True, is_deleted=False
+            )
+            mod_children = [build_folder_tree(f) for f in mod_folders]
+            mod_f_count = sum(c.get('folder_count', 0) + 1 for c in mod_children)
+            mod_file_count = sum(c.get('file_count', 0) for c in mod_children)
 
-        mou_module_node = {
-            'id': 'module_mou',
-            'real_id': 'mou_repository',
-            'name': 'MOU Repository',
-            'item_type': 'module',
-            'module_type': 'mou_repository',
-            'folder_count': mou_f_count,
-            'file_count': mou_file_count,
-            'children': mou_children
-        }
-        tree.append(mou_module_node)
+            tree.append({
+                'id': f"module_{pm['id']}",
+                'real_id': pm['id'],
+                'name': pm['name'],
+                'item_type': 'module',
+                'module_type': pm['id'],
+                'folder_count': mod_f_count,
+                'file_count': mod_file_count,
+                'children': mod_children
+            })
 
         # 2. Dynamic Custom Page Modules
         custom_pages = CustomDynamicPage.objects.filter(is_published=True, is_enabled=True)
@@ -394,18 +400,87 @@ class ExportDownloadView(APIView):
         return response
 
 
+class GoogleDriveBrowseView(APIView):
+    """
+    Lists immediate subfolders and files inside a Google Drive folder for browsing.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        folder_id = request.query_params.get('folder_id')
+        try:
+            res = drive_service.browse_drive_folder(folder_id)
+            return Response(res, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'detail': f'Failed to browse Google Drive: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class ImportPreviewView(APIView):
     """
-    Parses uploaded File, Folder tree, or ZIP archive and returns preview structure before importing.
+    Parses uploaded File, Folder tree, ZIP archive, or Google Drive folder(s) and returns preview structure before importing.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        source_type = request.data.get('source_type')
+        source_drive_folder_id = request.data.get('source_drive_folder_id')
+        source_drive_items = request.data.get('source_drive_items')
+
+        # Mode 0: Google Drive Source (Single or Multi-item)
+        if source_type == 'google_drive' or source_drive_folder_id or source_drive_items:
+            items_to_scan = []
+            if source_drive_items and isinstance(source_drive_items, list):
+                items_to_scan = source_drive_items
+            elif source_drive_folder_id:
+                items_to_scan = [{'id': source_drive_folder_id, 'name': 'Google Drive Folder', 'is_folder': True}]
+
+            if not items_to_scan:
+                return Response({'detail': 'No Google Drive items provided for preview.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                combined_folders = set()
+                combined_files = []
+                folder_paths = set()
+
+                for item in items_to_scan:
+                    item_id = item.get('id')
+                    is_folder = item.get('is_folder', True)
+                    if is_folder:
+                        scan_res = drive_service.scan_google_drive_folder_tree(item_id)
+                        root_name = scan_res.get('filename', item.get('name', 'Drive Folder'))
+                        combined_folders.add(root_name)
+                        for fp in scan_res.get('folder_paths', []):
+                            folder_paths.add(fp)
+                        for fi in scan_res.get('file_list', []):
+                            combined_files.append(fi)
+                    else:
+                        f_name = item.get('name', 'Drive File')
+                        combined_files.append({
+                            'id': item_id,
+                            'name': f_name,
+                            'path': f_name,
+                            'size': item.get('size', 0)
+                        })
+
+                preview_title = f"{len(items_to_scan)} Google Drive Items" if len(items_to_scan) > 1 else (items_to_scan[0].get('name') if items_to_scan else 'Google Drive Import')
+
+                return Response({
+                    'filename': preview_title,
+                    'is_zip': False,
+                    'total_folders': len(combined_folders) + len(folder_paths),
+                    'total_files': len(combined_files),
+                    'folder_paths': sorted(list(folder_paths)),
+                    'file_list': combined_files
+                }, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.error(f"Google Drive scan error: {e}")
+                return Response({'detail': f'Google Drive scan failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
         uploaded_files = request.FILES.getlist('files') or request.FILES.getlist('file')
         relative_paths = request.POST.getlist('relative_paths')
 
         if not uploaded_files:
-            return Response({'detail': 'No file or folder uploaded for preview.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'No file, folder, or Google Drive source provided for preview.'}, status=status.HTTP_400_BAD_REQUEST)
 
         folders_set = set()
         file_list = []
@@ -429,12 +504,12 @@ class ImportPreviewView(APIView):
                     'size': f_obj.size
                 })
         else:
-            # Case 2: Single file or ZIP archive
-            uploaded_file = uploaded_files[0]
-            filename = uploaded_file.name
-            is_zip = filename.lower().endswith('.zip')
+            # Case 2: Single file, multiple flat files, or ZIP archive
+            filename = f"{len(uploaded_files)} Selected Files" if len(uploaded_files) > 1 else uploaded_files[0].name
+            is_zip = len(uploaded_files) == 1 and uploaded_files[0].name.lower().endswith('.zip')
 
             if is_zip:
+                uploaded_file = uploaded_files[0]
                 try:
                     with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
                         for info in zip_ref.infolist():
@@ -464,11 +539,12 @@ class ImportPreviewView(APIView):
                     return Response({'detail': f'Invalid or corrupted ZIP archive: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
             else:
-                file_list.append({
-                    'name': filename,
-                    'path': filename,
-                    'size': uploaded_file.size
-                })
+                for uf in uploaded_files:
+                    file_list.append({
+                        'name': uf.name,
+                        'path': uf.name,
+                        'size': uf.size
+                    })
 
         return Response({
             'filename': filename,
@@ -483,10 +559,13 @@ class ImportPreviewView(APIView):
 class ImportExecuteView(APIView):
     """
     Executes import into selected destination module/folder, uploading to Google Drive & saving DB records.
+    Supports Local Files, Local Folders, ZIP Archives, and Google Drive Folders.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        source_type = request.data.get('source_type')
+        source_drive_folder_id = request.data.get('source_drive_folder_id')
         uploaded_files = request.FILES.getlist('files') or request.FILES.getlist('file')
         relative_paths = request.POST.getlist('relative_paths')
         module_id = request.data.get('module_id')
@@ -494,8 +573,11 @@ class ImportExecuteView(APIView):
         duplicate_file_strategy = request.data.get('duplicate_file_strategy', 'create_copy')  # 'skip', 'replace', 'create_copy'
         duplicate_folder_strategy = request.data.get('duplicate_folder_strategy', 'merge')   # 'merge', 'create_new', 'skip'
 
-        if not uploaded_files or not module_id:
-            return Response({'detail': 'Both file(s) and destination module_id are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not module_id:
+            return Response({'detail': 'Destination module_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not (source_type == 'google_drive' or source_drive_folder_id) and not uploaded_files:
+            return Response({'detail': 'Both import source files/folder and destination module_id are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Determine destination module & Drive parent folder ID
         target_module_type = 'mou_repository'
@@ -503,10 +585,7 @@ class ImportExecuteView(APIView):
         destination_drive_parent_id = None
         base_parent_folder = None
 
-        if module_id == 'mou_repository':
-            target_module_type = 'mou_repository'
-            destination_drive_parent_id = drive_service.get_or_create_mou_repository_folder_id()
-        elif str(module_id).startswith('custom_') or str(module_id).startswith('module_custom_') or module_id != 'mou_repository':
+        if str(module_id).startswith('custom_') or str(module_id).startswith('module_custom_'):
             cp_id = str(module_id).replace('module_custom_', '').replace('custom_', '')
             try:
                 target_custom_page = CustomDynamicPage.objects.get(id=cp_id)
@@ -514,6 +593,205 @@ class ImportExecuteView(APIView):
                 destination_drive_parent_id = drive_service.get_or_create_module_folder_id(target_custom_page)
             except (CustomDynamicPage.DoesNotExist, ValueError):
                 return Response({'detail': 'Selected destination module was not found.'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            target_module_type = str(module_id)
+            destination_drive_parent_id = drive_service.get_or_create_predefined_module_folder_id(module_id)
+
+        # Override destination with specific target parent folder if specified
+        if parent_folder_id and str(parent_folder_id).isdigit():
+            try:
+                base_parent_folder = Folder.objects.get(id=int(parent_folder_id), is_deleted=False)
+                destination_drive_parent_id = base_parent_folder.google_folder_id or destination_drive_parent_id
+                target_module_type = base_parent_folder.module_type
+                target_custom_page = base_parent_folder.custom_page
+            except Folder.DoesNotExist:
+                pass
+
+        if not destination_drive_parent_id:
+            destination_drive_parent_id = drive_service.get_root_folder_id()
+
+        successful_files = []
+        failed_files = []
+        user = request.user
+
+        # ── MODE 0: Import directly from Google Drive Folder ──
+        if source_type == 'google_drive' or source_drive_folder_id:
+            if not source_drive_folder_id:
+                return Response({'detail': 'source_drive_folder_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                scan_res = drive_service.scan_google_drive_folder_tree(source_drive_folder_id)
+                root_folder_name = scan_res.get('filename', 'Google Drive Import')
+
+                existing_root = Folder.objects.filter(
+                    name=root_folder_name,
+                    parent=base_parent_folder,
+                    module_type=target_module_type,
+                    custom_page=target_custom_page,
+                    is_deleted=False
+                ).first()
+
+                top_folder = None
+                top_drive_id = None
+
+                if existing_root and duplicate_folder_strategy == 'merge':
+                    top_folder = existing_root
+                    top_drive_id = existing_root.google_folder_id or drive_service.create_folder(root_folder_name, destination_drive_parent_id)
+                elif existing_root and duplicate_folder_strategy == 'skip':
+                    return Response({
+                        'success': True,
+                        'processed_count': 0,
+                        'successful_count': 0,
+                        'failed_count': 0,
+                        'successful_files': [],
+                        'failed_files': [{'name': root_folder_name, 'reason': 'Folder skipped due to duplicate strategy'}]
+                    }, status=status.HTTP_200_OK)
+                else:
+                    final_name = root_folder_name
+                    if existing_root and duplicate_folder_strategy == 'create_new':
+                        final_name = f"{root_folder_name} ({datetime.now().strftime('%Y%m%d_%H%M%S')})"
+
+                    top_drive_id = drive_service.create_folder(final_name, destination_drive_parent_id)
+                    top_folder = Folder.objects.create(
+                        name=final_name,
+                        parent=base_parent_folder,
+                        google_folder_id=top_drive_id,
+                        module_type=target_module_type,
+                        custom_page=target_custom_page,
+                        import_source='google_drive',
+                        source_google_folder_id=source_drive_folder_id,
+                        created_by=user
+                    )
+
+                folder_map = {root_folder_name: (top_folder, top_drive_id)}
+
+                # Process all subfolders
+                for rel_folder_path in scan_res.get('folder_paths', []):
+                    parts = rel_folder_path.split('/')
+                    current_parent_folder = top_folder
+                    current_drive_parent = top_drive_id
+
+                    path_acc = parts[0]
+                    for p in parts[1:]:
+                        parent_acc = path_acc
+                        path_acc = f"{path_acc}/{p}"
+
+                        if path_acc in folder_map:
+                            current_parent_folder, current_drive_parent = folder_map[path_acc]
+                        else:
+                            parent_f, parent_d = folder_map.get(parent_acc, (top_folder, top_drive_id))
+                            clean_dir_name = sanitize_filename(p)
+
+                            existing_folder = Folder.objects.filter(
+                                name=clean_dir_name,
+                                parent=parent_f,
+                                module_type=target_module_type,
+                                custom_page=target_custom_page,
+                                is_deleted=False
+                            ).first()
+
+                            if existing_folder and duplicate_folder_strategy == 'merge':
+                                target_f = existing_folder
+                                target_d = existing_folder.google_folder_id or drive_service.create_folder(clean_dir_name, parent_d)
+                            elif existing_folder and duplicate_folder_strategy == 'skip':
+                                folder_map[path_acc] = (existing_folder, existing_folder.google_folder_id or parent_d)
+                                continue
+                            else:
+                                final_dir_name = clean_dir_name
+                                if existing_folder and duplicate_folder_strategy == 'create_new':
+                                    final_dir_name = f"{clean_dir_name} ({datetime.now().strftime('%Y%m%d_%H%M%S')})"
+
+                                target_d = drive_service.create_folder(final_dir_name, parent_d)
+                                target_f = Folder.objects.create(
+                                    name=final_dir_name,
+                                    parent=parent_f,
+                                    google_folder_id=target_d,
+                                    module_type=target_module_type,
+                                    custom_page=target_custom_page,
+                                    import_source='google_drive',
+                                    created_by=user
+                                )
+
+                            folder_map[path_acc] = (target_f, target_d)
+
+                # Process all files using native Drive-to-Drive copy
+                for fi_info in scan_res.get('file_list', []):
+                    f_name = fi_info['name']
+                    f_path = fi_info['path']
+                    source_f_id = fi_info['id']
+
+                    dir_path = os.path.dirname(f_path)
+                    target_f, target_d = folder_map.get(dir_path, (top_folder, top_drive_id))
+
+                    clean_file_name = sanitize_filename(f_name)
+                    existing_file = File.objects.filter(
+                        name=clean_file_name,
+                        folder=target_f,
+                        is_deleted=False
+                    ).first()
+
+                    if existing_file and duplicate_file_strategy == 'skip':
+                        continue
+
+                    final_file_name = clean_file_name
+                    if existing_file and duplicate_file_strategy == 'create_copy':
+                        base_n, ext_n = os.path.splitext(clean_file_name)
+                        final_file_name = f"{base_n} (copy){ext_n}"
+
+                    try:
+                        drive_result = drive_service.copy_google_drive_file(
+                            source_file_id=source_f_id,
+                            target_file_name=final_file_name,
+                            target_parent_drive_id=target_d
+                        )
+
+                        if existing_file and duplicate_file_strategy == 'replace':
+                            if existing_file.google_file_id:
+                                try:
+                                    drive_service.delete_file(existing_file.google_file_id)
+                                except Exception:
+                                    pass
+                            existing_file.name = final_file_name
+                            existing_file.google_file_id = drive_result.get('id')
+                            existing_file.size = drive_result.get('size', fi_info.get('size', 0))
+                            existing_file.file_size = drive_result.get('size', fi_info.get('size', 0))
+                            existing_file.web_view_link = drive_result.get('webViewLink')
+                            existing_file.web_content_link = drive_result.get('webContentLink')
+                            existing_file.import_source = 'google_drive'
+                            existing_file.source_google_file_id = source_f_id
+                            existing_file.save()
+                            successful_files.append(final_file_name)
+                        else:
+                            File.objects.create(
+                                name=final_file_name,
+                                size=drive_result.get('size', fi_info.get('size', 0)),
+                                file_size=drive_result.get('size', fi_info.get('size', 0)),
+                                file_type=os.path.splitext(final_file_name)[1].lstrip('.').upper() or 'FILE',
+                                mime_type=drive_result.get('mimeType', fi_info.get('mimeType', '')),
+                                folder=target_f,
+                                uploaded_by=user,
+                                google_file_id=drive_result.get('id'),
+                                web_view_link=drive_result.get('webViewLink'),
+                                web_content_link=drive_result.get('webContentLink'),
+                                import_source='google_drive',
+                                source_google_file_id=source_f_id
+                            )
+                            successful_files.append(final_file_name)
+                    except Exception as file_err:
+                        logger.error(f"Error copying Google Drive file '{clean_file_name}': {file_err}")
+                        failed_files.append({'name': clean_file_name, 'reason': str(file_err)})
+
+                return Response({
+                    'success': True,
+                    'processed_count': len(successful_files) + len(failed_files),
+                    'successful_count': len(successful_files),
+                    'failed_count': len(failed_files),
+                    'successful_files': successful_files,
+                    'failed_files': failed_files
+                }, status=status.HTTP_200_OK)
+
+            except Exception as e:
+                logger.error(f"Google Drive import error: {e}")
+                return Response({'detail': f'Google Drive import execution failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Override destination with specific target parent folder if specified
         if parent_folder_id and str(parent_folder_id).isdigit():
@@ -779,50 +1057,32 @@ class ImportExecuteView(APIView):
                                 failed_files.append({'name': clean_f_name, 'reason': str(file_err)})
 
                 else:
-                    clean_f_name = sanitize_filename(uploaded_file.name)
-                    target_folder = base_parent_folder
-                    
-                    if not target_folder:
-                        target_folder = Folder.objects.filter(
-                            name=raw_root_name,
-                            parent=base_parent_folder,
-                            module_type=target_module_type,
-                            custom_page=target_custom_page,
-                            is_deleted=False
-                        ).first()
-                        if not target_folder:
-                            target_drive_id = drive_service.create_folder(raw_root_name, destination_drive_parent_id)
-                            target_folder = Folder.objects.create(
-                                name=raw_root_name,
-                                parent=base_parent_folder,
-                                google_folder_id=target_drive_id,
-                                module_type=target_module_type,
-                                custom_page=target_custom_page,
-                                created_by=user
-                            )
+                    for uploaded_file in uploaded_files:
+                        clean_f_name = sanitize_filename(uploaded_file.name)
+                        target_folder = base_parent_folder
+                        
+                        f_content = uploaded_file.read()
 
-                    f_content = uploaded_file.read()
+                        drive_result = drive_service.upload_file(
+                            file_content=f_content,
+                            filename=clean_f_name,
+                            mime_type=uploaded_file.content_type,
+                            parent_id=target_folder.google_folder_id if target_folder else destination_drive_parent_id
+                        )
 
-                    drive_result = drive_service.upload_file(
-                        file_content=f_content,
-                        filename=clean_f_name,
-                        mime_type=uploaded_file.content_type,
-                        parent_id=target_folder.google_folder_id or destination_drive_parent_id
-                    )
-
-                    File.objects.create(
-                        name=clean_f_name,
-                        size=len(f_content),
-                        file_size=len(f_content),
-                        file_type=os.path.splitext(clean_f_name)[1].lstrip('.').upper() or 'FILE',
-                        mime_type=drive_result.get('mimeType', uploaded_file.content_type),
-                        folder=target_folder,
-                        uploaded_by=user,
-                        google_file_id=drive_result.get('id'),
-                        web_view_link=drive_result.get('webViewLink'),
-                        web_content_link=drive_result.get('webContentLink')
-                    )
-                    successful_files.append(clean_f_name)
+                        File.objects.create(
+                            name=clean_f_name,
+                            size=len(f_content),
+                            file_size=len(f_content),
+                            file_type=os.path.splitext(clean_f_name)[1].lstrip('.').upper() or 'FILE',
+                            mime_type=drive_result.get('mimeType', uploaded_file.content_type),
+                            folder=target_folder,
+                            uploaded_by=user,
+                            google_file_id=drive_result.get('id'),
+                            web_view_link=drive_result.get('webViewLink'),
+                            web_content_link=drive_result.get('webContentLink')
+                        )
+                        successful_files.append(clean_f_name)
 
         except Exception as e:
             logger.error(f"Import process error: {e}")

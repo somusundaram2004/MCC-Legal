@@ -441,3 +441,28 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             "client_id": setting.client_id,
             "root_folder_id": setting.root_folder_id
         })
+
+    @action(detail=False, methods=['get'], url_path='hierarchy-status')
+    def hierarchy_status(self, request):
+        from services import drive_service
+        try:
+            statuses = drive_service.validate_drive_hierarchy()
+            return Response({'statuses': statuses}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'detail': f'Hierarchy check failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='repair-hierarchy')
+    def repair_hierarchy(self, request):
+        module_id = request.data.get('module_id')
+        if not module_id:
+            return Response({'detail': 'module_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        from services import drive_service
+        try:
+            success, message = drive_service.repair_module_drive_parent(module_id)
+            if success:
+                log_activity(request.user, f"Repaired Google Drive hierarchy for module '{module_id}'", "drive")
+                return Response({'detail': message, 'success': True}, status=status.HTTP_200_OK)
+            else:
+                return Response({'detail': message, 'success': False}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'detail': f'Repair operation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)

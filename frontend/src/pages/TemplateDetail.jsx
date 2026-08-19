@@ -19,6 +19,7 @@ import ExtensionIcon from '@mui/icons-material/Extension';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import EmailIcon from '@mui/icons-material/Email';
 import DescriptionIcon from '@mui/icons-material/Description';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 
 import {
   getTemplateCollection, uploadTemplateDocument, archiveTemplateDocument, getMasterDocTypes, sendTemplateDocumentEmail
@@ -195,15 +196,26 @@ const TemplateDetail = () => {
     }
   };
 
-  const handleArchive = async (docId, docName) => {
-    if (window.confirm(`Archive document template '${docName}'? Previous versions should not be deleted, but archiving makes them inactive.`)) {
-      try {
-        await archiveTemplateDocument(docId);
-        fetchCollectionDetails();
-      } catch (err) {
-        console.error(err);
-        setError('Failed to archive document.');
-      }
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const [archiving, setArchiving] = useState(false);
+
+  const confirmArchive = (docId, docName) => {
+    setArchiveTarget({ id: docId, name: docName });
+  };
+
+  const executeArchive = async () => {
+    if (!archiveTarget) return;
+    setArchiving(true);
+    try {
+      await archiveTemplateDocument(archiveTarget.id);
+      setArchiveTarget(null);
+      fetchCollectionDetails();
+    } catch (err) {
+      console.error(err);
+      setError('Failed to archive document.');
+      setArchiveTarget(null);
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -343,7 +355,7 @@ const TemplateDetail = () => {
                             <EmailIcon fontSize="small" />
                           </IconButton>
                           {doc.status !== 'Archived' && (
-                            <IconButton size="small" onClick={() => handleArchive(doc.id, doc.document_name)} sx={{ color: 'error.main' }}>
+                            <IconButton size="small" onClick={() => confirmArchive(doc.id, doc.document_name)} sx={{ color: 'error.main' }}>
                               <ArchiveIcon fontSize="small" />
                             </IconButton>
                           )}
@@ -613,6 +625,48 @@ const TemplateDetail = () => {
             </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Archive Document Confirmation Modal */}
+      <Dialog
+        open={Boolean(archiveTarget)}
+        onClose={() => setArchiveTarget(null)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Archive Template Version
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Archive document template <strong>"{archiveTarget?.name}"</strong>?
+          </Typography>
+          <Alert severity="warning" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            Previous versions are retained in audit logs, but archiving makes them inactive for new forms.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setArchiveTarget(null)}
+            variant="outlined"
+            disabled={archiving}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeArchive}
+            color="error"
+            variant="contained"
+            disabled={archiving}
+            startIcon={archiving ? <CircularProgress size={18} color="inherit" /> : <ArchiveIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {archiving ? 'Archiving...' : 'Archive Version'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

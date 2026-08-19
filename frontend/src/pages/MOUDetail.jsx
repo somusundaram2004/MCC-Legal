@@ -23,6 +23,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import ShareIcon from '@mui/icons-material/Share';
 import DeleteIcon from '@mui/icons-material/Delete';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 
 import { 
   getMOU, approveRejectMOU, renewMOU, 
@@ -125,47 +126,46 @@ const MOUDetail = () => {
     }
   };
 
-  const handleRevokeShare = async (shareId) => {
-    if (window.confirm('Revoke folder share for this department?')) {
-      try {
-        await revokeMOUShare(shareId);
-        const shares = await getMOUShares(id);
-        setActiveShares(shares);
-      } catch (err) {
-        console.error('Revocation failed:', err);
-      }
-    }
+  const [revokeShareTarget, setRevokeShareTarget] = useState(null);
+  const [revoking, setRevoking] = useState(false);
+  const [renewConfirmOpen, setRenewConfirmOpen] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+
+  const confirmRevokeShare = (shareId) => {
+    setRevokeShareTarget(shareId);
   };
 
-  const handleOpenReview = (submissionId, action) => {
-    setSelectedSubmissionId(submissionId);
-    setReviewAction(action);
-    setReviewComments('');
-    setReviewDialogOpen(true);
-  };
-
-  const handleConfirmReview = async () => {
-    setReviewing(true);
+  const executeRevokeShare = async () => {
+    if (!revokeShareTarget) return;
+    setRevoking(true);
     try {
-      await reviewDepartmentSubmission(selectedSubmissionId, reviewAction, reviewComments);
-      setReviewDialogOpen(false);
-      fetchMou();
+      await revokeMOUShare(revokeShareTarget);
+      const shares = await getMOUShares(id);
+      setActiveShares(shares);
+      setRevokeShareTarget(null);
     } catch (err) {
-      console.error('Review action failed:', err);
-      setError('Failed to complete submission review.');
+      console.error('Revocation failed:', err);
+      setRevokeShareTarget(null);
     } finally {
-      setReviewing(false);
+      setRevoking(false);
     }
   };
 
-  const handleRenew = async () => {
-    if (window.confirm('Execute One-Click Renewal for this MOU Folder?')) {
-      try {
-        const renewed = await renewMOU(id, 'Renewed from folder details page.');
-        navigate(`/mou/${renewed.id}`);
-      } catch (err) {
-        console.error('Renewal failed:', err);
-      }
+  const confirmRenew = () => {
+    setRenewConfirmOpen(true);
+  };
+
+  const executeRenew = async () => {
+    setRenewing(true);
+    try {
+      const renewed = await renewMOU(id, 'Renewed from folder details page.');
+      setRenewConfirmOpen(false);
+      navigate(`/mou/${renewed.id}`);
+    } catch (err) {
+      console.error('Renewal failed:', err);
+      setRenewConfirmOpen(false);
+    } finally {
+      setRenewing(false);
     }
   };
 
@@ -269,7 +269,7 @@ const MOUDetail = () => {
                 {(mou.status === 'Active' || mou.status === 'Expired') && (
                   <Button
                     variant="outlined"
-                    onClick={handleRenew}
+                    onClick={confirmRenew}
                     startIcon={<AutorenewIcon />}
                     sx={{ borderRadius: '12px', fontWeight: 700 }}
                   >
@@ -614,7 +614,7 @@ const MOUDetail = () => {
                             <Chip label={s.status} size="small" color={s.status === 'Completed' ? 'success' : 'default'} sx={{ fontWeight: 700 }} />
                           </TableCell>
                           <TableCell align="right">
-                            <IconButton color="error" size="small" onClick={() => handleRevokeShare(s.id)}>
+                            <IconButton color="error" size="small" onClick={() => confirmRevokeShare(s.id)}>
                               <DeleteIcon fontSize="small" />
                             </IconButton>
                           </TableCell>
@@ -667,6 +667,90 @@ const MOUDetail = () => {
             sx={{ borderRadius: '10px', fontWeight: 700 }}
           >
             {reviewing ? 'Processing...' : 'Confirm Action'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Revoke Share Confirmation Modal */}
+      <Dialog
+        open={Boolean(revokeShareTarget)}
+        onClose={() => setRevokeShareTarget(null)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Revoke Share Permissions
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Are you sure you want to revoke folder share permissions for this department?
+          </Typography>
+          <Alert severity="warning" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            The department will lose access to view and upload documents into this folder repository.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setRevokeShareTarget(null)}
+            variant="outlined"
+            disabled={revoking}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeRevokeShare}
+            color="error"
+            variant="contained"
+            disabled={revoking}
+            startIcon={revoking ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {revoking ? 'Revoking...' : 'Revoke Share'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* One-Click Renewal Confirmation Modal */}
+      <Dialog
+        open={renewConfirmOpen}
+        onClose={() => setRenewConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'primary.main' }}>
+          <AutorenewIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+          One-Click Renewal
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Execute One-Click Renewal for this MOU Folder?
+          </Typography>
+          <Alert severity="info" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            This will clone the active folder metadata into a new renewal document cycle.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setRenewConfirmOpen(false)}
+            variant="outlined"
+            disabled={renewing}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeRenew}
+            color="primary"
+            variant="contained"
+            disabled={renewing}
+            startIcon={renewing ? <CircularProgress size={18} color="inherit" /> : <AutorenewIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {renewing ? 'Renewing...' : 'Execute Renewal'}
           </Button>
         </DialogActions>
       </Dialog>

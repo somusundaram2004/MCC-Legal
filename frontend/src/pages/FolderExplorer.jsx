@@ -7,7 +7,7 @@ import {
   DialogActions, TextField, Menu, MenuItem, ListItemIcon, ListItemText,
   Alert, Divider, Chip, ToggleButtonGroup, ToggleButton, Switch, 
   FormControlLabel, Autocomplete, FormControl, InputLabel, Select,
-  LinearProgress, Checkbox
+  LinearProgress, Checkbox, List, ListItem
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import StatusPill from '../components/StatusPill';
@@ -35,6 +35,9 @@ import TimelineIcon from '@mui/icons-material/Timeline';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
+import CloudIcon from '@mui/icons-material/Cloud';
+import FolderSpecialIcon from '@mui/icons-material/FolderSpecial';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 
 import api from '../services/api';
@@ -42,8 +45,8 @@ import { useAuth } from '../context/AuthContext';
 import { useSiteTime } from '../context/SiteTimeContext';
 import { useAutoRefresh, triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 import BreadcrumbNav from '../components/BreadcrumbNav';
-
 import FilePreviewModal from '../components/FilePreviewModal';
+import GoogleDrivePickerModal from '../components/GoogleDrivePickerModal';
 
 const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const { user, hasPermission } = useAuth();
@@ -245,6 +248,59 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const [folderImportModalOpen, setFolderImportModalOpen] = useState(false);
   const [folderImportFiles, setFolderImportFiles] = useState([]);
   const [folderImportLoading, setFolderImportLoading] = useState(false);
+
+  // Google Drive Direct Import state
+  const [driveBrowserOpen, setDriveBrowserOpen] = useState(false);
+  const [driveBrowserLoading, setDriveBrowserLoading] = useState(false);
+  const [driveCurrentFolder, setDriveCurrentFolder] = useState(null);
+  const [driveItems, setDriveItems] = useState([]);
+  const [driveImportExecuting, setDriveImportExecuting] = useState(false);
+
+  const handleOpenDriveBrowser = async (folderId = null) => {
+    setDriveBrowserOpen(true);
+    setDriveBrowserLoading(true);
+    try {
+      const url = folderId ? `/api/import-export/drive-browser/?folder_id=${encodeURIComponent(folderId)}` : '/api/import-export/drive-browser/';
+      const res = await api.get(url);
+      setDriveCurrentFolder(res.data.current_folder);
+      setDriveItems(res.data.items || []);
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Failed to list Google Drive contents.");
+    } finally {
+      setDriveBrowserLoading(false);
+    }
+  };
+
+  const handleExecuteDriveImport = async (targetDriveFolder, allTargets) => {
+    const itemsArr = Array.isArray(targetDriveFolder) ? targetDriveFolder : (allTargets && Array.isArray(allTargets) ? allTargets : [targetDriveFolder]);
+    if (!itemsArr || itemsArr.length === 0) return;
+    setDriveImportExecuting(true);
+    setActionLoadingMessage(`Importing ${itemsArr.length} item(s) from Google Drive into repository...`);
+    try {
+      const destModule = customPageId ? `custom_${customPageId}` : 'mou_repository';
+      const res = await api.post('/api/import-export/import/execute/', {
+        source_type: 'google_drive',
+        source_drive_items: itemsArr,
+        source_drive_folder_id: itemsArr.length === 1 ? itemsArr[0].id : undefined,
+        module_id: destModule,
+        parent_folder_id: currentFolderId || undefined,
+        duplicate_file_strategy: 'create_copy',
+        duplicate_folder_strategy: 'merge'
+      });
+
+      setSuccess(`Successfully imported ${itemsArr.length} item(s) from Google Drive (${res.data.successful_count} files saved)!`);
+      setDriveBrowserOpen(false);
+      fetchContents();
+      if (typeof triggerGlobalAutoRefresh === 'function') {
+        triggerGlobalAutoRefresh(REFRESH_CATEGORIES.FOLDERS);
+      }
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Google Drive import failed.");
+    } finally {
+      setDriveImportExecuting(false);
+      setActionLoadingMessage('');
+    }
+  };
 
 
   const handleOpenMoveModal = async (folderObj) => {
@@ -1270,6 +1326,20 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                 sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
               >
                 Import Folder
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<CloudIcon />}
+                onClick={() => handleOpenDriveBrowser(null)}
+                sx={{
+                  borderRadius: '10px',
+                  textTransform: 'none',
+                  fontWeight: 800,
+                  background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
+                  color: '#FFF'
+                }}
+              >
+                Import from Drive
               </Button>
             </>
           )}
@@ -2610,6 +2680,15 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         file={previewFile}
         onClose={() => setPreviewFile(null)}
         onRefresh={fetchContents}
+      />
+
+      {/* Reusable Modern Google Drive Folder Picker Modal */}
+      <GoogleDrivePickerModal
+        open={driveBrowserOpen}
+        onClose={() => setDriveBrowserOpen(false)}
+        onSelectFolder={handleExecuteDriveImport}
+        title="Select Folder from Google Drive to Import"
+        actionLabel="Import Folder into Repository"
       />
     </Box>
 

@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Box, Grid, Card, CardContent, Typography, Button, 
   Avatar, Chip, CircularProgress, Divider, TextField, 
-  InputAdornment, LinearProgress, Dialog, DialogTitle,
+  InputAdornment, Dialog, DialogTitle,
   DialogContent, DialogActions, FormControl, InputLabel,
-  Select, MenuItem, Alert, IconButton, Tooltip
+  Select, MenuItem, Alert, IconButton, Tooltip,
+  ToggleButtonGroup, ToggleButton
 } from '@mui/material';
+import { motion, AnimatePresence } from 'framer-motion';
 import SchoolIcon from '@mui/icons-material/School';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import BusinessCenterIcon from '@mui/icons-material/BusinessCenter';
@@ -18,41 +20,63 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AddIcon from '@mui/icons-material/Add';
 import BusinessIcon from '@mui/icons-material/Business';
 import DeleteIcon from '@mui/icons-material/Delete';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 
 import { getMOUs } from '../services/mouApi';
-import { getMOUCategories, createMOUCategory, deleteMOUCategory } from '../services/templateApi';
+import { getMOUCategories, createMOUCategory, deleteMOUCategory, getMasterStreams } from '../services/templateApi';
 import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
-
 
 const Departments = () => {
   const navigate = useNavigate();
   const [mous, setMous] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [streams, setStreams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedStreamTab, setSelectedStreamTab] = useState('ALL');
 
   // Create Category Dialog state
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [streamId, setStreamId] = useState('');
   const [color, setColor] = useState('#3B82F6');
   const [iconType, setIconType] = useState('school');
   const [coordName, setCoordName] = useState('');
   const [categoryType, setCategoryType] = useState('Department');
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Delete Category Dialog state
+  // Delete Category Dialog & Animation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [animatingId, setAnimatingId] = useState(null);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const loadData = React.useCallback(() => {
     setLoading(true);
-    Promise.all([getMOUs(), getMOUCategories()])
-      .then(([mouData, catData]) => {
-        setMous(mouData);
-        setCategories(catData);
+    Promise.all([getMOUs(), getMOUCategories(), getMasterStreams()])
+      .then(([mouData, catData, streamData]) => {
+        setMous(mouData || []);
+        setCategories(catData || []);
+        setStreams(streamData || []);
         setLoading(false);
       })
       .catch(err => {
@@ -97,12 +121,19 @@ const Departments = () => {
     return `rgba(${r}, ${g}, ${b}, 0.12)`;
   };
 
-  const getDeptStats = (deptName) => {
-    const firstWord = (deptName || '').split(' ')[0].toLowerCase();
+  const getDeptStats = (dept) => {
+    const deptNameLower = (dept.name || '').toLowerCase();
+    const streamNameLower = (dept.stream_name || '').toLowerCase();
+
     const deptMous = mous.filter(m => {
-      const nameToCheck = (m.department_name || '').toLowerCase();
-      return nameToCheck.includes(firstWord);
+      const mouDept = (m.department_name || m.department || '').toLowerCase();
+      const mouStream = (m.stream || m.stream_name || '').toLowerCase();
+      
+      const nameMatches = mouDept.includes(deptNameLower) || deptNameLower.includes(mouDept);
+      const streamMatches = !streamNameLower || !mouStream || mouStream.includes(streamNameLower) || streamNameLower.includes(mouStream);
+      return nameMatches && streamMatches;
     });
+
     const active = deptMous.filter(m => m.status === 'Active').length;
     const expiring = deptMous.filter(m => m.days_left !== null && m.days_left <= 30 && m.days_left >= 0).length;
     return { total: deptMous.length, active, expiring };
@@ -119,6 +150,7 @@ const Departments = () => {
       const payload = {
         name,
         code,
+        stream: streamId || null,
         color,
         icon_type: iconType,
         coordinator_name: coordName,
@@ -127,18 +159,18 @@ const Departments = () => {
       };
       await createMOUCategory(payload);
       setOpen(false);
-      // Reset form
       setName('');
       setCode('');
+      setStreamId('');
       setColor('#3B82F6');
       setIconType('school');
       setCoordName('');
       setCategoryType('Department');
-      // Reload
+      setSuccess('Category created successfully.');
       loadData();
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.detail || err.response?.data?.name?.[0] || "Failed to create category.");
+      setError(err.response?.data?.detail || err.response?.data?.non_field_errors?.[0] || err.response?.data?.name?.[0] || "Failed to create category.");
     } finally {
       setSaving(false);
     }
@@ -152,23 +184,47 @@ const Departments = () => {
   const handleConfirmDelete = async () => {
     if (!categoryToDelete) return;
     setDeleting(true);
+    setError(null);
     try {
       await deleteMOUCategory(categoryToDelete.id);
+      setAnimatingId(categoryToDelete.id);
       setDeleteConfirmOpen(false);
-      setCategoryToDelete(null);
-      loadData();
+      setSuccess(`Category "${categoryToDelete.name}" deleted successfully.`);
+
+      setTimeout(() => {
+        setCategories((prev) => prev.filter((c) => c.id !== categoryToDelete.id));
+        setCategoryToDelete(null);
+        setAnimatingId(null);
+      }, 350);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.detail || "Failed to delete category.");
+      const errMsg = err.response?.data?.detail || "Failed to delete category.";
+      setError(errMsg);
+      setDeleteConfirmOpen(false);
+      setCategoryToDelete(null);
     } finally {
       setDeleting(false);
     }
   };
 
-  const filteredDepts = categories.filter(d => 
-    (d.name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (d.coordinator_name || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredDepts = useMemo(() => {
+    return categories.filter(d => {
+      const matchesSearch = (d.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (d.coordinator_name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (d.code || '').toLowerCase().includes(search.toLowerCase()) ||
+        (d.stream_name || '').toLowerCase().includes(search.toLowerCase());
+
+      if (!matchesSearch) return false;
+
+      if (selectedStreamTab === 'ALL') return true;
+
+      const deptStreamId = String(d.stream || '');
+      const deptStreamName = (d.stream_name || '').toLowerCase();
+      const tabTarget = String(selectedStreamTab).toLowerCase();
+
+      return deptStreamId === tabTarget || deptStreamName.includes(tabTarget) || tabTarget.includes(deptStreamName);
+    });
+  }, [categories, search, selectedStreamTab]);
 
   return (
     <Box sx={{ flexGrow: 1 }} className="animate-fade-slide-up">
@@ -176,20 +232,57 @@ const Departments = () => {
       <Box sx={{ mb: 3.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-            Department Directory & MOU Repositories
+            Department Directory &amp; MOU Repositories
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Browse institutional agreements, assigned department coordinators, and active compliance metrics.
+            Browse institutional agreements, assigned department coordinators, and stream compliance metrics (**Aided &amp; Self-Financed SFS**).
           </Typography>
         </Box>
 
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Stream Filter Toggle Group */}
+          <ToggleButtonGroup
+            value={selectedStreamTab}
+            exclusive
+            onChange={(e, val) => val && setSelectedStreamTab(val)}
+            size="small"
+            sx={{
+              bgcolor: 'background.paper',
+              borderRadius: '12px',
+              p: 0.5,
+              border: '1px solid',
+              borderColor: 'divider',
+              '& .MuiToggleButton-root': {
+                border: 'none',
+                borderRadius: '8px',
+                px: 2,
+                py: 0.6,
+                fontWeight: 700,
+                fontSize: '0.78rem',
+                textTransform: 'none',
+                '&.Mui-selected': {
+                  bgcolor: 'primary.main',
+                  color: '#FFFFFF',
+                  boxShadow: '0 2px 8px rgba(79, 70, 229, 0.3)'
+                }
+              }
+            }}
+          >
+            <ToggleButton value="ALL">All Streams</ToggleButton>
+            <ToggleButton value="Aided">
+              <AccountBalanceIcon sx={{ fontSize: '0.95rem', mr: 0.6 }} /> Aided
+            </ToggleButton>
+            <ToggleButton value="Self-Financed (SFS)">
+              <WorkspacePremiumIcon sx={{ fontSize: '0.95rem', mr: 0.6 }} /> SFS (Self-Financed)
+            </ToggleButton>
+          </ToggleButtonGroup>
+
           <TextField
             size="small"
-            placeholder="Filter categories..."
+            placeholder="Filter categories & code..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            sx={{ width: 240 }}
+            sx={{ width: 220 }}
             slotProps={{
               input: {
                 startAdornment: (
@@ -200,131 +293,183 @@ const Departments = () => {
               }
             }}
           />
+
           <Button
             variant="contained"
             color="primary"
             startIcon={<AddIcon />}
             onClick={() => setOpen(true)}
-            sx={{ borderRadius: '12px', fontWeight: 700 }}
+            sx={{ borderRadius: '12px', fontWeight: 700, py: 1 }}
           >
             Create Category
           </Button>
         </Box>
       </Box>
 
+      {error && <Alert severity="error" sx={{ mb: 3, borderRadius: '12px', fontWeight: 600 }} onClose={() => setError(null)}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 3, borderRadius: '12px', fontWeight: 600 }} onClose={() => setSuccess(null)}>{success}</Alert>}
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
           <CircularProgress />
         </Box>
+      ) : filteredDepts.length === 0 ? (
+        <Card variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: '20px' }}>
+          <SchoolIcon sx={{ fontSize: '3.5rem', color: 'text.secondary', mb: 1.5 }} />
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+            No Departments Found
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {search || selectedStreamTab !== 'ALL'
+              ? 'No categories match the active stream filter or search query.'
+              : 'Click "Create Category" above to add your first department.'}
+          </Typography>
+        </Card>
       ) : (
         <Grid container spacing={3}>
-          {filteredDepts.map((dept) => {
-            const stats = getDeptStats(dept.name);
-            const bg = getBgColor(dept.color);
-            return (
-              <Grid xs={12} sm={6} md={4} key={dept.id}>
-                <Card
-                  className="card-lift"
-                  sx={{
-                    p: 3,
-                    borderRadius: '22px',
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderLeft: `4px solid ${dept.color || '#3B82F6'}`,
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    bgcolor: 'background.paper',
-                    transition: 'all 0.25s ease',
-                  }}
+          <AnimatePresence>
+            {filteredDepts.map((dept) => {
+              const stats = getDeptStats(dept);
+              const bg = getBgColor(dept.color);
+              const isAided = dept.stream_name?.toLowerCase().includes('aided');
+              const isSFS = dept.stream_name?.toLowerCase().includes('sfs') || dept.stream_name?.toLowerCase().includes('self-financed');
+              const isAnimatingOut = animatingId === dept.id;
+
+              return (
+                <Grid
+                  xs={12}
+                  sm={6}
+                  md={4}
+                  key={dept.id}
+                  component={motion.div}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: isAnimatingOut ? 0 : 1, scale: isAnimatingOut ? 0.9 : 1 }}
+                  exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.3 } }}
+                  layout
                 >
-                  <Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                      <Avatar sx={{ bgcolor: bg, color: dept.color, width: 48, height: 48, borderRadius: '14px' }}>
-                        {getIcon(dept.icon_type)}
-                      </Avatar>
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                        <Chip 
-                          label={dept.category_type === 'Company' ? 'Company' : 'Dept'} 
-                          size="small" 
-                          sx={{ 
-                            fontSize: '0.62rem', 
-                            fontWeight: 700, 
-                            height: 20, 
-                            borderRadius: '6px',
-                            bgcolor: dept.category_type === 'Company' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)', 
-                            color: dept.category_type === 'Company' ? '#8B5CF6' : '#3B82F6',
-                            border: 'none'
-                          }} 
-                        />
-                        <Chip label={dept.code} size="small" sx={{ fontWeight: 900, bgcolor: bg, color: dept.color }} />
-                        <Tooltip title="Delete Category">
-                          <IconButton 
+                  <Card
+                    className="card-lift"
+                    sx={{
+                      p: 3,
+                      borderRadius: '22px',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderLeft: `4px solid ${dept.color || '#3B82F6'}`,
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      bgcolor: 'background.paper',
+                      transition: 'all 0.25s ease',
+                    }}
+                  >
+                    <Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                        <Avatar sx={{ bgcolor: bg, color: dept.color, width: 48, height: 48, borderRadius: '14px' }}>
+                          {getIcon(dept.icon_type)}
+                        </Avatar>
+                        <Box sx={{ display: 'flex', gap: 0.8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          {dept.stream_name && (
+                            <Chip
+                              label={dept.stream_name}
+                              size="small"
+                              sx={{
+                                fontSize: '0.62rem',
+                                fontWeight: 800,
+                                height: 22,
+                                borderRadius: '6px',
+                                bgcolor: isAided
+                                  ? 'rgba(14, 165, 233, 0.15)'
+                                  : isSFS
+                                  ? 'rgba(139, 92, 246, 0.15)'
+                                  : 'rgba(100, 116, 139, 0.15)',
+                                color: isAided ? '#0284C7' : isSFS ? '#7C3AED' : '#475569',
+                                border: 'none'
+                              }}
+                            />
+                          )}
+
+                          <Chip 
+                            label={dept.category_type === 'Company' ? 'Company' : 'Dept'} 
                             size="small" 
-                            color="error" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteClick(dept);
-                            }}
-                            sx={{ p: 0.5 }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                            sx={{ 
+                              fontSize: '0.62rem', 
+                              fontWeight: 700, 
+                              height: 22, 
+                              borderRadius: '6px',
+                              bgcolor: dept.category_type === 'Company' ? 'rgba(236, 72, 153, 0.1)' : 'rgba(59, 130, 246, 0.1)', 
+                              color: dept.category_type === 'Company' ? '#EC4899' : '#3B82F6',
+                              border: 'none'
+                            }} 
+                          />
+                          <Chip label={dept.code} size="small" sx={{ fontWeight: 900, bgcolor: bg, color: dept.color, height: 22 }} />
+                          <Tooltip title="Delete Category">
+                            <IconButton 
+                              size="small" 
+                              color="error" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClick(dept);
+                              }}
+                              sx={{ p: 0.5 }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                       </Box>
+
+                      <Typography variant="h6" sx={{ fontWeight: 800, mb: 0.5, fontSize: '1.05rem' }}>
+                        {dept.name}
+                      </Typography>
+
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                        {dept.coordinator_name ? (
+                          <>Coordinator: <strong>{dept.coordinator_name}</strong></>
+                        ) : (
+                          <em>No coordinator assigned</em>
+                        )}
+                      </Typography>
+
+                      <Divider sx={{ my: 1.5 }} />
+
+                      {/* Metrics */}
+                      <Grid container spacing={1} sx={{ mb: 2 }}>
+                        <Grid xs={4}>
+                          <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'action.hover' }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem', fontWeight: 700 }}>TOTAL</Typography>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 900, color: 'primary.main' }}>{stats.total}</Typography>
+                          </Box>
+                        </Grid>
+                        <Grid xs={4}>
+                          <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'rgba(16,185,129,0.08)' }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#10B981' }}>ACTIVE</Typography>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 900, color: '#10B981' }}>{stats.active}</Typography>
+                          </Box>
+                        </Grid>
+                        <Grid xs={4}>
+                          <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'rgba(249,115,22,0.08)' }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#F97316' }}>EXPIRING</Typography>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 900, color: '#F97316' }}>{stats.expiring}</Typography>
+                          </Box>
+                        </Grid>
+                      </Grid>
                     </Box>
 
-                    <Typography variant="h6" sx={{ fontWeight: 800, mb: 0.5, fontSize: '1.05rem' }}>
-                      {dept.name}
-                    </Typography>
-
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-                      {dept.coordinator_name ? (
-                        <>Coordinator: <strong>{dept.coordinator_name}</strong></>
-                      ) : (
-                        <em>No coordinator assigned</em>
-                      )}
-                    </Typography>
-
-                    <Divider sx={{ my: 1.5 }} />
-
-                    {/* Metrics */}
-                    <Grid container spacing={1} sx={{ mb: 2 }}>
-                      <Grid xs={4}>
-                        <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'action.hover' }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem', fontWeight: 700 }}>TOTAL</Typography>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 900, color: 'primary.main' }}>{stats.total}</Typography>
-                        </Box>
-                      </Grid>
-                      <Grid xs={4}>
-                        <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'rgba(16,185,129,0.08)' }}>
-                          <Typography variant="caption" sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#10B981' }}>ACTIVE</Typography>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 900, color: '#10B981' }}>{stats.active}</Typography>
-                        </Box>
-                      </Grid>
-                      <Grid xs={4}>
-                        <Box sx={{ textAlign: 'center', p: 1, borderRadius: '10px', bgcolor: 'rgba(249,115,22,0.08)' }}>
-                          <Typography variant="caption" sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#F97316' }}>EXPIRING</Typography>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 900, color: '#F97316' }}>{stats.expiring}</Typography>
-                        </Box>
-                      </Grid>
-                    </Grid>
-                  </Box>
-
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    endIcon={<ArrowForwardIcon />}
-                    onClick={() => navigate(`/explorer?search=${encodeURIComponent(dept.name.split(' ')[0])}`)}
-                    sx={{ borderRadius: '12px', fontWeight: 700 }}
-                  >
-                    View Department MOUs
-                  </Button>
-                </Card>
-              </Grid>
-            );
-          })}
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      endIcon={<ArrowForwardIcon />}
+                      onClick={() => navigate(`/explorer?search=${encodeURIComponent(dept.name)}`)}
+                      sx={{ borderRadius: '12px', fontWeight: 700 }}
+                    >
+                      View Department MOUs
+                    </Button>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </AnimatePresence>
         </Grid>
       )}
 
@@ -340,7 +485,7 @@ const Departments = () => {
             <TextField
               required
               label={categoryType === 'Company' ? "Company / Partner Name" : "Department Name"}
-              placeholder={categoryType === 'Company' ? "e.g. Google Cloud Labs" : "e.g. Computer Science & AI"}
+              placeholder={categoryType === 'Company' ? "e.g. Google Cloud Labs" : "e.g. Computer Science"}
               value={name}
               onChange={(e) => setName(e.target.value)}
               fullWidth
@@ -371,6 +516,25 @@ const Departments = () => {
                 </FormControl>
               </Grid>
             </Grid>
+
+            {/* Academic Stream Selection (Aided vs SFS) */}
+            <FormControl fullWidth>
+              <InputLabel>Academic Stream (Aided / SFS)</InputLabel>
+              <Select
+                value={streamId}
+                label="Academic Stream (Aided / SFS)"
+                onChange={(e) => setStreamId(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>General / Unassigned Stream</em>
+                </MenuItem>
+                {streams.map((s) => (
+                  <MenuItem key={s.id} value={s.id}>
+                    {s.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             <Grid container spacing={2}>
               <Grid xs={6}>
@@ -440,19 +604,24 @@ const Departments = () => {
       <Dialog 
         open={deleteConfirmOpen} 
         onClose={() => setDeleteConfirmOpen(false)}
-        slotProps={{ paper: { sx: { borderRadius: '16px' } } }}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
       >
-        <DialogTitle sx={{ fontWeight: 800 }}>Delete Category</DialogTitle>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Delete Category
+        </DialogTitle>
         <DialogContent>
-          <Typography variant="body1">
-            Are you sure you want to delete the category <strong>{categoryToDelete?.name}</strong>?
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Are you sure you want to delete the category <strong>"{categoryToDelete?.name}"</strong>{categoryToDelete?.stream_name ? ` [${categoryToDelete.stream_name}]` : ''}?
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            This action only removes the category card; the associated folders and MOUs in explorer will remain intact.
-          </Typography>
+          <Alert severity="warning" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            This action will remove the category from the directory and update linked department records.
+          </Alert>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={() => setDeleteConfirmOpen(false)} variant="outlined" sx={{ borderRadius: '10px' }}>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteConfirmOpen(false)} variant="outlined" disabled={deleting} sx={{ borderRadius: '10px', fontWeight: 700 }}>
             Cancel
           </Button>
           <Button 
@@ -460,9 +629,10 @@ const Departments = () => {
             color="error" 
             variant="contained"
             disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
             sx={{ borderRadius: '10px', fontWeight: 700 }}
           >
-            {deleting ? 'Deleting...' : 'Delete'}
+            {deleting ? 'Deleting...' : 'Delete Category'}
           </Button>
         </DialogActions>
       </Dialog>

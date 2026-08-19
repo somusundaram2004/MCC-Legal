@@ -19,6 +19,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import PublishIcon from '@mui/icons-material/Publish';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 
 import api from '../services/api';
 import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
@@ -275,16 +276,28 @@ const WebsiteBuilderTab = () => {
     }
   };
 
-  const handleDeletePage = async (id, pageTitle) => {
-    if (!window.confirm(`Are you sure you want to move the module "${pageTitle}" to Recycle Bin?`)) return;
+  const [deleteModuleTarget, setDeleteModuleTarget] = useState(null);
+  const [deletingModule, setDeletingModule] = useState(false);
+
+  const confirmDeletePage = (id, pageTitle) => {
+    setDeleteModuleTarget({ id, title: pageTitle });
+  };
+
+  const executeDeletePage = async () => {
+    if (!deleteModuleTarget) return;
+    setDeletingModule(true);
     try {
-      await api.delete(`/api/users/custom-pages/${id}/`);
-      setSuccess(`Module "${pageTitle}" moved to Recycle Bin.`);
+      await api.delete(`/api/users/custom-pages/${deleteModuleTarget.id}/`);
+      setSuccess(`Module "${deleteModuleTarget.title}" moved to Recycle Bin.`);
+      setDeleteModuleTarget(null);
       fetchPages();
       triggerGlobalAutoRefresh(REFRESH_CATEGORIES.SETTINGS);
     } catch (err) {
       console.error('Failed to move module to Recycle Bin:', err);
       setError('Failed to move module to Recycle Bin.');
+      setDeleteModuleTarget(null);
+    } finally {
+      setDeletingModule(false);
     }
   };
 
@@ -404,7 +417,7 @@ const WebsiteBuilderTab = () => {
                         <IconButton size="small" onClick={() => handleOpenDialog(p)}><EditIcon fontSize="small" /></IconButton>
                       </Tooltip>
                       <Tooltip title="Move Module to Recycle Bin">
-                        <IconButton size="small" color="error" onClick={() => handleDeletePage(p.id, p.title)}><DeleteIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" color="error" onClick={() => confirmDeletePage(p.id, p.title)}><DeleteIcon fontSize="small" /></IconButton>
                       </Tooltip>
                     </Box>
                   </Box>
@@ -783,10 +796,9 @@ const WebsiteBuilderTab = () => {
             {editId && (
               isPublished ? (
                 <Button
-                  variant="outlined"
                   color="error"
                   onClick={() => {
-                    handleDeletePage(editId, title);
+                    confirmDeletePage(editId, title);
                     setDialogOpen(false);
                   }}
                   startIcon={<DeleteIcon />}
@@ -829,6 +841,48 @@ const WebsiteBuilderTab = () => {
               {saving ? 'Publishing...' : (editId ? 'Update Module' : 'Publish Module to Sidebar')}
             </Button>
           </Box>
+        </DialogActions>
+      </Dialog>
+
+      {/* Module Delete Confirmation Modal */}
+      <Dialog
+        open={Boolean(deleteModuleTarget)}
+        onClose={() => setDeleteModuleTarget(null)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Move Module to Recycle Bin
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Are you sure you want to move <strong>"{deleteModuleTarget?.title}"</strong> to the Recycle Bin?
+          </Typography>
+          <Alert severity="info" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            You can restore this module and its document records anytime from the Recycle Bin.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setDeleteModuleTarget(null)}
+            variant="outlined"
+            disabled={deletingModule}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeDeletePage}
+            color="error"
+            variant="contained"
+            disabled={deletingModule}
+            startIcon={deletingModule ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {deletingModule ? 'Moving...' : 'Move to Recycle Bin'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

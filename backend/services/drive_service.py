@@ -91,6 +91,59 @@ def get_root_folder_id():
     info = get_service_account_info()
     return info.get('root_folder_id') or getattr(settings, 'GOOGLE_DRIVE_ROOT_FOLDER_ID', None)
 
+PREDEFINED_MODULES = [
+    {'id': 'mou_repository', 'name': 'MOU Repository', 'type': 'system'},
+    {'id': 'legal_cases', 'name': 'Legal Cases', 'type': 'system'},
+    {'id': 'agreements', 'name': 'Agreements', 'type': 'system'},
+    {'id': 'legal_notices', 'name': 'Legal Notices', 'type': 'system'},
+    {'id': 'compliance', 'name': 'Compliance', 'type': 'system'},
+    {'id': 'templates', 'name': 'Templates', 'type': 'system'},
+    {'id': 'administrative_documents', 'name': 'Administrative Documents', 'type': 'system'},
+    {'id': 'recycle_bin', 'name': 'Recycle Bin', 'type': 'system'},
+]
+
+def get_predefined_modules():
+    return PREDEFINED_MODULES
+
+def get_or_create_predefined_module_folder_id(module_id_or_name):
+    """
+    Retrieves or creates a dedicated Google Drive folder for any predefined system module
+    directly under the Application Root folder on Google Drive.
+    """
+    if not module_id_or_name:
+        return get_root_folder_id()
+    
+    mod_id = str(module_id_or_name).strip().lower()
+    name_map = {m['id']: m['name'] for m in PREDEFINED_MODULES}
+    module_name = name_map.get(mod_id, module_id_or_name)
+
+    if mod_id == 'mou_repository':
+        return get_or_create_mou_repository_folder_id()
+    if mod_id == 'recycle_bin':
+        return get_or_create_recycle_bin_folder_id()
+
+    try:
+        master_root_id = get_root_folder_id()
+        if not master_root_id:
+            return None
+        service = authenticate()
+        safe_name = module_name.replace("'", "\\'")
+        query = f"name = '{safe_name}' and '{master_root_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        results = service.files().list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        files = results.get('files', [])
+        if files:
+            return files[0]['id']
+        
+        return create_folder(module_name, master_root_id)
+    except Exception as e:
+        logger.error(f"Failed to get or create predefined module folder '{module_name}' on Google Drive: {e}")
+        return get_root_folder_id()
+
 def get_or_create_mou_repository_folder_id():
     """
     Retrieves or creates a dedicated 'MOU Repository' folder directly under the Application Root folder on Google Drive.
@@ -769,3 +822,287 @@ def list_folder_contents(folder_id):
     except Exception as e:
         logger.error(f"Failed to list contents for folder '{folder_id}': {e}")
         raise
+
+def browse_drive_folder(folder_id=None):
+    """
+    Lists immediate subfolders and files inside a Google Drive folder for frontend browsing.
+    If folder_id is None, empty, or 'root', defaults to master application root ID if configured, or 'root' (My Drive).
+    """
+    master_root_id = get_root_folder_id()
+    
+    clean_id = folder_id.strip() if (folder_id and isinstance(folder_id, str)) else None
+
+    if not clean_id or clean_id.lower() in ['root', 'app_root', 'my_drive']:
+        target_id = master_root_id if master_root_id else 'root'
+    else:
+        target_id = clean_id
+
+    service = authenticate()
+    
+    current_name = 'Application Root' if (master_root_id and target_id == master_root_id) else ('My Drive' if target_id == 'root' else 'Google Drive Folder')
+    current_meta = {'id': target_id, 'name': current_name, 'parents': []}
+
+    if target_id not in ['root', master_root_id]:
+        try:
+            m = service.files().get(fileId=target_id, fields='id, name, parents', supportsAllDrives=True).execute()
+            current_meta = {'id': m.get('id'), 'name': m.get('name', 'Google Drive Folder'), 'parents': m.get('parents', [])}
+        except Exception as err:
+            logger.warning(f"Could not fetch metadata for folder '{target_id}': {err}")
+
+    query = f"'{target_id}' in parents and trashed = false"
+    try:
+        results = service.files().list(
+            q=query,
+            fields="files(id, name, mimeType, size, webViewLink, webContentLink)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageSize=200
+        ).execute()
+    except Exception as err:
+        logger.error(f"Failed to list Google Drive contents for '{target_id}': {err}")
+        # Fallback to 'root' if specific target_id fails or is invalid
+        if target_id != 'root':
+            target_id = 'root'
+            current_meta = {'id': 'root', 'name': 'My Drive', 'parents': []}
+            results = service.files().list(
+                q="'root' in parents and trashed = false",
+                fields="files(id, name, mimeType, size, webViewLink, webContentLink)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=200
+            ).execute()
+        else:
+            raise
+
+    raw_files = results.get('files', [])
+    items = []
+    for f in raw_files:
+        is_folder = (f.get('mimeType') == 'application/vnd.google-apps.folder')
+        items.append({
+            'id': f.get('id'),
+            'name': f.get('name'),
+            'mimeType': f.get('mimeType'),
+            'is_folder': is_folder,
+            'size': int(f.get('size', 0)) if f.get('size') else 0,
+            'webViewLink': f.get('webViewLink'),
+            'webContentLink': f.get('webContentLink')
+        })
+
+    items.sort(key=lambda x: (not x['is_folder'], x['name'].lower()))
+
+    return {
+        'current_folder': current_meta,
+        'root_folder_id': master_root_id or 'root',
+        'items': items
+    }
+
+def scan_google_drive_folder_tree(source_drive_folder_id):
+    """
+    Recursively scans a source Google Drive folder tree for Import Preview.
+    """
+    if not source_drive_folder_id:
+        raise ValueError("source_drive_folder_id is required.")
+
+    service = authenticate()
+    
+    source_meta = service.files().get(
+        fileId=source_drive_folder_id,
+        fields='id, name, mimeType',
+        supportsAllDrives=True
+    ).execute()
+    
+    root_name = source_meta.get('name', 'Google Drive Folder')
+    folders_set = set()
+    file_list = []
+    
+    def walk_drive_folder(current_folder_id, current_rel_path):
+        query = f"'{current_folder_id}' in parents and trashed = false"
+        results = service.files().list(
+            q=query,
+            fields="files(id, name, mimeType, size)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageSize=500
+        ).execute()
+
+        for item in results.get('files', []):
+            item_name = item.get('name', 'unnamed')
+            item_rel_path = f"{current_rel_path}/{item_name}" if current_rel_path else item_name
+            is_dir = (item.get('mimeType') == 'application/vnd.google-apps.folder')
+
+            if is_dir:
+                folders_set.add(item_rel_path)
+                walk_drive_folder(item.get('id'), item_rel_path)
+            else:
+                f_size = int(item.get('size', 0)) if item.get('size') else 0
+                file_list.append({
+                    'id': item.get('id'),
+                    'name': item_name,
+                    'path': item_rel_path,
+                    'size': f_size,
+                    'mimeType': item.get('mimeType', '')
+                })
+
+    walk_drive_folder(source_drive_folder_id, root_name)
+
+    total_size = sum(f['size'] for f in file_list)
+    return {
+        'filename': root_name,
+        'is_drive_import': True,
+        'total_folders': len(folders_set),
+        'total_files': len(file_list),
+        'total_size': total_size,
+        'folder_paths': sorted(list(folders_set)),
+        'file_list': file_list
+    }
+
+def copy_google_drive_file(source_file_id, target_file_name, target_parent_drive_id):
+    """
+    Copies a single file on Google Drive natively via service.files().copy() without downloading binary content.
+    """
+    try:
+        service = authenticate()
+        body = {
+            'name': target_file_name,
+            'parents': [target_parent_drive_id]
+        }
+        res = service.files().copy(
+            fileId=source_file_id,
+            body=body,
+            fields='id, name, mimeType, size, webViewLink, webContentLink',
+            supportsAllDrives=True
+        ).execute()
+        return {
+            'id': res.get('id'),
+            'name': res.get('name'),
+            'mimeType': res.get('mimeType'),
+            'size': int(res.get('size', 0)) if res.get('size') else 0,
+            'webViewLink': res.get('webViewLink'),
+            'webContentLink': res.get('webContentLink')
+        }
+    except Exception as e:
+        logger.warning(f"Native Google Drive copy failed for file '{source_file_id}' -> fallback to download/upload: {e}")
+        file_bytes = download_file(source_file_id)
+        meta = get_metadata(source_file_id)
+        mtype = meta.get('mimeType') or 'application/octet-stream'
+        return upload_file(file_bytes, target_file_name, mtype, target_parent_drive_id)
+
+def validate_drive_hierarchy():
+    """
+    Validates that all top-level system modules and dynamic custom page module folders
+    are located directly under APPLICATION ROOT.
+    """
+    master_root_id = get_root_folder_id()
+    if not master_root_id:
+        return []
+
+    service = authenticate()
+    statuses = []
+
+    for mod in PREDEFINED_MODULES:
+        mod_id = mod['id']
+        mod_name = mod['name']
+        drive_folder_id = get_or_create_predefined_module_folder_id(mod_id)
+
+        status_label = 'Connected'
+        actual_parent = None
+
+        if drive_folder_id and not drive_folder_id.startswith('drive_folder_'):
+            try:
+                meta = service.files().get(
+                    fileId=drive_folder_id,
+                    fields='id, name, parents, trashed',
+                    supportsAllDrives=True
+                ).execute()
+                parents = meta.get('parents', [])
+                if parents:
+                    actual_parent = parents[0]
+                if meta.get('trashed'):
+                    status_label = 'Trashed'
+                elif master_root_id not in parents:
+                    status_label = 'Incorrect Location'
+            except Exception as err:
+                logger.error(f"Error validating folder for module '{mod_name}': {err}")
+                status_label = 'Access Error'
+        else:
+            status_label = 'Local Fallback'
+
+        statuses.append({
+            'module_id': mod_id,
+            'module_name': mod_name,
+            'type': 'system',
+            'drive_folder_id': drive_folder_id,
+            'expected_parent_id': master_root_id,
+            'actual_parent_id': actual_parent,
+            'status': status_label
+        })
+
+    from users.models import CustomDynamicPage
+    pages = CustomDynamicPage.objects.filter(is_published=True, is_enabled=True)
+    for cp in pages:
+        drive_folder_id = get_or_create_module_folder_id(cp)
+        status_label = 'Connected'
+        actual_parent = None
+
+        if drive_folder_id and not drive_folder_id.startswith('drive_folder_'):
+            try:
+                meta = service.files().get(
+                    fileId=drive_folder_id,
+                    fields='id, name, parents, trashed',
+                    supportsAllDrives=True
+                ).execute()
+                parents = meta.get('parents', [])
+                if parents:
+                    actual_parent = parents[0]
+                if meta.get('trashed'):
+                    status_label = 'Trashed'
+                elif master_root_id not in parents:
+                    status_label = 'Incorrect Location'
+            except Exception as err:
+                status_label = 'Access Error'
+        else:
+            status_label = 'Local Fallback'
+
+        statuses.append({
+            'module_id': f"custom_{cp.id}",
+            'module_name': cp.title,
+            'type': 'custom_page',
+            'drive_folder_id': drive_folder_id,
+            'expected_parent_id': master_root_id,
+            'actual_parent_id': actual_parent,
+            'status': status_label
+        })
+
+    return statuses
+
+def repair_module_drive_parent(module_id):
+    """
+    Safely moves a misplaced module folder back directly under APPLICATION ROOT.
+    """
+    master_root_id = get_root_folder_id()
+    if not master_root_id:
+        return False, "APPLICATION ROOT is not configured."
+
+    drive_folder_id = None
+    module_name = str(module_id)
+
+    if str(module_id).startswith('custom_') or str(module_id).startswith('module_custom_'):
+        cp_id = str(module_id).replace('module_custom_', '').replace('custom_', '')
+        from users.models import CustomDynamicPage
+        cp = CustomDynamicPage.objects.filter(id=cp_id).first()
+        if cp:
+            drive_folder_id = get_or_create_module_folder_id(cp)
+            module_name = cp.title
+    else:
+        drive_folder_id = get_or_create_predefined_module_folder_id(module_id)
+
+    if not drive_folder_id or drive_folder_id.startswith('drive_folder_'):
+        return False, f"Module '{module_name}' does not have a valid Google Drive folder."
+
+    try:
+        move_file(drive_folder_id, master_root_id)
+        logger.info(f"Successfully repaired Google Drive parent for module '{module_name}' (ID: {drive_folder_id}) -> moved to APPLICATION ROOT ({master_root_id})")
+        return True, f"Successfully moved module folder '{module_name}' to APPLICATION ROOT."
+    except Exception as e:
+        logger.error(f"Failed to repair module folder parent for '{module_name}': {e}")
+        return False, str(e)

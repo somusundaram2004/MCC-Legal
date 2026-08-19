@@ -267,6 +267,7 @@ class Department(models.Model):
 
     class Meta:
         ordering = ['name']
+        unique_together = ('name', 'stream', 'category')
 
     def __str__(self):
         cat_str = f" ({self.category.name})" if self.category else ""
@@ -321,7 +322,8 @@ class MOUCategory(models.Model):
         ('Company', 'Company Name'),
     ]
 
-    name = models.CharField(max_length=255, unique=True)
+    name = models.CharField(max_length=255)
+    stream = models.ForeignKey('Stream', on_delete=models.SET_NULL, null=True, blank=True, related_name='mou_categories')
     code = models.CharField(max_length=50, blank=True, null=True)
     color = models.CharField(max_length=50, default='#3B82F6')
     icon_type = models.CharField(max_length=50, default='school')  # 'school', 'hospital', 'business', 'palette', 'science', 'gavel'
@@ -331,8 +333,13 @@ class MOUCategory(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ['name']
+        unique_together = ('name', 'stream')
+
     def __str__(self):
-        return f"{self.name} ({self.code})"
+        stream_str = f" [{self.stream.name}]" if self.stream else ""
+        return f"{self.name}{stream_str} ({self.code})"
 
 
 class Stream(models.Model):

@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
   Box, Card, CardContent, Typography, Grid, TextField, Button,
   Tabs, Tab, Switch, FormControlLabel, Alert, Divider, CircularProgress,
-  Paper, IconButton, Chip, Tooltip, Select, MenuItem, FormControl, InputLabel
+  Paper, IconButton, Chip, Tooltip, Select, MenuItem, FormControl, InputLabel,
+  Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
@@ -19,6 +20,7 @@ import TabletIcon from '@mui/icons-material/Tablet';
 import LaptopIcon from '@mui/icons-material/Laptop';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import api from '../../services/api';
 import { useSiteCustomization } from '../../context/SiteCustomizationContext';
 import { showCustomToast } from '../../utils/customToast';
@@ -115,17 +117,25 @@ const CustomizerHub = () => {
     }
   };
 
-  const handleResetDefaults = async () => {
-    if (!window.confirm("Are you sure you want to reset all customization settings to factory defaults?")) return;
-    setSaving(true);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  const handleResetClick = () => {
+    setResetConfirmOpen(true);
+  };
+
+  const executeResetDefaults = async () => {
+    setResetting(true);
     try {
       await api.post('/api/customization/reset-defaults/');
       showCustomToast('success', 'Reset to factory default settings.');
+      setResetConfirmOpen(false);
       refreshCustomization();
     } catch (err) {
       showCustomToast('error', 'Failed to reset settings.');
+      setResetConfirmOpen(false);
     } finally {
-      setSaving(false);
+      setResetting(false);
     }
   };
 
@@ -162,7 +172,7 @@ const CustomizerHub = () => {
           <Button
             variant="outlined"
             color="error"
-            onClick={handleResetDefaults}
+            onClick={handleResetClick}
             startIcon={<RestartAltIcon />}
             sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
           >
@@ -546,6 +556,47 @@ const CustomizerHub = () => {
         <WebsiteBuilderTab />
       )}
 
+      {/* Reset Defaults Confirmation Modal */}
+      <Dialog
+        open={resetConfirmOpen}
+        onClose={() => setResetConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Reset Factory Defaults
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Are you sure you want to reset all website customization settings to factory defaults?
+          </Typography>
+          <Alert severity="warning" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            This will revert all custom branding, color themes, menu titles, and layout configurations.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setResetConfirmOpen(false)}
+            variant="outlined"
+            disabled={resetting}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeResetDefaults}
+            color="error"
+            variant="contained"
+            disabled={resetting}
+            startIcon={resetting ? <CircularProgress size={18} color="inherit" /> : <RestartAltIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {resetting ? 'Resetting...' : 'Reset Factory Defaults'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

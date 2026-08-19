@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Box, Card, Typography, Button, IconButton, List, 
   ListItem, ListItemText, ListItemIcon, Chip, Divider, 
-  CircularProgress, Alert, Avatar, Tabs, Tab
+  CircularProgress, Alert, Avatar, Tabs, Tab,
+  Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import InfoIcon from '@mui/icons-material/Info';
 import DeleteIcon from '@mui/icons-material/Delete';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
@@ -68,14 +70,24 @@ const NotificationsPage = () => {
     }
   };
 
-  const handleClearAll = async () => {
-    if (window.confirm("Are you sure you want to clear all notifications?")) {
-      try {
-        await api.post('/api/notifications/clear-all/');
-        fetchNotifications();
-      } catch (err) {
-        console.error('Clear all notifications failed:', err);
-      }
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+
+  const handleClearAllClick = () => {
+    setConfirmClearOpen(true);
+  };
+
+  const executeClearAll = async () => {
+    setClearing(true);
+    try {
+      await api.post('/api/notifications/clear-all/');
+      setConfirmClearOpen(false);
+      fetchNotifications();
+    } catch (err) {
+      console.error('Clear all notifications failed:', err);
+      setConfirmClearOpen(false);
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -116,7 +128,7 @@ const NotificationsPage = () => {
             variant="contained"
             color="error"
             startIcon={<DeleteIcon />}
-            onClick={handleClearAll}
+            onClick={handleClearAllClick}
             sx={{ borderRadius: '12px', fontWeight: 700 }}
           >
             Clear All
@@ -211,6 +223,48 @@ const NotificationsPage = () => {
           </List>
         </Card>
       )}
+
+      {/* Clear All Notifications Confirmation Modal */}
+      <Dialog
+        open={confirmClearOpen}
+        onClose={() => setConfirmClearOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: '20px', p: 1 } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 800, color: 'error.main' }}>
+          <WarningAmberIcon sx={{ fontSize: 32, color: 'error.main' }} />
+          Clear All Notifications
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 1.5 }}>
+            Are you sure you want to clear all notification history?
+          </Typography>
+          <Alert severity="warning" sx={{ borderRadius: '12px', fontSize: '0.82rem' }}>
+            This action will permanently delete all unread alerts, activity history, and approval logs.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setConfirmClearOpen(false)}
+            variant="outlined"
+            disabled={clearing}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={executeClearAll}
+            color="error"
+            variant="contained"
+            disabled={clearing}
+            startIcon={clearing ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
+            sx={{ borderRadius: '10px', fontWeight: 700 }}
+          >
+            {clearing ? 'Clearing...' : 'Clear All'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

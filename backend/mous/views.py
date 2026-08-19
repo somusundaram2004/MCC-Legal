@@ -875,6 +875,14 @@ class DepartmentCategoryViewSet(MasterDataMixin, viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        cat_id = instance.id
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code in [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT]:
+            Department.objects.filter(category_id=cat_id).update(category=None)
+        return response
+
 class DepartmentViewSet(MasterDataMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = Department.objects.all().order_by('name')
@@ -891,6 +899,15 @@ class DepartmentViewSet(MasterDataMixin, viewsets.ModelViewSet):
         if category_id:
             qs = qs.filter(category_id=category_id)
         return qs
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        name = instance.name
+        stream = instance.stream
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code in [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT]:
+            MOUCategory.objects.filter(name=name, stream=stream).delete()
+        return response
 
 
 class StreamViewSet(MasterDataMixin, viewsets.ModelViewSet):
@@ -911,12 +928,31 @@ class StreamViewSet(MasterDataMixin, viewsets.ModelViewSet):
             qs = qs.filter(is_active=is_active_bool)
         return qs
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        strm_id = instance.id
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code in [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT]:
+            Department.objects.filter(stream_id=strm_id).update(stream=None)
+            MOUCategory.objects.filter(stream_id=strm_id).update(stream=None)
+        return response
+
+
 
 
 class MOUCategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = MOUCategory.objects.all().order_by('name')
     serializer_class = MOUCategorySerializer
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        name = instance.name
+        stream = instance.stream
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code in [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT]:
+            Department.objects.filter(name=name, stream=stream).delete()
+        return response
 
     def perform_create(self, serializer):
         category = serializer.save()

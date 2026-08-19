@@ -38,6 +38,8 @@ class File(models.Model):
     file_size = models.BigIntegerField(blank=True, null=True)
     web_view_link = models.URLField(max_length=1000, blank=True, null=True)
     web_content_link = models.URLField(max_length=1000, blank=True, null=True)
+    import_source = models.CharField(max_length=50, default='local', blank=True, null=True)
+    source_google_file_id = models.CharField(max_length=255, blank=True, null=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

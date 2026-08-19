@@ -20,10 +20,14 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import LayersIcon from '@mui/icons-material/Layers';
 import StorageIcon from '@mui/icons-material/Storage';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import CloudIcon from '@mui/icons-material/Cloud';
+import FolderSpecialIcon from '@mui/icons-material/FolderSpecial';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 import api from '../services/api';
 import { useThemeMode } from '../context/ThemeContext';
 import { showCustomToast } from '../utils/customToast';
+import GoogleDrivePickerModal from './GoogleDrivePickerModal';
 
 /* ─── Helper: Format Bytes ───────────────────────────────── */
 const formatBytes = (bytes, decimals = 2) => {
@@ -152,11 +156,19 @@ const ImportExportTab = () => {
   // ── Import States ──
   const [destinationModuleId, setDestinationModuleId] = useState('mou_repository');
   const [targetFolderId, setTargetFolderId] = useState('');
+  const [importSourceMode, setImportSourceMode] = useState('local'); // 'local', 'google_drive'
   const [importFile, setImportFile] = useState(null);
   const [importFolderFiles, setImportFolderFiles] = useState([]);
+  const [selectedDriveItems, setSelectedDriveItems] = useState([]);
   const folderInputRef = React.useRef(null);
   const [duplicateFileStrategy, setDuplicateFileStrategy] = useState('create_copy');
   const [duplicateFolderStrategy, setDuplicateFolderStrategy] = useState('merge');
+
+  // ── Google Drive Browser Modal ──
+  const [driveBrowserOpen, setDriveBrowserOpen] = useState(false);
+  const [driveBrowserLoading, setDriveBrowserLoading] = useState(false);
+  const [driveCurrentFolder, setDriveCurrentFolder] = useState(null);
+  const [driveItems, setDriveItems] = useState([]);
 
   const [importPreviewModalOpen, setImportPreviewModalOpen] = useState(false);
   const [importPreviewData, setImportPreviewData] = useState(null);
@@ -298,9 +310,38 @@ const ImportExportTab = () => {
     }
   };
 
+  // ── Google Drive Browser Handlers ──
+  const handleOpenDriveBrowser = async (folderId = null) => {
+    setDriveBrowserOpen(true);
+    setDriveBrowserLoading(true);
+    try {
+      const url = folderId ? `/api/import-export/drive-browser/?folder_id=${encodeURIComponent(folderId)}` : '/api/import-export/drive-browser/';
+      const res = await api.get(url);
+      setDriveCurrentFolder(res.data.current_folder);
+      setDriveItems(res.data.items || []);
+    } catch (err) {
+      showCustomToast(err?.response?.data?.detail || "Failed to list Google Drive contents.", "error");
+    } finally {
+      setDriveBrowserLoading(false);
+    }
+  };
+
+  const handleSelectDriveFolder = (item, allTargets) => {
+    const itemsArr = Array.isArray(item) ? item : (allTargets && Array.isArray(allTargets) ? allTargets : [item]);
+    setSelectedDriveItems(itemsArr);
+    setImportSourceMode('google_drive');
+    setImportFile(null);
+    setImportFolderFiles([]);
+    setDriveBrowserOpen(false);
+    const names = itemsArr.slice(0, 3).map((i) => `"${i.name}"`).join(', ');
+    showCustomToast(`Selected Google Drive: ${itemsArr.length} item(s) (${names}${itemsArr.length > 3 ? '...' : ''})`, "success");
+  };
+
   // ── Handle Import File / Folder Select & Preview ──
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
+      setImportSourceMode('local');
+      setSelectedDriveItems([]);
       if (e.target.files.length > 1 || (e.target.files[0] && e.target.files[0].webkitRelativePath)) {
         setImportFolderFiles(Array.from(e.target.files));
         setImportFile(null);
@@ -312,6 +353,8 @@ const ImportExportTab = () => {
   };
 
   const handlePickFolderDirectory = async () => {
+    setImportSourceMode('local');
+    setSelectedDriveItems([]);
     if (window.showDirectoryPicker) {
       try {
         const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
@@ -401,6 +444,8 @@ const ImportExportTab = () => {
   const handleFolderDrop = async (e) => {
     e.preventDefault();
     e.stopPropagation();
+    setImportSourceMode('local');
+    setSelectedDriveFolder(null);
     const items = e.dataTransfer?.items;
     if (!items || items.length === 0) return;
 
@@ -425,8 +470,26 @@ const ImportExportTab = () => {
   };
 
   const handleOpenImportPreview = async () => {
+    if (importSourceMode === 'google_drive' && selectedDriveItems.length > 0) {
+      try {
+        setPreviewing(true);
+        const res = await api.post('/api/import-export/import/preview/', {
+          source_type: 'google_drive',
+          source_drive_items: selectedDriveItems,
+          source_drive_folder_id: selectedDriveItems.length === 1 ? selectedDriveItems[0].id : undefined
+        });
+        setImportPreviewData(res.data);
+        setImportPreviewModalOpen(true);
+      } catch (err) {
+        showCustomToast(err?.response?.data?.detail || "Failed to parse Google Drive import preview.", "error");
+      } finally {
+        setPreviewing(false);
+      }
+      return;
+    }
+
     if (!importFile && importFolderFiles.length === 0) {
-      showCustomToast("Please choose a file, full folder, or ZIP archive to import.", "warning");
+      showCustomToast("Please choose a file, full folder, ZIP archive, or Google Drive folder/documents to import.", "warning");
       return;
     }
     try {
@@ -461,10 +524,36 @@ const ImportExportTab = () => {
 
   // ── Execute Import ──
   const handleExecuteImport = async () => {
-    if ((!importFile && importFolderFiles.length === 0) || !destinationModuleId) return;
+    if (!destinationModuleId) return;
     try {
       setImporting(true);
       setImportProgress(20);
+
+      if (importSourceMode === 'google_drive' && selectedDriveItems.length > 0) {
+        setImportProgress(50);
+        const payload = {
+          source_type: 'google_drive',
+          source_drive_items: selectedDriveItems,
+          source_drive_folder_id: selectedDriveItems.length === 1 ? selectedDriveItems[0].id : undefined,
+          module_id: destinationModuleId,
+          duplicate_file_strategy: duplicateFileStrategy,
+          duplicate_folder_strategy: duplicateFolderStrategy,
+          parent_folder_id: targetFolderId || undefined
+        };
+
+        const res = await api.post('/api/import-export/import/execute/', payload);
+
+        setImportProgress(100);
+        setImportResult(res.data);
+        setImportPreviewModalOpen(false);
+        setResultModalOpen(true);
+        setSelectedDriveItems([]);
+        setImportSourceMode('local');
+        fetchTree();
+        return;
+      }
+
+      if (!importFile && importFolderFiles.length === 0) return;
 
       const formData = new FormData();
       if (importFolderFiles.length > 0) {
@@ -782,8 +871,8 @@ const ImportExportTab = () => {
                   mb: 3,
                   borderRadius: '16px',
                   border: '2px dashed',
-                  borderColor: (importFile || importFolderFiles.length > 0) ? '#10B981' : (isDark ? 'rgba(255,255,255,0.2)' : '#CBD5E1'),
-                  bgcolor: (importFile || importFolderFiles.length > 0)
+                  borderColor: (selectedDriveItems.length > 0 || importFile || importFolderFiles.length > 0) ? '#10B981' : (isDark ? 'rgba(255,255,255,0.2)' : '#CBD5E1'),
+                  bgcolor: (selectedDriveItems.length > 0 || importFile || importFolderFiles.length > 0)
                     ? (isDark ? 'rgba(16, 185, 129, 0.1)' : '#ECFDF5')
                     : (isDark ? '#0F172A' : '#FAFAFA'),
                   display: 'flex',
@@ -793,14 +882,16 @@ const ImportExportTab = () => {
                   transition: 'all 0.2s ease'
                 }}
               >
-                <CloudUploadIcon sx={{ fontSize: '2.5rem', color: (importFile || importFolderFiles.length > 0) ? '#10B981' : '#94A3B8', mb: 1 }} />
+                <CloudUploadIcon sx={{ fontSize: '2.5rem', color: (selectedDriveItems.length > 0 || importFile || importFolderFiles.length > 0) ? '#10B981' : '#94A3B8', mb: 1 }} />
                 <Typography variant="body2" sx={{ fontWeight: 800, color: isDark ? '#F8FAFC' : '#0F172A', textAlign: 'center', mb: 1 }}>
-                  {importFolderFiles.length > 0
-                    ? `Folder Selected: ${importFolderFiles[0]?.webkitRelativePath?.split('/')[0] || 'Directory'} (${importFolderFiles.length} files)`
-                    : importFile ? importFile.name : 'Drag & Drop a Full Folder, ZIP, or File here'}
+                  {importSourceMode === 'google_drive' && selectedDriveItems.length > 0
+                    ? `Google Drive Selected: ${selectedDriveItems.length} item(s) (${selectedDriveItems.slice(0, 3).map(i => `"${i.name}"`).join(', ')}${selectedDriveItems.length > 3 ? '...' : ''})`
+                    : importFolderFiles.length > 0
+                    ? `Files Selected: ${importFolderFiles.length} file(s) (${importFolderFiles[0]?.name}${importFolderFiles.length > 1 ? ', ...' : ''})`
+                    : importFile ? importFile.name : 'Drag & Drop Folders, ZIP Archives, or Multiple Files here'}
                 </Typography>
                 
-                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: 'center', mt: 1 }}>
+                <Box sx={{ display: 'flex', gap: 1.2, flexWrap: 'wrap', justifyContent: 'center', mt: 1 }}>
                   <Button
                     variant="contained"
                     color="secondary"
@@ -818,15 +909,32 @@ const ImportExportTab = () => {
                     startIcon={<InsertDriveFileIcon />}
                     sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
                   >
-                    Browse File / ZIP
-                    <input type="file" hidden onChange={handleFileChange} accept=".zip, .pdf, .docx, .xlsx, .csv, .png, .jpg, *" />
+                    Browse Files / ZIP
+                    <input type="file" multiple hidden onChange={handleFileChange} accept=".zip, .pdf, .docx, .xlsx, .csv, .png, .jpg, *" />
+                  </Button>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<CloudIcon />}
+                    onClick={() => handleOpenDriveBrowser(null)}
+                    sx={{
+                      borderRadius: '10px',
+                      textTransform: 'none',
+                      fontWeight: 800,
+                      background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
+                      color: '#FFF'
+                    }}
+                  >
+                    Import from Google Drive
                   </Button>
                 </Box>
 
                 <Typography variant="caption" sx={{ color: isDark ? '#94A3B8' : '#64748B', mt: 1.5 }}>
-                  {importFolderFiles.length > 0
-                    ? `${formatBytes(importFolderFiles.reduce((acc, f) => acc + f.size, 0))} • Subfolders & Files Ready for Google Drive Auto Provisioning`
-                    : importFile ? `${formatBytes(importFile.size)} • Ready for Preview` : 'Supports directory trees, .zip packages, or individual files'}
+                  {importSourceMode === 'google_drive' && selectedDriveItems.length > 0
+                    ? `Selected ${selectedDriveItems.length} Cloud Item(s) • Ready for Direct Server-Side Drive Syncing`
+                    : importFolderFiles.length > 0
+                    ? `${formatBytes(importFolderFiles.reduce((acc, f) => acc + f.size, 0))} • ${importFolderFiles.length} file(s) ready for upload`
+                    : importFile ? `${formatBytes(importFile.size)} • Ready for Preview` : 'Supports Local Folders, ZIP Archives, Multiple Files, or Cloud Google Drive Items'}
                 </Typography>
               </Box>
 
@@ -838,7 +946,7 @@ const ImportExportTab = () => {
                   size="large"
                   color="success"
                   startIcon={previewing ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon />}
-                  disabled={previewing || (!importFile && importFolderFiles.length === 0)}
+                  disabled={previewing || (!importFile && importFolderFiles.length === 0 && !(importSourceMode === 'google_drive' && selectedDriveItems.length > 0))}
                   onClick={handleOpenImportPreview}
                   sx={{
                     borderRadius: '12px',
@@ -1064,6 +1172,17 @@ const ImportExportTab = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Reusable Modern Google Drive Folder Picker Modal */}
+      <GoogleDrivePickerModal
+        open={driveBrowserOpen}
+        onClose={() => setDriveBrowserOpen(false)}
+        onSelectFolder={async (targetItem, allTargets) => {
+          handleSelectDriveFolder(targetItem, allTargets);
+        }}
+        title="Select Folders & Documents from Google Drive to Import"
+        actionLabel="Select Items for Import"
+      />
 
     </Box>
   );

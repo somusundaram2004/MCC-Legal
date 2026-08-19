@@ -203,13 +203,11 @@ const Layout = ({ children }) => {
   };
 
   const handleClearAllNotifications = async () => {
-    if (window.confirm("Are you sure you want to clear all notifications?")) {
-      try {
-        await api.post('/api/notifications/clear-all/');
-        fetchNotifications();
-      } catch (err) {
-        console.error("Clear all notifications failed:", err);
-      }
+    try {
+      await api.post('/api/notifications/clear-all/');
+      fetchNotifications();
+    } catch (err) {
+      console.error("Clear all notifications failed:", err);
     }
   };
 

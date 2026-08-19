@@ -47,6 +47,8 @@ class Folder(models.Model):
         related_name='module_folders',
         db_index=True
     )
+    import_source = models.CharField(max_length=50, default='local', blank=True, null=True)
+    source_google_folder_id = models.CharField(max_length=255, blank=True, null=True)
 
     # Soft Delete / Recycle Bin Fields
     is_deleted = models.BooleanField(default=False, db_index=True)
