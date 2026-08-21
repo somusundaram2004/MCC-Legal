@@ -422,9 +422,18 @@ class UserViewSet(viewsets.ModelViewSet):
         return CustomUserSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer_class()(data=request.data)
+        serializer = self.get_serializer_class()(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
+        raw_password = request.data.get('password')
         user = serializer.save()
+
+        # Trigger Welcome Email with Username & Temp Password asynchronously
+        if raw_password:
+            try:
+                from services.email_service import send_welcome_user_email_async
+                send_welcome_user_email_async(user, raw_password)
+            except Exception as mail_err:
+                logger.error(f"Failed to dispatch welcome email async: {mail_err}")
         
         # Log & Notify
         log_activity(request.user, f"Created user {user.email}", "users", request)
@@ -1083,13 +1092,52 @@ class CustomDynamicPageViewSet(viewsets.ModelViewSet):
         include_all = self.request.query_params.get('all', 'false').lower() == 'true'
         if not include_all:
             qs = qs.filter(is_published=True, is_enabled=True)
-        from services import drive_service
+
+        user = getattr(self.request, 'user', None)
+        if not user or not user.is_authenticated:
+            return qs.none()
+
+        is_admin = getattr(user, 'role', None) and user.role.name in ["Super Admin", "Admin"]
+        if is_admin:
+            return qs
+
+        # For standard User: only return custom modules that have at least one folder/file shared with or created by the user
+        from folders.models import Folder, FolderPermission
+        from django.db.models import Q
+
+        user_fp_folder_ids = list(FolderPermission.objects.filter(user=user, is_granted=True).values_list('folder_id', flat=True))
+        accessible_page_ids = []
+
         for page in qs:
-            try:
-                drive_service.get_or_create_module_folder_id(page)
-            except Exception as err:
-                logger.warning(f"Module Drive folder sync check error for '{page.title}': {err}")
-        return qs
+            # 1. Check if any folder directly linked to this custom page is accessible to user
+            has_shared_folder = Folder.objects.filter(
+                custom_page=page,
+                is_deleted=False
+            ).filter(
+                Q(created_by=user) | Q(id__in=user_fp_folder_ids)
+            ).exists()
+
+            if has_shared_folder:
+                accessible_page_ids.append(page.id)
+                continue
+
+            # 2. Check if the module root folder or any of its descendants are shared with user
+            if page.root_folder_id:
+                try:
+                    rf_id = int(page.root_folder_id)
+                    root_folder = Folder.objects.filter(id=rf_id, is_deleted=False).first()
+                    if root_folder and (root_folder.id in user_fp_folder_ids or root_folder.created_by == user):
+                        accessible_page_ids.append(page.id)
+                        continue
+
+                    # Check descendants
+                    if Folder.objects.filter(parent=root_folder, is_deleted=False).filter(Q(created_by=user) | Q(id__in=user_fp_folder_ids)).exists():
+                        accessible_page_ids.append(page.id)
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
+        return qs.filter(id__in=accessible_page_ids)
 
     def perform_create(self, serializer):
         page = serializer.save()

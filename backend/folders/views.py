@@ -50,7 +50,8 @@ def sync_drive_directory(parent_google_id=None, parent_folder_obj=None, user=Non
                 continue
             
             if mime_type == 'application/vnd.google-apps.folder':
-                defaults = {'name': item_name, 'parent': parent_folder_obj, 'created_by': user}
+                sync_creator = user if (user and getattr(user, 'is_authenticated', False) and getattr(user, 'role', None) and user.role.name in ['Super Admin', 'Admin']) else None
+                defaults = {'name': item_name, 'parent': parent_folder_obj, 'created_by': sync_creator}
                 if parent_folder_obj:
                     defaults['module_type'] = parent_folder_obj.module_type
                     defaults['custom_page'] = parent_folder_obj.custom_page
@@ -126,7 +127,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return Folder.objects.none()
         
-        base_qs = Folder.objects.all() if getattr(self, 'action', None) == 'move_module' or self.kwargs.get('pk') else Folder.objects.filter(is_deleted=False)
+        base_qs = (Folder.objects.all() if getattr(self, 'action', None) == 'move_module' or self.kwargs.get('pk') else Folder.objects.filter(is_deleted=False)).select_related('parent', 'created_by', 'custom_page')
         
         # Apply list filtering only when NOT performing detail action or pk lookup
         if not self.kwargs.get('pk') and getattr(self, 'action', None) not in ['retrieve', 'update', 'partial_update', 'destroy', 'move_module']:
@@ -138,16 +139,12 @@ class FolderViewSet(viewsets.ModelViewSet):
             elif module_type:
                 base_qs = base_qs.filter(module_type=module_type)
 
-
-
-
         # Detail actions and pk lookups bypass list accessibility filtering.
-        # Permission enforcement for detail actions is handled inside the respective view methods.
         if self.kwargs.get('pk') or getattr(self, 'action', None) in ['retrieve', 'contents', 'update', 'partial_update', 'destroy', 'move_module']:
             return base_qs.order_by('name')
 
-        # Super Admin bypasses access filters
-        if user.role and user.role.name == "Super Admin":
+        # Super Admin / Admin bypasses access filters for maximum performance
+        if user.role and user.role.name in ["Super Admin", "Admin"]:
             return base_qs.order_by('name')
 
         # Filter by folder accessibility (recursive lookup)
@@ -648,8 +645,13 @@ class FolderViewSet(viewsets.ModelViewSet):
                 if target_custom_page_id in ['mou_repository', 'mou']:
                     folder.module_type = 'mou_repository'
                     folder.custom_page = None
-                    folder.parent = None
-                    new_parent_google_id = drive_service.get_root_folder_id()
+                    mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+                    mou_sys_folder = Folder.objects.filter(google_folder_id=mou_root_id).first()
+                    if mou_sys_folder:
+                        folder.parent = mou_sys_folder
+                    else:
+                        folder.parent = None
+                    new_parent_google_id = mou_root_id
                 else:
                     from users.models import CustomDynamicPage
                     cp = CustomDynamicPage.objects.filter(id=target_custom_page_id).first()
@@ -721,16 +723,16 @@ class FolderViewSet(viewsets.ModelViewSet):
             # Fetch live list from Google Drive
             live_items = drive_service.list_folder_contents(parent_google_id)
             
-            # Map of existing child folders: google_folder_id -> Folder
-            existing_folders = Folder.objects.filter(parent=parent_folder_obj)
+            # Map of existing child folders: google_folder_id -> Folder, name.lower() -> Folder
+            existing_folders = Folder.objects.filter(parent=parent_folder_obj, is_deleted=False)
             existing_folder_map = {f.google_folder_id: f for f in existing_folders if f.google_folder_id}
-            existing_folder_name_map = {f.name: f for f in existing_folders if not f.google_folder_id}
+            existing_folder_name_map = {f.name.lower(): f for f in existing_folders}
 
             # Map of existing files: google_file_id -> File
             if parent_folder_obj:
-                existing_files = File.objects.filter(folder=parent_folder_obj)
+                existing_files = File.objects.filter(folder=parent_folder_obj, is_deleted=False)
                 existing_file_map = {f.google_file_id: f for f in existing_files if f.google_file_id}
-                existing_file_name_map = {f.name: f for f in existing_files if not f.google_file_id}
+                existing_file_name_map = {f.name.lower(): f for f in existing_files}
             else:
                 existing_file_map = {}
                 existing_file_name_map = {}
@@ -754,13 +756,18 @@ class FolderViewSet(viewsets.ModelViewSet):
                         continue
 
                     if item_id in existing_folder_map:
+                        f = existing_folder_map[item_id]
+                        if f.name != item_name:
+                            f.name = item_name
+                            f.save(update_fields=['name'])
                         continue
-                    elif item_name in existing_folder_name_map:
-                        f = existing_folder_name_map[item_name]
+                    elif item_name.lower() in existing_folder_name_map:
+                        f = existing_folder_name_map[item_name.lower()]
                         if f.is_deleted:
                             continue
                         f.google_folder_id = item_id
                         f.save(update_fields=['google_folder_id'])
+                        existing_folder_map[item_id] = f
                     else:
                         m_type = 'mou_repository'
                         c_page = None
@@ -853,9 +860,13 @@ class FolderViewSet(viewsets.ModelViewSet):
             from .models import FolderView
             FolderView.objects.get_or_create(user=request.user, folder=folder)
 
-        # Trigger sync from Google Drive
-        if folder.google_folder_id:
-            self.sync_drive_directory(folder.google_folder_id, folder, request.user)
+        # Trigger sync from Google Drive only on explicit force_sync
+        force_sync = request.query_params.get('force_sync', 'false').lower() == 'true'
+        if force_sync and folder.google_folder_id:
+            try:
+                self.sync_drive_directory(folder.google_folder_id, folder, request.user, force_sync=True)
+            except Exception as sync_err:
+                logger.warning(f"Live Google Drive sync skipped: {sync_err}")
 
         # Subfolders access filter (exclude soft-deleted folders)
         subfolders = folder.children.filter(is_deleted=False).order_by('name')
@@ -889,8 +900,12 @@ class FolderViewSet(viewsets.ModelViewSet):
             cp = CustomDynamicPage.objects.filter(id=custom_page_id).first()
             if cp:
                 root_folder = Folder.objects.filter(id=int(cp.root_folder_id)).first() if cp.root_folder_id else None
-                if cp.google_drive_folder_id:
-                    self.sync_drive_directory(cp.google_drive_folder_id, root_folder, request.user)
+                force_sync = request.query_params.get('force_sync', 'false').lower() == 'true'
+                if force_sync and cp.google_drive_folder_id:
+                    try:
+                        self.sync_drive_directory(cp.google_drive_folder_id, root_folder, request.user, force_sync=True)
+                    except Exception as sync_err:
+                        logger.warning(f"Live Google Drive sync skipped for custom module: {sync_err}")
                 
                 target_module_folder = root_folder
                 if root_folder:
@@ -903,22 +918,24 @@ class FolderViewSet(viewsets.ModelViewSet):
             else:
                 root_folders = Folder.objects.none()
         else:
-            # Trigger sync from Google Drive using dedicated MOU Repository folder ID under Application Root
-            mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
-            mou_sys_folder = None
-            if mou_root_id:
-                mou_sys_folder = Folder.objects.filter(google_folder_id=mou_root_id).first()
-                if not mou_sys_folder:
-                    mou_sys_folder = Folder.objects.filter(name='MOU Repository', module_type='mou_repository', custom_page=None, parent=None).first()
-                if not mou_sys_folder:
-                    mou_sys_folder = Folder.objects.create(
-                        name='MOU Repository',
-                        google_folder_id=mou_root_id,
-                        module_type='mou_repository',
-                        custom_page=None,
-                        parent=None
-                    )
-                self.sync_drive_directory(mou_root_id, mou_sys_folder, request.user)
+            # Dedicated MOU Repository module root
+            mou_sys_folder = Folder.objects.filter(name='MOU Repository', module_type='mou_repository', custom_page=None, parent=None, is_deleted=False).first()
+            if not mou_sys_folder:
+                mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+                mou_sys_folder, _ = Folder.objects.get_or_create(
+                    name='MOU Repository',
+                    module_type='mou_repository',
+                    custom_page=None,
+                    parent=None,
+                    defaults={'google_folder_id': mou_root_id}
+                )
+
+            force_sync = request.query_params.get('force_sync', 'false').lower() == 'true'
+            if force_sync and mou_sys_folder and mou_sys_folder.google_folder_id:
+                try:
+                    self.sync_drive_directory(mou_sys_folder.google_folder_id, mou_sys_folder, request.user, force_sync=True)
+                except Exception as sync_err:
+                    logger.warning(f"Live Google Drive sync check for MOU Repository skipped: {sync_err}")
 
             target_module_folder = mou_sys_folder
             # Base query for root folders isolated strictly to mou_sys_folder
@@ -926,9 +943,9 @@ class FolderViewSet(viewsets.ModelViewSet):
                 root_folders = Folder.objects.filter(
                     parent=mou_sys_folder,
                     is_deleted=False
-                ).exclude(id=mou_sys_folder.id).exclude(name__iexact='Recycle Bin').exclude(module_type='recycle_bin').order_by('name')
+                ).exclude(id=mou_sys_folder.id).exclude(name__iexact='MOU Repository').exclude(name__iexact='Recycle Bin').exclude(module_type='recycle_bin').order_by('name')
             else:
-                root_folders = Folder.objects.filter(parent=None, is_deleted=False, module_type='mou_repository', custom_page=None).exclude(name__iexact='Recycle Bin').exclude(module_type='recycle_bin').order_by('name')
+                root_folders = Folder.objects.filter(parent=None, is_deleted=False, module_type='mou_repository', custom_page=None).exclude(name__iexact='MOU Repository').exclude(name__iexact='Recycle Bin').exclude(module_type='recycle_bin').order_by('name')
 
             # Strictly exclude any folders associated with or named after custom dynamic pages
             from users.models import CustomDynamicPage
@@ -941,11 +958,19 @@ class FolderViewSet(viewsets.ModelViewSet):
         # Retrieve direct files inside this module's root folder
         from files.models import File
         from files.serializers import FileSerializer
-        root_files = File.objects.filter(folder=target_module_folder, is_deleted=False) if target_module_folder else File.objects.none()
+        if target_module_folder:
+            if getattr(user, 'role', None) and user.role.name in ["Super Admin", "Admin"]:
+                root_files = File.objects.filter(folder=target_module_folder, is_deleted=False)
+            elif target_module_folder.has_access(user):
+                root_files = File.objects.filter(folder=target_module_folder, is_deleted=False)
+            else:
+                root_files = File.objects.filter(folder=target_module_folder, uploaded_by=user, is_deleted=False)
+        else:
+            root_files = File.objects.none()
         root_files_data = FileSerializer(root_files, many=True, context={'request': request}).data
 
-        # If user is Super Admin, they see all root folders and files for this module context
-        if user.role and user.role.name == "Super Admin":
+        # If user is Super Admin or Admin, they see all root folders and files for this module context
+        if user.role and user.role.name in ["Super Admin", "Admin"]:
             subfolders_data = FolderSerializer(root_folders, many=True, context={'request': request}).data
             return Response({
                 "subfolders": subfolders_data,
@@ -954,9 +979,12 @@ class FolderViewSet(viewsets.ModelViewSet):
 
             
         # 3. Filter root folders the user has access to
-        accessible_folders = [f for f in root_folders if f.has_access(user)]
-        
-        # 4. Find all subfolders (parent is not None) that the user has direct access to,
+        accessible_folders_dict = {}
+        for f in root_folders:
+            if f.has_access(user):
+                accessible_folders_dict[f.id] = f
+
+        # 4. Find all subfolders that the user has direct access to,
         # but whose parent folder is NOT accessible to the user.
         # These are "orphaned" shared subfolders that should be shown at the root level of their respective module.
         if custom_page_id:
@@ -965,8 +993,7 @@ class FolderViewSet(viewsets.ModelViewSet):
             all_subfolders = Folder.objects.filter(module_type='mou_repository', custom_page=None, is_deleted=False).exclude(parent=None)
 
         for f in all_subfolders:
-
-            if f.has_access(user):
+            if f.id not in accessible_folders_dict and f.has_access(user):
                 # Check if parent is accessible
                 if f.parent and not f.parent.has_access(user):
                     # Only add if it's the highest accessible folder in its ancestral chain
@@ -977,12 +1004,12 @@ class FolderViewSet(viewsets.ModelViewSet):
                             highest_orphan = False
                             break
                         ancestor = ancestor.parent
-                    
+
                     if highest_orphan:
-                        accessible_folders.append(f)
-                        
+                        accessible_folders_dict[f.id] = f
+
         # Sort folders by name
-        accessible_folders.sort(key=lambda x: x.name.lower())
+        accessible_folders = sorted(list(accessible_folders_dict.values()), key=lambda x: x.name.lower())
         
         subfolders_data = FolderSerializer(accessible_folders, many=True, context={'request': request}).data
         
@@ -1201,6 +1228,37 @@ class FolderViewSet(viewsets.ModelViewSet):
                     return Response({'detail': 'Permission denied to upload to target directory.'}, status=status.HTTP_403_FORBIDDEN)
             except Folder.DoesNotExist:
                 return Response({'detail': 'Target parent folder not found.'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            if custom_page_id:
+                from users.models import CustomDynamicPage
+                cp = CustomDynamicPage.objects.filter(id=custom_page_id).first()
+                if cp:
+                    if cp.root_folder_id:
+                        parent_folder = Folder.objects.filter(id=int(cp.root_folder_id), is_deleted=False).first()
+                    if not parent_folder:
+                        drive_id = drive_service.get_or_create_module_folder_id(cp)
+                        parent_folder = Folder.objects.filter(custom_page=cp, parent=None, is_deleted=False).first()
+                        if not parent_folder:
+                            parent_folder = Folder.objects.create(
+                                name=cp.title,
+                                parent=None,
+                                module_type='custom_page',
+                                custom_page=cp,
+                                google_folder_id=drive_id,
+                                status='Active'
+                            )
+            else:
+                mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+                parent_folder = Folder.objects.filter(name='MOU Repository', module_type='mou_repository', parent=None, is_deleted=False).first()
+                if not parent_folder:
+                    parent_folder = Folder.objects.create(
+                        name='MOU Repository',
+                        parent=None,
+                        module_type='mou_repository',
+                        custom_page=None,
+                        google_folder_id=mou_root_id,
+                        status='Active'
+                    )
 
         files = request.FILES.getlist('files')
         relative_paths = request.POST.getlist('relative_paths')
@@ -1230,25 +1288,55 @@ class FolderViewSet(viewsets.ModelViewSet):
                         if path_key in folder_cache:
                             current_parent = folder_cache[path_key]
                         else:
+                            parent_drive_id = current_parent.google_folder_id if (current_parent and current_parent.google_folder_id) else None
                             folder, created = Folder.objects.get_or_create(
                                 name=part,
                                 parent=current_parent,
-                                custom_page_id=custom_page_id if current_parent is None else current_parent.custom_page_id,
+                                custom_page=current_parent.custom_page if current_parent else None,
+                                module_type=current_parent.module_type if current_parent else 'mou_repository',
                                 is_deleted=False,
                                 defaults={'created_by': user, 'status': 'Active'}
                             )
+                            if created or not folder.google_folder_id:
+                                try:
+                                    g_id = drive_service.create_folder(part, parent_drive_id)
+                                    if g_id:
+                                        folder.google_folder_id = g_id
+                                        folder.save(update_fields=['google_folder_id'])
+                                except Exception as d_err:
+                                    logger.warning(f"Drive folder create fallback for imported folder '{part}': {d_err}")
+
                             if created:
                                 imported_folders_created += 1
                             folder_cache[path_key] = folder
                             current_parent = folder
 
+                    f_content = file_obj.read()
+                    drive_meta = {}
+                    try:
+                        target_drive_parent = current_parent.google_folder_id if current_parent else None
+                        drive_meta = drive_service.upload_file(
+                            file_content=f_content,
+                            filename=filename,
+                            mime_type=file_obj.content_type,
+                            parent_id=target_drive_parent
+                        ) or {}
+                    except Exception as d_err:
+                        logger.warning(f"Drive file upload fallback for imported file '{filename}': {d_err}")
+
+                    file_obj.seek(0)
                     File.objects.create(
                         name=filename,
                         folder=current_parent,
                         uploaded_by=user,
-                        file=file_obj,
-                        size=file_obj.size,
-                        file_type=file_obj.content_type or 'application/octet-stream'
+                        file_field=file_obj,
+                        size=len(f_content),
+                        file_size=len(f_content),
+                        file_type=file_obj.content_type or 'application/octet-stream',
+                        mime_type=drive_meta.get('mimeType', file_obj.content_type),
+                        google_file_id=drive_meta.get('id'),
+                        web_view_link=drive_meta.get('webViewLink'),
+                        web_content_link=drive_meta.get('webContentLink')
                     )
                     imported_files_created += 1
 

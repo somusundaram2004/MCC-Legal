@@ -43,6 +43,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSiteTime } from '../context/SiteTimeContext';
+import LottieAnimation from '../components/LottieAnimation';
 import { useAutoRefresh, triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 import BreadcrumbNav from '../components/BreadcrumbNav';
 import FilePreviewModal from '../components/FilePreviewModal';
@@ -50,6 +51,7 @@ import GoogleDrivePickerModal from '../components/GoogleDrivePickerModal';
 
 const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const { user, hasPermission } = useAuth();
+  const isAdmin = ['Super Admin', 'Admin'].includes(user?.role?.name);
   const { getFormattedSiteDateTime } = useSiteTime();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -256,19 +258,8 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const [driveItems, setDriveItems] = useState([]);
   const [driveImportExecuting, setDriveImportExecuting] = useState(false);
 
-  const handleOpenDriveBrowser = async (folderId = null) => {
+  const handleOpenDriveBrowser = () => {
     setDriveBrowserOpen(true);
-    setDriveBrowserLoading(true);
-    try {
-      const url = folderId ? `/api/import-export/drive-browser/?folder_id=${encodeURIComponent(folderId)}` : '/api/import-export/drive-browser/';
-      const res = await api.get(url);
-      setDriveCurrentFolder(res.data.current_folder);
-      setDriveItems(res.data.items || []);
-    } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to list Google Drive contents.");
-    } finally {
-      setDriveBrowserLoading(false);
-    }
   };
 
   const handleExecuteDriveImport = async (targetDriveFolder, allTargets) => {
@@ -626,7 +617,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         if (customPageId) params.custom_page_id = customPageId;
         const res = await api.get('/api/folders/root/', { params });
         if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
-        setFolderData({ subfolders: res.data.subfolders, files: [] });
+        setFolderData({ subfolders: res.data.subfolders || [], files: res.data.files || [] });
         setCurrentFolder(null);
       } else {
 
@@ -650,6 +641,8 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   }, [currentFolderId, searchParamQuery, isFilteredView, customPageId]);
 
   useEffect(() => {
+    activeFolderIdRef.current = currentFolderId;
+    activeSearchQueryRef.current = searchParamQuery;
     fetchContents();
   }, [fetchContents]);
 
@@ -666,9 +659,11 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
           if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
           setFolderData({ subfolders: res.data.folders, files: res.data.files });
         } else if (currentFolderId === null) {
-          const res = await api.get('/api/folders/root/');
+          const params = {};
+          if (customPageId) params.custom_page_id = customPageId;
+          const res = await api.get('/api/folders/root/', { params });
           if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
-          setFolderData({ subfolders: res.data.subfolders, files: [] });
+          setFolderData({ subfolders: res.data.subfolders || [], files: res.data.files || [] });
         } else {
           const res = await api.get(`/api/folders/${currentFolderId}/contents/`);
           if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
@@ -1131,7 +1126,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               sx={{ borderRadius: '10px' }}
             >
               <MenuItem value="">All Streams</MenuItem>
-              {masterStreams.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+              {masterStreams.map(s => <MenuItem key={`explorer-stream-${s.id}`} value={s.id}>{s.name}</MenuItem>)}
             </Select>
           </FormControl>
 
@@ -1145,7 +1140,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               sx={{ borderRadius: '10px' }}
             >
               <MenuItem value="">All Departments</MenuItem>
-              {filteredExplorerDepts.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
+              {filteredExplorerDepts.map((d, dIdx) => <MenuItem key={`explorer-dept-${d.id}-${dIdx}`} value={d.name}>{d.name}</MenuItem>)}
             </Select>
           </FormControl>
 
@@ -1176,7 +1171,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               sx={{ borderRadius: '10px' }}
             >
               <MenuItem value="">All Types</MenuItem>
-              {mouTypes.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
+              {mouTypes.map(t => <MenuItem key={`explorer-type-${t.id}`} value={t.id}>{t.name}</MenuItem>)}
             </Select>
           </FormControl>
 
@@ -1289,7 +1284,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               Share Folder
             </Button>
           )}
-          {!searchParamQuery && (
+          {isAdmin && !searchParamQuery && (
             <Button
               variant="outlined"
               startIcon={<CreateNewFolderIcon />}
@@ -1299,7 +1294,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               New Folder
             </Button>
           )}
-          {!searchParamQuery && (
+          {isAdmin && !searchParamQuery && (
             <>
               <input
                 type="file"
@@ -1343,7 +1338,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               </Button>
             </>
           )}
-          {!searchParamQuery && currentFolderId && (
+          {!searchParamQuery && (
             <Button
               variant="contained"
               startIcon={<UploadFileIcon />}
@@ -1461,7 +1456,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                           : { color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.12)' };
 
                         return (
-                          <Grid xs={12} sm={6} md={4} lg={2.4} key={folder.id}>
+                          <Grid xs={12} sm={6} md={4} lg={2.4} key={`folder-grid-${folder.id}`}>
                             <Card 
                               className="card-lift"
                               sx={{ 
@@ -1575,7 +1570,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                         <TableBody>
                            {getOrderedSubfolders(folderData.subfolders).map((folder) => (
                             <TableRow 
-                              key={folder.id} 
+                              key={`folder-row-${folder.id}`} 
                               hover 
                               onDoubleClick={() => handleFolderClick(folder.id)}
                               style={{ cursor: 'pointer' }}
@@ -1658,7 +1653,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                         const canPreviewPdf = isAdmin || hasExplicitPreviewGrant;
                         const canDownloadPdf = isAdmin || hasExplicitDownloadGrant;
                         return (
-                          <Grid xs={12} sm={6} md={4} lg={3} key={file.id}>
+                          <Grid xs={12} sm={6} md={4} lg={3} key={`file-grid-${file.id}`}>
                             <Card 
                               sx={{ 
                                 cursor: 'pointer',
@@ -1769,7 +1764,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                             const canDownloadPdf = isAdmin || hasExplicitDownloadGrant;
                             return (
                               <TableRow 
-                                key={file.id} 
+                                key={`file-row-${file.id}`} 
                                 hover 
                                 onClick={() => {
                                   if (isPdf && !canPreviewPdf) {
@@ -2273,24 +2268,19 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 1 }}>
           <Box sx={{ 
             width: '100%', 
-            mb: 3, 
+            mb: 2.5, 
             display: 'flex', 
             justifyContent: 'center', 
             alignItems: 'center', 
             borderRadius: '20px', 
             overflow: 'hidden',
-            bgcolor: '#f3f3f5', // perfectly match video background color
+            bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : (actionLoadingMessage.toLowerCase().includes('delet') ? 'rgba(239, 68, 68, 0.06)' : 'rgba(79, 70, 229, 0.05)'),
             border: '1px solid rgba(0,0,0,0.04)',
-            height: '140px'
+            height: '130px'
           }}>
-            <video
-              key={actionLoadingMessage.toLowerCase().includes('delet') && actionLoadingMessage.toLowerCase().includes('folder') ? '/delete.mp4' : '/loading_image.mp4'}
-              src={actionLoadingMessage.toLowerCase().includes('delet') && actionLoadingMessage.toLowerCase().includes('folder') ? '/delete.mp4' : '/loading_image.mp4'}
-              autoPlay
-              loop
-              muted
-              playsInline
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            <LottieAnimation 
+              type={actionLoadingMessage.toLowerCase().includes('delet') ? 'delete' : 'loading'} 
+              size={84} 
             />
           </Box>
           <Typography 

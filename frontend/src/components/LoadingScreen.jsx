@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import LottieAnimation from './LottieAnimation';
 
 const LoadingScreen = ({ loading = true, message = "Loading module..." }) => {
   // Prevent scrolling when loading overlay is active
@@ -62,33 +63,19 @@ const LoadingScreen = ({ loading = true, message = "Loading module..." }) => {
               margin: 'auto',
             }}
           >
-            {/* Medium size video animation container */}
+            {/* Lottie Animated Loading Spinner */}
             <div
               style={{
-                width: '100px',
-                height: '100px',
+                width: '80px',
+                height: '80px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: '16px',
-                borderRadius: '20px',
-                overflow: 'hidden',
+                position: 'relative'
               }}
             >
-              <video
-                src="/loading_image.mp4"
-                autoPlay
-                loop
-                muted
-                playsInline
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  maxHeight: '100px',
-                  maxWidth: '100px',
-                }}
-              />
+              <LottieAnimation type="loading" size={76} />
             </div>
 
             {/* Centered Loading Message */}

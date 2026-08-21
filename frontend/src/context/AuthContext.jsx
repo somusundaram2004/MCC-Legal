@@ -16,10 +16,10 @@ export const AuthProvider = ({ children }) => {
       setUser(response.data);
       localStorage.setItem('user', JSON.stringify(response.data));
     } catch (error) {
-      if (error?.response?.status !== 401) {
-        console.debug("Failed to restore session user profile:", error);
-      }
-      logout();
+      setUser(null);
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
     } finally {
       setLoading(false);
     }
@@ -32,15 +32,12 @@ export const AuthProvider = ({ children }) => {
 
     if (accessToken) {
       if (cachedUser) {
-        setUser(JSON.parse(cachedUser));
+        try {
+          setUser(JSON.parse(cachedUser));
+        } catch {
+          setUser(null);
+        }
         setLoading(false);
-        // Silently sync user details from the backend
-        api.get('/api/users/me/')
-          .then((res) => {
-            setUser(res.data);
-            localStorage.setItem('user', JSON.stringify(res.data));
-          })
-          .catch(() => {});
       } else {
         fetchCurrentUser();
       }

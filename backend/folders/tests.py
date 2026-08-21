@@ -215,3 +215,120 @@ class FolderSyncAPITests(APITestCase):
         # Verify access rule deleted and access revoked
         self.assertFalse(FolderPermission.objects.filter(user=self.other_user, folder=folder).exists())
         self.assertFalse(folder.has_access(self.other_user))
+
+    def test_import_folder_endpoint(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from files.models import File
+
+        self.client.force_authenticate(user=self.user)
+        dummy_file1 = SimpleUploadedFile("doc1.txt", b"Hello world 1", content_type="text/plain")
+        dummy_file2 = SimpleUploadedFile("doc2.txt", b"Hello world 2", content_type="text/plain")
+
+        payload = {
+            'files': [dummy_file1, dummy_file2],
+            'relative_paths': ['ImportedTree/SubFolder/doc1.txt', 'ImportedTree/doc2.txt']
+        }
+        res = self.client.post('/api/folders/import-folder/', payload, format='multipart')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data.get('imported_files'), 2)
+
+        # Verify DB records created correctly
+        root_folder = Folder.objects.filter(name='ImportedTree', is_deleted=False).first()
+        self.assertIsNotNone(root_folder)
+        sub_folder = Folder.objects.filter(name='SubFolder', parent=root_folder, is_deleted=False).first()
+        self.assertIsNotNone(sub_folder)
+
+        file1 = File.objects.filter(name='doc1.txt', folder=sub_folder, is_deleted=False).first()
+        self.assertIsNotNone(file1)
+        self.assertEqual(file1.size, 13)
+        self.assertEqual(file1.file_size, 13)
+
+        file2 = File.objects.filter(name='doc2.txt', folder=root_folder, is_deleted=False).first()
+        self.assertIsNotNone(file2)
+
+    def test_import_execute_endpoint(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from files.models import File
+
+        self.client.force_authenticate(user=self.user)
+        dummy_file = SimpleUploadedFile("report.pdf", b"PDF content sample", content_type="application/pdf")
+
+        payload = {
+            'module_id': 'mou_repository',
+            'files': [dummy_file],
+            'relative_paths': ['ExecutionPackage/report.pdf'],
+            'duplicate_file_strategy': 'create_copy',
+            'duplicate_folder_strategy': 'merge'
+        }
+        res = self.client.post('/api/import-export/import/execute/', payload, format='multipart')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data.get('success'))
+
+        # Verify DB records created correctly
+        imported_file = File.objects.filter(name='report.pdf', is_deleted=False).first()
+        self.assertIsNotNone(imported_file)
+        self.assertEqual(imported_file.file_type, 'PDF')
+
+    @patch('folders.views_import_export.drive_service.browse_drive_folder')
+    def test_google_drive_browser_and_import(self, mock_browse):
+        from files.models import File
+
+        mock_browse.return_value = {
+            'current_folder': {'id': 'root', 'name': 'My Drive', 'parents': []},
+            'items': [{'id': 'folder1', 'name': 'Test Folder', 'mimeType': 'application/vnd.google-apps.folder', 'is_folder': True}]
+        }
+
+        self.client.force_authenticate(user=self.user)
+
+        # 1. Test Drive Browser endpoints
+        res_root = self.client.get('/api/import-export/drive-browser/?folder_id=root')
+        self.assertEqual(res_root.status_code, status.HTTP_200_OK)
+        self.assertIn('current_folder', res_root.data)
+
+        res_app = self.client.get('/api/import-export/drive-browser/?folder_id=app_root')
+        self.assertEqual(res_app.status_code, status.HTTP_200_OK)
+        self.assertIn('current_folder', res_app.data)
+
+        # 2. Test Import with source_drive_items payload
+        payload = {
+            'source_type': 'google_drive',
+            'module_id': 'mou_repository',
+            'source_drive_items': [
+                {'id': 'drive_sample_file_123', 'name': 'SampleDriveDoc.pdf', 'is_folder': False, 'size': 2048}
+            ],
+            'duplicate_file_strategy': 'create_copy',
+            'duplicate_folder_strategy': 'merge'
+        }
+        res_import = self.client.post('/api/import-export/import/execute/', payload, format='json')
+        self.assertEqual(res_import.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_import.data.get('success'))
+
+        imported_file = File.objects.filter(name='SampleDriveDoc.pdf', is_deleted=False).first()
+        self.assertIsNotNone(imported_file)
+        self.assertTrue(imported_file.file_size > 0)
+
+    def test_global_search_excludes_soft_deleted_items(self):
+        from files.models import File
+
+        # Create active and soft-deleted items
+        active_f = Folder.objects.create(name="SearchActiveFolder", created_by=self.user, is_deleted=False)
+        deleted_f = Folder.objects.create(name="SearchDeletedFolder", created_by=self.user, is_deleted=True)
+
+        active_file = File.objects.create(name="SearchActiveFile.pdf", folder=active_f, size=100, file_type="pdf", uploaded_by=self.user, is_deleted=False)
+        deleted_file = File.objects.create(name="SearchDeletedFile.pdf", folder=active_f, size=100, file_type="pdf", uploaded_by=self.user, is_deleted=True)
+
+        self.client.force_authenticate(user=self.user)
+        res = self.client.get('/api/search/?q=Search')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        folder_names = [f['name'] for f in res.data.get('folders', [])]
+        file_names = [fi['name'] for fi in res.data.get('files', [])]
+
+        self.assertIn("SearchActiveFolder", folder_names)
+        self.assertNotIn("SearchDeletedFolder", folder_names)
+
+        self.assertIn("SearchActiveFile.pdf", file_names)
+        self.assertNotIn("SearchDeletedFile.pdf", file_names)
+
+
+

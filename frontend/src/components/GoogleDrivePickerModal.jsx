@@ -212,42 +212,22 @@ const GoogleDrivePickerModal = ({
             </Box>
           </Box>
 
-          {/* Location Toggle Tabs */}
-          <ToggleButtonGroup
-            value={activeTab}
-            exclusive
-            onChange={handleTabChange}
-            size="small"
+          {/* Location Badge Indicator */}
+          <Chip
+            icon={<FolderIcon sx={{ color: '#0EA5E9 !important', fontSize: '1.1rem' }} />}
+            label="My Drive"
             sx={{
-              bgcolor: isDark ? '#1E293B' : '#F1F5F9',
-              p: 0.5,
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              py: 2,
+              px: 1,
               borderRadius: '12px',
+              bgcolor: isDark ? 'rgba(14, 165, 233, 0.15)' : '#E0F2FE',
+              color: isDark ? '#38BDF8' : '#0284C7',
               border: '1px solid',
-              borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
-              '& .MuiToggleButton-root': {
-                border: 'none',
-                borderRadius: '8px',
-                px: 2,
-                py: 0.6,
-                fontWeight: 700,
-                fontSize: '0.78rem',
-                textTransform: 'none',
-                color: isDark ? '#94A3B8' : '#64748B',
-                '&.Mui-selected': {
-                  bgcolor: isDark ? '#0284C7' : '#FFFFFF',
-                  color: isDark ? '#FFFFFF' : '#0EA5E9',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                }
-              }
+              borderColor: isDark ? 'rgba(14, 165, 233, 0.3)' : '#BAE6FD'
             }}
-          >
-            <ToggleButton value="root">
-              <FolderIcon sx={{ fontSize: '1rem', mr: 0.8 }} /> My Drive (Root)
-            </ToggleButton>
-            <ToggleButton value="app_root">
-              <StorageIcon sx={{ fontSize: '1rem', mr: 0.8 }} /> App Root
-            </ToggleButton>
-          </ToggleButtonGroup>
+          />
         </Box>
       </DialogTitle>
 
@@ -268,12 +248,14 @@ const GoogleDrivePickerModal = ({
                   fontSize: '0.85rem'
                 }
               }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: '1.2rem' }} />
-                  </InputAdornment>
-                )
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: '1.2rem' }} />
+                    </InputAdornment>
+                  )
+                }
               }}
             />
 
@@ -318,18 +300,20 @@ const GoogleDrivePickerModal = ({
             </ToggleButtonGroup>
 
             <Tooltip title="Refresh Folder Contents">
-              <IconButton
-                size="small"
-                onClick={() => fetchDriveContents(currentFolder?.id)}
-                disabled={loading}
-                sx={{
-                  bgcolor: isDark ? '#1E293B' : '#F1F5F9',
-                  borderRadius: '10px',
-                  p: 1
-                }}
-              >
-                <RefreshIcon fontSize="small" />
-              </IconButton>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => fetchDriveContents(currentFolder?.id)}
+                  disabled={loading}
+                  sx={{
+                    bgcolor: isDark ? '#1E293B' : '#F1F5F9',
+                    borderRadius: '10px',
+                    p: 1
+                  }}
+                >
+                  <RefreshIcon fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
           </Box>
 

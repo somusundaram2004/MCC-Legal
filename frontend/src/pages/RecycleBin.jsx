@@ -50,6 +50,7 @@ import {
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import LottieAnimation from '../components/LottieAnimation';
 
 const DEFAULT_RETENTION_OPTIONS = [
   { value: '7_days', label: '7 Days' },
@@ -601,14 +602,16 @@ export default function RecycleBin() {
 
                         {isSuperAdmin && (
                           <Tooltip title="Permanently delete from Google Drive & DB">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => setConfirmDeleteSingle(row)}
-                              disabled={actionProcessing}
-                            >
-                              <DeleteForeverIcon fontSize="small" />
-                            </IconButton>
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => setConfirmDeleteSingle(row)}
+                                disabled={actionProcessing}
+                              >
+                                <DeleteForeverIcon fontSize="small" />
+                              </IconButton>
+                            </span>
                           </Tooltip>
                         )}
                       </Stack>
@@ -622,17 +625,26 @@ export default function RecycleBin() {
       </TableContainer>
 
       {/* Single Item Permanent Delete Dialog */}
-      <Dialog open={Boolean(confirmDeleteSingle)} onClose={() => setConfirmDeleteSingle(null)}>
-        <DialogTitle sx={{ color: '#dc2626', fontWeight: 700 }}>
+      <Dialog open={Boolean(confirmDeleteSingle)} onClose={() => setConfirmDeleteSingle(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ color: '#dc2626', fontWeight: 700, textAlign: 'center' }}>
           Permanently Delete Item?
         </DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            Are you sure you want to permanently delete <strong>{confirmDeleteSingle?.name}</strong>?
-            This action cannot be undone and will delete the file/folder from both the system and Google Drive.
-          </DialogContentText>
+          {actionProcessing ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 2 }}>
+              <LottieAnimation type="delete" size={90} />
+              <Typography variant="body2" color="error.main" sx={{ fontWeight: 800, mt: 1.5, textAlign: 'center' }}>
+                Permanently purging item from database &amp; Google Drive...
+              </Typography>
+            </Box>
+          ) : (
+            <DialogContentText sx={{ textAlign: 'center' }}>
+              Are you sure you want to permanently delete <strong>{confirmDeleteSingle?.name}</strong>?
+              This action cannot be undone and will delete the file/folder from both the system and Google Drive.
+            </DialogContentText>
+          )}
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
           <Button onClick={() => setConfirmDeleteSingle(null)} disabled={actionProcessing}>
             Cancel
           </Button>
@@ -641,25 +653,34 @@ export default function RecycleBin() {
             color="error"
             onClick={() => handlePermanentDeleteItems([confirmDeleteSingle])}
             disabled={actionProcessing}
-            startIcon={actionProcessing ? <CircularProgress size={16} /> : <DeleteForeverIcon />}
+            startIcon={actionProcessing ? <CircularProgress size={16} color="inherit" /> : <DeleteForeverIcon />}
           >
-            Permanently Delete
+            {actionProcessing ? 'Purging...' : 'Permanently Delete'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Empty Recycle Bin Dialog */}
-      <Dialog open={confirmEmptyOpen} onClose={() => setConfirmEmptyOpen(false)}>
-        <DialogTitle sx={{ color: '#dc2626', fontWeight: 700 }}>
+      <Dialog open={confirmEmptyOpen} onClose={() => setConfirmEmptyOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ color: '#dc2626', fontWeight: 700, textAlign: 'center' }}>
           Empty Entire Recycle Bin?
         </DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            This will permanently delete <strong>all {items.length} item(s)</strong> currently stored in the Recycle Bin.
-            All files will be purged permanently from Google Drive and database records. This action cannot be reverted.
-          </DialogContentText>
+          {actionProcessing ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 2 }}>
+              <LottieAnimation type="delete" size={90} />
+              <Typography variant="body2" color="error.main" sx={{ fontWeight: 800, mt: 1.5, textAlign: 'center' }}>
+                Purging all items from Google Drive &amp; database...
+              </Typography>
+            </Box>
+          ) : (
+            <DialogContentText sx={{ textAlign: 'center' }}>
+              This will permanently delete <strong>all {items.length} item(s)</strong> currently stored in the Recycle Bin.
+              All files will be purged permanently from Google Drive and database records. This action cannot be reverted.
+            </DialogContentText>
+          )}
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
           <Button onClick={() => setConfirmEmptyOpen(false)} disabled={actionProcessing}>
             Cancel
           </Button>
@@ -668,9 +689,9 @@ export default function RecycleBin() {
             color="error"
             onClick={handleEmptyBin}
             disabled={actionProcessing}
-            startIcon={actionProcessing ? <CircularProgress size={16} /> : <CleanIcon />}
+            startIcon={actionProcessing ? <CircularProgress size={16} color="inherit" /> : <CleanIcon />}
           >
-            Yes, Empty Recycle Bin
+            {actionProcessing ? 'Purging All...' : 'Yes, Empty Recycle Bin'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -14,6 +14,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloudQueueIcon from '@mui/icons-material/CloudQueue';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import api from '../services/api';
+import LottieAnimation from '../components/LottieAnimation';
 
 const ResetPassword = () => {
   const navigate = useNavigate();
@@ -120,9 +121,17 @@ const ResetPassword = () => {
         <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-            <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
-              <LockIcon sx={{ color: '#fff' }} />
-            </Avatar>
+            <Box sx={{ width: 52, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {success ? (
+                <LottieAnimation type="success" size={48} loop={false} />
+              ) : step === 2 ? (
+                <LottieAnimation type="email" size={48} loop={true} />
+              ) : (
+                <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
+                  <LockIcon sx={{ color: '#fff' }} />
+                </Avatar>
+              )}
+            </Box>
             <Box>
               <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.5px' }}>
                 {step === 1 ? 'Forgot Password?' : 'Reset Password'}

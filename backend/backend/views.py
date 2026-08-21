@@ -47,17 +47,17 @@ class DashboardStatsView(APIView):
                 total_users = 0
                 active_users = 0
 
-        # Folder, File and MOU querysets based on role
+        # Folder, File and MOU querysets based on role (filtering out soft-deleted records)
         if role_name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]:
             mous_qs = MOU.objects.all()
-            folders_qs = Folder.objects.all()
-            files_qs = File.objects.all()
+            folders_qs = Folder.objects.filter(is_deleted=False)
+            files_qs = File.objects.filter(is_deleted=False)
         else:
             # Standard User
-            all_folders = Folder.objects.all()
+            all_folders = Folder.objects.filter(is_deleted=False)
             accessible_ids = [f.id for f in all_folders if f.has_access(user)]
-            folders_qs = Folder.objects.filter(id__in=accessible_ids)
-            files_qs = File.objects.filter(folder_id__in=accessible_ids)
+            folders_qs = Folder.objects.filter(id__in=accessible_ids, is_deleted=False)
+            files_qs = File.objects.filter(folder_id__in=accessible_ids, is_deleted=False)
             
             user_dept_name = getattr(user, 'department', '') or ''
             mous_filters = Q(created_by=user) | Q(shares__user=user)
@@ -69,7 +69,7 @@ class DashboardStatsView(APIView):
         total_files = files_qs.count()
 
         # User specific metrics
-        my_files_qs = File.objects.filter(uploaded_by=user)
+        my_files_qs = File.objects.filter(uploaded_by=user, is_deleted=False)
         my_files_count = my_files_qs.count()
         my_recent_files = my_files_qs.order_by('-created_at')[:5]
         my_recent_files_serializer = FileSerializer(my_recent_files, many=True, context={'request': request})
@@ -109,8 +109,6 @@ class DashboardStatsView(APIView):
             disk_free = (disk_total - disk_used) if disk_total >= disk_used else 0
             storage_type = "google_drive"
             drive_connected = True
-            storage_type = "google_drive"
-            drive_connected = True
         else:
             try:
                 usage = shutil.disk_usage(media_root if media_root else '.')
@@ -148,38 +146,48 @@ class DashboardStatsView(APIView):
         # Real MOU & Folder status counts from database
         today = datetime.date.today()
 
-        # Active Agreements: Count active MOUs + active Repository Folders (excluding Draft, Pending, Expired, Archived)
+        # Set of folder IDs linked to MOUs so department folders are not double counted
+        linked_mou_folder_ids = set(mous_qs.filter(department__isnull=False).values_list('department_id', flat=True))
+
+        # Active Agreements: Count valid active MOUs + standalone agreement folders (excluding Draft, Pending, Expired, Archived)
         active_mou_count = mous_qs.filter(
             Q(status__in=['Active', 'Renewed', 'Signed']),
             Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
         ).exclude(status__in=['Draft', 'Pending Verification', 'Pending Review', 'Expired', 'Archived']).count()
 
-        active_folder_count = folders_qs.filter(
-            Q(status__in=['Active', 'Signed', 'Renewed']),
+        standalone_active_folders = folders_qs.filter(
+            parent__isnull=False,  # Exclude root/system module directories
+            status__in=['Active', 'Signed', 'Renewed'],
+            expiry_date__isnull=False
+        ).exclude(id__in=linked_mou_folder_ids).filter(
             Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
         ).count()
 
-        active_mous = active_mou_count + active_folder_count
+        active_mous = active_mou_count + standalone_active_folders
 
-        # Pending Verification MOUs
-        pending_approval = mous_qs.filter(
+        # Pending Verification MOUs + Standalone Folders
+        pending_mou_count = mous_qs.filter(
             status__in=['Pending Verification', 'Pending Review']
         ).count()
-        if pending_approval == 0:
-            pending_approval = folders_qs.filter(status='Pending Review').count()
+        pending_folder_count = folders_qs.filter(
+            parent__isnull=False,
+            status__in=['Pending Review', 'Pending Verification']
+        ).exclude(id__in=linked_mou_folder_ids).count()
+        pending_approval = pending_mou_count + pending_folder_count
 
-        # Expiring in 30 Days
-        expiring_30 = mous_qs.filter(
+        # Expiring in 30 Days MOUs + Standalone Folders
+        expiring_mou_count = mous_qs.filter(
             status__in=['Active', 'Renewed', 'Signed'],
             expiry_date__gte=today,
             expiry_date__lte=today + datetime.timedelta(days=30)
         ).count()
-        if expiring_30 == 0:
-            expiring_30 = folders_qs.filter(
-                status__in=['Active', 'Signed'],
-                expiry_date__gte=today,
-                expiry_date__lte=today + datetime.timedelta(days=30)
-            ).count()
+        expiring_folder_count = folders_qs.filter(
+            parent__isnull=False,
+            status__in=['Active', 'Signed', 'Renewed'],
+            expiry_date__gte=today,
+            expiry_date__lte=today + datetime.timedelta(days=30)
+        ).exclude(id__in=linked_mou_folder_ids).count()
+        expiring_30 = expiring_mou_count + expiring_folder_count
 
         # Real Department/Folder distribution from database
         dept_colors = {
@@ -192,15 +200,18 @@ class DashboardStatsView(APIView):
         }
 
         mou_distribution_data = []
-        mou_depts = mous_qs.values('department_name').annotate(value=Count('id')).order_by('-value')
-        for item in mou_depts:
-            name = item['department_name']
+        dept_counts = {}
+        for mou in mous_qs:
+            name = mou.department_name or (mou.department.name if mou.department else None)
             if name:
-                mou_distribution_data.append({
-                    'name': name,
-                    'value': item['value'],
-                    'color': dept_colors.get(name, '#8B5CF6')
-                })
+                dept_counts[name] = dept_counts.get(name, 0) + 1
+
+        for name, val in sorted(dept_counts.items(), key=lambda x: x[1], reverse=True):
+            mou_distribution_data.append({
+                'name': name,
+                'value': val,
+                'color': dept_colors.get(name, '#8B5CF6')
+            })
 
         if not mou_distribution_data:
             for folder in folders_qs.filter(parent=None):
@@ -303,20 +314,20 @@ class GlobalSearchView(APIView):
         user = request.user
         is_admin = user.role and user.role.name in ["Super Admin", "Admin"]
 
-        # Search folders user has access to
+        # Search folders user has access to (excluding soft-deleted folders)
         if user.role and user.role.name == "Super Admin":
-            folders = Folder.objects.filter(name__icontains=query)
+            folders = Folder.objects.filter(name__icontains=query, is_deleted=False)
         else:
-            all_folders = Folder.objects.filter(name__icontains=query)
+            all_folders = Folder.objects.filter(name__icontains=query, is_deleted=False)
             folders = [f for f in all_folders if f.has_access(user)]
 
-        # Search files user has access to
+        # Search files user has access to (excluding soft-deleted files)
         if user.role and user.role.name == "Super Admin":
-            files = File.objects.filter(name__icontains=query)
+            files = File.objects.filter(name__icontains=query, is_deleted=False)
         else:
-            all_folders = Folder.objects.all()
+            all_folders = Folder.objects.filter(is_deleted=False)
             accessible_ids = [f.id for f in all_folders if f.has_access(user)]
-            files = File.objects.filter(folder_id__in=accessible_ids, name__icontains=query)
+            files = File.objects.filter(folder_id__in=accessible_ids, name__icontains=query, is_deleted=False)
 
         # Search users (Admins only)
         users = []

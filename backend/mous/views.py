@@ -235,13 +235,19 @@ class MOUSubmitSignedView(APIView):
                         except Exception:
                             pass
                 
+                target_folder = submission_folder or mou.department
+                if not target_folder:
+                    target_folder = Folder.objects.filter(is_deleted=False).first()
+                    if not target_folder:
+                        target_folder = Folder.objects.create(name="Signed Copies", module_type="mou_repository", created_by=request.user)
+
                 from files.models import File
                 from services import drive_service
                 signed_file = File.objects.create(
                     name=uploaded_file.name,
                     size=uploaded_file.size,
                     file_type=file_type,
-                    folder=submission_folder or mou.department,
+                    folder=target_folder,
                     uploaded_by=request.user
                 )
                 
@@ -605,12 +611,18 @@ class DepartmentSubmissionView(APIView):
                 if not file_type:
                     file_type = "application/octet-stream"
                     
+                target_submission_folder = submission_folder or mou.department or dept_folder
+                if not target_submission_folder:
+                    target_submission_folder = Folder.objects.filter(is_deleted=False).first()
+                    if not target_submission_folder:
+                        target_submission_folder = Folder.objects.create(name="Department Submissions", module_type="mou_repository", created_by=request.user)
+
                 from files.models import File
                 signed_file = File.objects.create(
                     name=uploaded_file.name,
                     size=uploaded_file.size,
                     file_type=file_type,
-                    folder=submission_folder or mou.department,
+                    folder=target_submission_folder,
                     uploaded_by=request.user
                 )
                 

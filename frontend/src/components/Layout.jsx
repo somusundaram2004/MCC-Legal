@@ -90,22 +90,22 @@ const Layout = ({ children }) => {
   // Fetch notifications
   const fetchNotifications = async () => {
     const token = localStorage.getItem('access_token');
-    if (!token) return;
+    if (!token || !user) return;
     try {
       const res = await api.get('/api/notifications/');
-      setNotifications(res.data);
-      const unread = res.data.filter(n => !n.is_read).length;
-      setUnreadCount(unread);
-      
-      // Display welcome notification pop up once per session if unread notifications exist
-      if (unread > 0 && !sessionStorage.getItem('login_notified')) {
-        setShowLoginPopup(true);
-        sessionStorage.setItem('login_notified', 'true');
+      if (Array.isArray(res.data)) {
+        setNotifications(res.data);
+        const unread = res.data.filter(n => !n.is_read).length;
+        setUnreadCount(unread);
+        
+        // Display welcome notification pop up once per session if unread notifications exist
+        if (unread > 0 && !sessionStorage.getItem('login_notified')) {
+          setShowLoginPopup(true);
+          sessionStorage.setItem('login_notified', 'true');
+        }
       }
     } catch (err) {
-      if (err?.response?.status !== 401) {
-        console.error("Failed to load notifications:", err);
-      }
+      // Silently ignore background polling errors
     }
   };
 
@@ -122,12 +122,13 @@ const Layout = ({ children }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Poll notifications
+  // Poll notifications only when user is authenticated
   useEffect(() => {
+    if (!user) return;
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 20000);
+    const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user]);
 
   // Query search for Command Palette
   useEffect(() => {
@@ -219,12 +220,13 @@ const Layout = ({ children }) => {
     try {
       const res = await api.get('/api/users/custom-pages/');
       const rawList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-      const userRole = user?.role?.name || 'User';
+      const userRole = (user?.role?.name || (user?.is_superuser ? 'Super Admin' : 'User')).trim();
+      const isSuperOrAdmin = userRole.toLowerCase() === 'super admin' || userRole.toLowerCase() === 'admin' || !!user?.is_superuser;
       const userId = String(user?.id || '');
 
       setCustomPages(rawList.filter(p => {
         if (p.is_published === false || p.is_enabled === false) return false;
-        if (userRole === 'Super Admin') return true;
+        if (isSuperOrAdmin) return true;
         const roles = p.allowed_roles || [];
         const allowedUserIds = (p.allowed_permissions || []).map(String);
         if (roles.length === 0 && allowedUserIds.length === 0) return true;
@@ -245,6 +247,7 @@ const Layout = ({ children }) => {
   }, [user, fetchCustomPages]);
 
   useAutoRefresh(REFRESH_CATEGORIES.SETTINGS, fetchCustomPages);
+  useAutoRefresh([REFRESH_CATEGORIES.NOTIFICATIONS, REFRESH_CATEGORIES.FOLDERS, REFRESH_CATEGORIES.ALL], fetchNotifications);
 
   const menuItems = [
     { text: 'Dashboard',       icon: <DashboardIcon />,          path: '/',           permission: 'view_dashboard', iconColor: 'var(--indigo)' },

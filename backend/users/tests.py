@@ -704,3 +704,69 @@ class WebOAuthIntegrationTests(TestCase):
             self.assertNotEqual(db_client_secret, "my_super_secret_client_secret")
             self.assertTrue(db_client_secret.startswith("gAAAAA"))
 
+
+class DashboardStatsAccuracyTests(DocumentManagementSystemTests):
+    def test_dashboard_stats_accuracy(self):
+        from mous.models import MOU
+        from folders.models import Folder
+        from files.models import File
+        from rest_framework_simplejwt.tokens import RefreshToken
+        import datetime
+
+        # Authenticate as super admin directly
+        access_token = str(RefreshToken.for_user(self.admin_user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer ' + access_token)
+
+        # 1. Clean test setup
+        MOU.objects.all().delete()
+        Folder.objects.all().delete()
+        File.objects.all().delete()
+
+        # Check initial stats (zero state)
+        res = self.client.get('/api/dashboard/stats/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_folders'], 0)
+        self.assertEqual(res.data['total_files'], 0)
+        self.assertEqual(res.data['active_mous'], 0)
+        self.assertEqual(res.data['pending_approval'], 0)
+        self.assertEqual(res.data['expiring_30_days'], 0)
+
+        # 2. Create non-deleted and soft-deleted folders
+        active_folder = Folder.objects.create(name="Active Folder", created_by=self.admin_user, is_deleted=False)
+        deleted_folder = Folder.objects.create(name="Deleted Folder", created_by=self.admin_user, is_deleted=True)
+
+        # 3. Create non-deleted and soft-deleted files
+        active_file = File.objects.create(name="active.pdf", folder=active_folder, size=1000, file_type="pdf", uploaded_by=self.admin_user, is_deleted=False)
+        deleted_file = File.objects.create(name="deleted.pdf", folder=active_folder, size=1000, file_type="pdf", uploaded_by=self.admin_user, is_deleted=True)
+
+        # 4. Create Active MOU and Expired MOU
+        today = datetime.date.today()
+        active_mou = MOU.objects.create(
+            title="Active Industry Partnership MOU",
+            mou_number="MOU-101",
+            partner_organization="Tech Corp",
+            status="Active",
+            signed_date=today - datetime.timedelta(days=100),
+            expiry_date=today + datetime.timedelta(days=200),
+            created_by=self.admin_user
+        )
+
+        expired_mou = MOU.objects.create(
+            title="Expired Research MOU",
+            mou_number="MOU-102",
+            partner_organization="Old Partner",
+            status="Expired",
+            signed_date=today - datetime.timedelta(days=500),
+            expiry_date=today - datetime.timedelta(days=10),
+            created_by=self.admin_user
+        )
+
+        res_updated = self.client.get('/api/dashboard/stats/')
+        self.assertEqual(res_updated.status_code, status.HTTP_200_OK)
+
+        # Verify soft-deleted folders and files are excluded
+        self.assertEqual(res_updated.data['total_files'], 1) # Only active.pdf
+        self.assertEqual(res_updated.data['active_mous'], 1) # Only active_mou
+
+
+

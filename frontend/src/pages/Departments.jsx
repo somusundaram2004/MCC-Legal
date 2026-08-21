@@ -122,20 +122,23 @@ const Departments = () => {
   };
 
   const getDeptStats = (dept) => {
-    const deptNameLower = (dept.name || '').toLowerCase();
-    const streamNameLower = (dept.stream_name || '').toLowerCase();
+    const deptNameLower = String(dept?.name || '').toLowerCase();
+    const streamNameLower = String(dept?.stream_name || dept?.stream?.name || '').toLowerCase();
 
     const deptMous = mous.filter(m => {
-      const mouDept = (m.department_name || m.department || '').toLowerCase();
-      const mouStream = (m.stream || m.stream_name || '').toLowerCase();
+      const mouDeptRaw = m?.department_name || (typeof m?.department === 'object' ? m?.department?.name : m?.department) || '';
+      const mouDept = String(mouDeptRaw || '').toLowerCase();
+
+      const mouStreamRaw = m?.stream_name || (typeof m?.stream === 'object' ? m?.stream?.name : m?.stream) || '';
+      const mouStream = String(mouStreamRaw || '').toLowerCase();
       
-      const nameMatches = mouDept.includes(deptNameLower) || deptNameLower.includes(mouDept);
+      const nameMatches = Boolean(deptNameLower && mouDept && (mouDept.includes(deptNameLower) || deptNameLower.includes(mouDept)));
       const streamMatches = !streamNameLower || !mouStream || mouStream.includes(streamNameLower) || streamNameLower.includes(mouStream);
       return nameMatches && streamMatches;
     });
 
     const active = deptMous.filter(m => m.status === 'Active').length;
-    const expiring = deptMous.filter(m => m.days_left !== null && m.days_left <= 30 && m.days_left >= 0).length;
+    const expiring = deptMous.filter(m => m.days_left !== null && m.days_left !== undefined && m.days_left <= 30 && m.days_left >= 0).length;
     return { total: deptMous.length, active, expiring };
   };
 
@@ -331,8 +334,9 @@ const Departments = () => {
             {filteredDepts.map((dept) => {
               const stats = getDeptStats(dept);
               const bg = getBgColor(dept.color);
-              const isAided = dept.stream_name?.toLowerCase().includes('aided');
-              const isSFS = dept.stream_name?.toLowerCase().includes('sfs') || dept.stream_name?.toLowerCase().includes('self-financed');
+              const streamStr = String(dept.stream_name || dept.stream?.name || '').toLowerCase();
+              const isAided = streamStr.includes('aided');
+              const isSFS = streamStr.includes('sfs') || streamStr.includes('self-financed');
               const isAnimatingOut = animatingId === dept.id;
 
               return (

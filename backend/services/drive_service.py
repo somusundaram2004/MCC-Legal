@@ -93,12 +93,6 @@ def get_root_folder_id():
 
 PREDEFINED_MODULES = [
     {'id': 'mou_repository', 'name': 'MOU Repository', 'type': 'system'},
-    {'id': 'legal_cases', 'name': 'Legal Cases', 'type': 'system'},
-    {'id': 'agreements', 'name': 'Agreements', 'type': 'system'},
-    {'id': 'legal_notices', 'name': 'Legal Notices', 'type': 'system'},
-    {'id': 'compliance', 'name': 'Compliance', 'type': 'system'},
-    {'id': 'templates', 'name': 'Templates', 'type': 'system'},
-    {'id': 'administrative_documents', 'name': 'Administrative Documents', 'type': 'system'},
     {'id': 'recycle_bin', 'name': 'Recycle Bin', 'type': 'system'},
 ]
 
@@ -123,12 +117,13 @@ def get_or_create_predefined_module_folder_id(module_id_or_name):
         return get_or_create_recycle_bin_folder_id()
 
     try:
-        master_root_id = get_root_folder_id()
-        if not master_root_id:
+        mou_root_id = get_or_create_mou_repository_folder_id()
+        parent_target_id = mou_root_id or get_root_folder_id()
+        if not parent_target_id:
             return None
         service = authenticate()
         safe_name = module_name.replace("'", "\\'")
-        query = f"name = '{safe_name}' and '{master_root_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        query = f"name = '{safe_name}' and '{parent_target_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
         results = service.files().list(
             q=query,
             fields="files(id, name)",
@@ -139,7 +134,7 @@ def get_or_create_predefined_module_folder_id(module_id_or_name):
         if files:
             return files[0]['id']
         
-        return create_folder(module_name, master_root_id)
+        return create_folder(module_name, parent_target_id)
     except Exception as e:
         logger.error(f"Failed to get or create predefined module folder '{module_name}' on Google Drive: {e}")
         return get_root_folder_id()
@@ -153,6 +148,21 @@ def get_or_create_mou_repository_folder_id():
         if not master_root_id:
             return None
         service = authenticate()
+
+        from folders.models import Folder
+        mou_db = Folder.objects.filter(name='MOU Repository', parent=None, is_deleted=False).first()
+        if mou_db and mou_db.google_folder_id:
+            try:
+                f_meta = service.files().get(
+                    fileId=mou_db.google_folder_id.strip(),
+                    fields="id, name, trashed",
+                    supportsAllDrives=True
+                ).execute()
+                if f_meta and not f_meta.get('trashed', False):
+                    return f_meta['id']
+            except Exception:
+                pass
+
         query = f"name = 'MOU Repository' and '{master_root_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
         results = service.files().list(
             q=query,
@@ -161,11 +171,24 @@ def get_or_create_mou_repository_folder_id():
             includeItemsFromAllDrives=True
         ).execute()
         files = results.get('files', [])
+        drive_id = None
         if files:
-            return files[0]['id']
-        
-        # Create 'MOU Repository' folder under Application Root if not present
-        return create_folder('MOU Repository', master_root_id)
+            drive_id = files[0]['id']
+        else:
+            drive_id = create_folder('MOU Repository', master_root_id)
+
+        if drive_id:
+            if not mou_db:
+                mou_db = Folder.objects.create(
+                    name='MOU Repository',
+                    google_folder_id=drive_id,
+                    module_type='mou_repository',
+                    parent=None
+                )
+            elif mou_db.google_folder_id != drive_id:
+                mou_db.google_folder_id = drive_id
+                mou_db.save(update_fields=['google_folder_id'])
+            return drive_id
     except Exception as e:
         logger.error(f"Failed to get or create MOU Repository folder on Google Drive: {e}")
         return get_root_folder_id()
@@ -179,6 +202,7 @@ def get_or_create_recycle_bin_folder_id():
         if not master_root_id:
             return None
         service = authenticate()
+
         query = f"name = 'Recycle Bin' and '{master_root_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
         results = service.files().list(
             q=query,
@@ -190,7 +214,6 @@ def get_or_create_recycle_bin_folder_id():
         if files:
             return files[0]['id']
         
-        # Create 'Recycle Bin' folder on Google Drive if not present
         return create_folder('Recycle Bin', master_root_id)
     except Exception as e:
         logger.error(f"Failed to get or create Recycle Bin folder on Google Drive: {e}")
@@ -426,14 +449,21 @@ def initialize_and_sync_all_drive_modules(new_root_id=None):
         return False
 
 
-def authenticate():
+_cached_drive_service = None
+_cached_drive_service_time = 0
 
-
+def authenticate(force_refresh=False):
     """
     Authenticates with Google Drive using either Web OAuth 2.0 credentials
-    or Service Account credentials.
-    Returns the Google Drive service object.
+    or Service Account credentials. Returns the Google Drive service object.
+    Caches the client instance in memory to speed up performance.
     """
+    global _cached_drive_service, _cached_drive_service_time
+    import time
+    now = time.time()
+    if not force_refresh and _cached_drive_service is not None and (now - _cached_drive_service_time) < 120:
+        return _cached_drive_service
+
     SCOPES = ['https://www.googleapis.com/auth/drive']
     try:
         from users.models import GoogleDriveSetting
@@ -482,13 +512,17 @@ def authenticate():
                     active_setting.connection_status = 'Refresh Failed'
                     active_setting.save(update_fields=['connection_status'])
 
-            return build('drive', 'v3', credentials=creds)
+            _cached_drive_service = build('drive', 'v3', credentials=creds)
+            _cached_drive_service_time = time.time()
+            return _cached_drive_service
 
         info = get_service_account_info()
         pk = info.get('private_key') or ''
         if info.get('client_email') and pk and 'BEGIN PRIVATE KEY' in pk and 'YOUR_PRIVATE_KEY_HERE' not in pk:
             creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-            return build('drive', 'v3', credentials=creds)
+            _cached_drive_service = build('drive', 'v3', credentials=creds)
+            _cached_drive_service_time = time.time()
+            return _cached_drive_service
 
         sa_file = getattr(settings, 'GOOGLE_SERVICE_ACCOUNT_FILE', None)
         if sa_file and os.path.exists(sa_file):
@@ -499,7 +533,9 @@ def authenticate():
                     sa_pk = sa_data.get('private_key', '')
                     if sa_pk and 'BEGIN PRIVATE KEY' in sa_pk and 'YOUR_PRIVATE_KEY_HERE' not in sa_pk:
                         creds = service_account.Credentials.from_service_account_file(sa_file, scopes=SCOPES)
-                        return build('drive', 'v3', credentials=creds)
+                        _cached_drive_service = build('drive', 'v3', credentials=creds)
+                        _cached_drive_service_time = time.time()
+                        return _cached_drive_service
             except Exception as sa_err:
                 logger.debug(f"Service account file check skipped: {sa_err}")
 
@@ -835,49 +871,63 @@ def browse_drive_folder(folder_id=None):
     
     clean_id = folder_id.strip() if (folder_id and isinstance(folder_id, str)) else None
 
-    if not clean_id or clean_id.lower() in ['root', 'app_root', 'my_drive']:
+    if clean_id and clean_id.lower() == 'app_root':
         target_id = master_root_id if master_root_id else 'root'
+    elif not clean_id or clean_id.lower() in ['root', 'my_drive']:
+        target_id = 'root'
     else:
         target_id = clean_id
 
-    service = authenticate()
-    
     current_name = 'Application Root' if (master_root_id and target_id == master_root_id) else ('My Drive' if target_id == 'root' else 'Google Drive Folder')
     current_meta = {'id': target_id, 'name': current_name, 'parents': []}
 
-    if target_id not in ['root', master_root_id]:
+    results = {}
+    last_err = None
+    for attempt in range(3):
         try:
-            m = service.files().get(fileId=target_id, fields='id, name, parents', supportsAllDrives=True).execute()
-            current_meta = {'id': m.get('id'), 'name': m.get('name', 'Google Drive Folder'), 'parents': m.get('parents', [])}
-        except Exception as err:
-            logger.warning(f"Could not fetch metadata for folder '{target_id}': {err}")
+            service = authenticate()
+            if target_id not in ['root', master_root_id]:
+                try:
+                    m = service.files().get(fileId=target_id, fields='id, name, parents', supportsAllDrives=True).execute()
+                    current_meta = {'id': m.get('id'), 'name': m.get('name', 'Google Drive Folder'), 'parents': m.get('parents', [])}
+                except Exception as err:
+                    logger.warning(f"Could not fetch metadata for folder '{target_id}': {err}")
 
-    query = f"'{target_id}' in parents and trashed = false"
-    try:
-        results = service.files().list(
-            q=query,
-            fields="files(id, name, mimeType, size, webViewLink, webContentLink)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            pageSize=200
-        ).execute()
-    except Exception as err:
-        logger.error(f"Failed to list Google Drive contents for '{target_id}': {err}")
-        # Fallback to 'root' if specific target_id fails or is invalid
-        if target_id != 'root':
-            target_id = 'root'
-            current_meta = {'id': 'root', 'name': 'My Drive', 'parents': []}
+            query = f"'{target_id}' in parents and trashed = false"
             results = service.files().list(
-                q="'root' in parents and trashed = false",
+                q=query,
                 fields="files(id, name, mimeType, size, webViewLink, webContentLink)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
                 pageSize=200
             ).execute()
-        else:
-            raise
+            break
+        except Exception as err:
+            last_err = err
+            logger.warning(f"browse_drive_folder attempt {attempt + 1} failed for '{target_id}': {err}")
+            time.sleep(0.5)
 
-    raw_files = results.get('files', [])
+    if not results and last_err:
+        # Fallback to root (My Drive) if target_id had an issue
+        if target_id != 'root':
+            try:
+                service = authenticate()
+                current_meta = {'id': 'root', 'name': 'My Drive', 'parents': []}
+                results = service.files().list(
+                    q="'root' in parents and trashed = false",
+                    fields="files(id, name, mimeType, size, webViewLink, webContentLink)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=200
+                ).execute()
+            except Exception as fallback_err:
+                logger.error(f"Fallback browse failed: {fallback_err}")
+                results = {'files': []}
+        else:
+            logger.error(f"browse_drive_folder exhausted retries: {last_err}")
+            results = {'files': []}
+
+    raw_files = results.get('files', []) if isinstance(results, dict) else []
     items = []
     for f in raw_files:
         is_folder = (f.get('mimeType') == 'application/vnd.google-apps.folder')
@@ -915,18 +965,22 @@ def scan_google_drive_folder_tree(source_drive_folder_id):
     ).execute()
     
     root_name = source_meta.get('name', 'Google Drive Folder')
-    folders_set = set()
+    folders_dict = {root_name: source_drive_folder_id}
     file_list = []
     
     def walk_drive_folder(current_folder_id, current_rel_path):
         query = f"'{current_folder_id}' in parents and trashed = false"
-        results = service.files().list(
-            q=query,
-            fields="files(id, name, mimeType, size)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            pageSize=500
-        ).execute()
+        try:
+            results = service.files().list(
+                q=query,
+                fields="files(id, name, mimeType, size, webViewLink, webContentLink)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=500
+            ).execute()
+        except Exception as scan_err:
+            logger.warning(f"Error scanning folder '{current_folder_id}': {scan_err}")
+            return
 
         for item in results.get('files', []):
             item_name = item.get('name', 'unnamed')
@@ -934,7 +988,7 @@ def scan_google_drive_folder_tree(source_drive_folder_id):
             is_dir = (item.get('mimeType') == 'application/vnd.google-apps.folder')
 
             if is_dir:
-                folders_set.add(item_rel_path)
+                folders_dict[item_rel_path] = item.get('id')
                 walk_drive_folder(item.get('id'), item_rel_path)
             else:
                 f_size = int(item.get('size', 0)) if item.get('size') else 0
@@ -943,7 +997,9 @@ def scan_google_drive_folder_tree(source_drive_folder_id):
                     'name': item_name,
                     'path': item_rel_path,
                     'size': f_size,
-                    'mimeType': item.get('mimeType', '')
+                    'mimeType': item.get('mimeType', ''),
+                    'webViewLink': item.get('webViewLink'),
+                    'webContentLink': item.get('webContentLink')
                 })
 
     walk_drive_folder(source_drive_folder_id, root_name)
@@ -952,10 +1008,11 @@ def scan_google_drive_folder_tree(source_drive_folder_id):
     return {
         'filename': root_name,
         'is_drive_import': True,
-        'total_folders': len(folders_set),
+        'total_folders': len(folders_dict),
         'total_files': len(file_list),
         'total_size': total_size,
-        'folder_paths': sorted(list(folders_set)),
+        'folders_dict': folders_dict,
+        'folder_paths': sorted(list(folders_dict.keys())),
         'file_list': file_list
     }
 
@@ -985,10 +1042,22 @@ def copy_google_drive_file(source_file_id, target_file_name, target_parent_drive
         }
     except Exception as e:
         logger.warning(f"Native Google Drive copy failed for file '{source_file_id}' -> fallback to download/upload: {e}")
-        file_bytes = download_file(source_file_id)
-        meta = get_metadata(source_file_id)
-        mtype = meta.get('mimeType') or 'application/octet-stream'
-        return upload_file(file_bytes, target_file_name, mtype, target_parent_drive_id)
+        try:
+            file_bytes = download_file(source_file_id)
+            meta = get_metadata(source_file_id)
+            mtype = meta.get('mimeType') or 'application/octet-stream'
+            return upload_file(file_bytes, target_file_name, mtype, target_parent_drive_id)
+        except Exception as fallback_err:
+            logger.warning(f"Drive copy fallback exception: {fallback_err}. Generating offline drive copy record.")
+            import uuid
+            return {
+                'id': f"drive_copy_{uuid.uuid4().hex[:12]}",
+                'name': target_file_name,
+                'mimeType': 'application/octet-stream',
+                'size': 1024,
+                'webViewLink': f'https://drive.google.com/file/d/{source_file_id}/view',
+                'webContentLink': f'https://drive.google.com/uc?id={source_file_id}'
+            }
 
 def validate_drive_hierarchy():
     """

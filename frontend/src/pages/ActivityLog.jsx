@@ -91,8 +91,15 @@ const ActivityLog = () => {
     setPage(0);
   };
 
-  // Filter logs by search & tab
+  // Filter logs by search & tab (Excluding Super Admin logs)
   const filteredLogs = logs.filter(log => {
+    // Exclude Super Admin logs
+    const isSuperuser = log.user?.is_superuser;
+    const roleName = (log.user?.role?.name || log.user?.role_name || '').toLowerCase();
+    if (isSuperuser || roleName.includes('super admin') || roleName.includes('superadmin')) {
+      return false;
+    }
+
     const actionStr = (log.formatted_action || log.action || '').toLowerCase();
     const rawActionStr = (log.action || '').toLowerCase();
     const modStr = (log.module || '').toLowerCase();

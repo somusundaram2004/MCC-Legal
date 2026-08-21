@@ -33,6 +33,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import StatusPill from '../components/StatusPill';
+import { showCustomToast } from '../utils/customToast';
+import LottieAnimation from '../components/LottieAnimation';
 
 const TIMELINE_STEPS = [
   { key: 'Folder Created', label: 'Folder Created', desc: 'MOU Organization Folder created' },
@@ -87,6 +89,42 @@ const MOUDetail = () => {
       setError('MOU Folder not found or permission denied.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenReview = (submissionId, action) => {
+    setSelectedSubmissionId(submissionId);
+    setReviewAction(action);
+    setReviewComments('');
+    setReviewDialogOpen(true);
+  };
+
+  const handleConfirmReview = async () => {
+    setReviewing(true);
+    try {
+      if (selectedSubmissionId) {
+        await reviewDepartmentSubmission(selectedSubmissionId, {
+          action: reviewAction,
+          remarks: reviewComments
+        });
+      } else {
+        await approveRejectMOU(id, {
+          action: reviewAction,
+          remarks: reviewComments
+        });
+      }
+      setReviewDialogOpen(false);
+      if (reviewAction === 'approve') {
+        showCustomToast.approved(mou.title);
+      } else {
+        showCustomToast.delete('Submission rejected');
+      }
+      fetchMou();
+    } catch (err) {
+      console.error('Review failed:', err);
+      showCustomToast.error('Failed to submit compliance review.');
+    } finally {
+      setReviewing(false);
     }
   };
 

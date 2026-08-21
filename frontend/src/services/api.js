@@ -1,7 +1,18 @@
 import axios from 'axios';
 import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const getApiBaseUrl = () => {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
+  const isLoopback = envUrl.includes('127.0.0.1') || envUrl.includes('localhost');
+  
+  // In production builds or when accessed from a production domain, never use loopback / localhost
+  if (import.meta.env.PROD || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')) {
+    return isLoopback ? '' : envUrl;
+  }
+  return envUrl;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,

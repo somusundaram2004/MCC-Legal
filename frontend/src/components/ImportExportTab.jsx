@@ -150,6 +150,7 @@ const ImportExportTab = () => {
 
   // ── Export Modal & Execution ──
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportDrivePickerOpen, setExportDrivePickerOpen] = useState(false);
   const [exportPreview, setExportPreview] = useState(null);
   const [exporting, setExporting] = useState(false);
 
@@ -310,6 +311,29 @@ const ImportExportTab = () => {
     }
   };
 
+  // ── Trigger Export Directly to Google Drive ──
+  const handleExecuteExportToDrive = async (targetDriveItem) => {
+    if (!selectedExportNode) return;
+    try {
+      setExporting(true);
+      const destId = Array.isArray(targetDriveItem) ? targetDriveItem[0]?.id : targetDriveItem?.id;
+      const payload = {
+        target_type: selectedExportNode.item_type,
+        target_id: selectedExportNode.id,
+        destination_drive_folder_id: destId || 'root'
+      };
+      const res = await api.post('/api/import-export/export/drive/', payload);
+      showCustomToast(res.data.detail || "Successfully exported to Google Drive!", "success");
+      setExportDrivePickerOpen(false);
+      setExportModalOpen(false);
+    } catch (err) {
+      console.error("Export to Drive error:", err);
+      showCustomToast(err?.response?.data?.detail || "Export to Google Drive failed.", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // ── Google Drive Browser Handlers ──
   const handleOpenDriveBrowser = async (folderId = null) => {
     setDriveBrowserOpen(true);
@@ -364,15 +388,24 @@ const ImportExportTab = () => {
         const scanDirectoryHandle = async (handle, path = '') => {
           for await (const entry of handle.values()) {
             if (entry.kind === 'file') {
-              const file = await entry.getFile();
+              const originalFile = await entry.getFile();
+              const fullRelativePath = path + entry.name;
+              
+              const fileWithRelativePath = new File([originalFile], originalFile.name, {
+                type: originalFile.type,
+                lastModified: originalFile.lastModified
+              });
+              
+              fileWithRelativePath.customRelativePath = fullRelativePath;
               try {
-                Object.defineProperty(file, 'webkitRelativePath', {
-                  value: path + entry.name,
-                  writable: false,
+                Object.defineProperty(fileWithRelativePath, 'webkitRelativePath', {
+                  value: fullRelativePath,
+                  writable: true,
                   configurable: true
                 });
               } catch (_) {}
-              filesArr.push(file);
+
+              filesArr.push(fileWithRelativePath);
             } else if (entry.kind === 'directory') {
               await scanDirectoryHandle(entry, path + entry.name + '/');
             }
@@ -397,7 +430,6 @@ const ImportExportTab = () => {
       folderInputRef.current.webkitdirectory = true;
       folderInputRef.current.directory = true;
       folderInputRef.current.mozdirectory = true;
-      folderInputRef.current.removeAttribute('multiple');
       folderInputRef.current.value = null;
       folderInputRef.current.click();
     }
@@ -407,15 +439,21 @@ const ImportExportTab = () => {
     if (!entry) return [];
     if (entry.isFile) {
       return new Promise((resolve) => {
-        entry.file((file) => {
+        entry.file((originalFile) => {
+          const fullRelativePath = path + originalFile.name;
+          const fileWithRelativePath = new File([originalFile], originalFile.name, {
+            type: originalFile.type,
+            lastModified: originalFile.lastModified
+          });
+          fileWithRelativePath.customRelativePath = fullRelativePath;
           try {
-            Object.defineProperty(file, 'webkitRelativePath', {
-              value: path + file.name,
-              writable: false,
+            Object.defineProperty(fileWithRelativePath, 'webkitRelativePath', {
+              value: fullRelativePath,
+              writable: true,
               configurable: true
             });
           } catch (_) {}
-          resolve([file]);
+          resolve([fileWithRelativePath]);
         }, () => resolve([]));
       });
     } else if (entry.isDirectory) {
@@ -498,7 +536,7 @@ const ImportExportTab = () => {
       if (importFolderFiles.length > 0) {
         importFolderFiles.forEach((f) => {
           formData.append('files', f);
-          const relPath = f.webkitRelativePath || f.name;
+          const relPath = f.customRelativePath || f.webkitRelativePath || f.name;
           formData.append('relative_paths', relPath);
         });
       } else {
@@ -559,7 +597,7 @@ const ImportExportTab = () => {
       if (importFolderFiles.length > 0) {
         importFolderFiles.forEach((f) => {
           formData.append('files', f);
-          const relPath = f.webkitRelativePath || f.name;
+          const relPath = f.customRelativePath || f.webkitRelativePath || f.name;
           formData.append('relative_paths', relPath);
         });
       } else {
@@ -697,7 +735,7 @@ const ImportExportTab = () => {
                 )}
               </Paper>
 
-              {/* Selected Target Summary & Action */}
+              {/* Selected Target Summary & Actions */}
               <Box sx={{ mt: 'auto' }}>
                 <Box sx={{ p: 1.8, borderRadius: '12px', bgcolor: isDark ? 'rgba(14, 165, 233, 0.12)' : '#F0F9FF', border: `1px solid ${isDark ? 'rgba(14, 165, 233, 0.3)' : '#BAE6FD'}`, mb: 2 }}>
                   <Typography variant="caption" sx={{ fontWeight: 800, color: isDark ? '#38BDF8' : '#0284C7', display: 'block' }}>
@@ -708,22 +746,68 @@ const ImportExportTab = () => {
                   </Typography>
                 </Box>
 
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="large"
-                  startIcon={exporting ? <CircularProgress size={20} color="inherit" /> : <CloudDownloadIcon />}
-                  disabled={exporting || !selectedExportNode}
-                  onClick={handleOpenExportPreview}
-                  sx={{
-                    borderRadius: '12px',
-                    fontWeight: 800,
-                    py: 1.4,
-                    background: 'linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)'
-                  }}
-                >
-                  {exporting ? 'Preparing Package...' : 'Export Selected Package'}
-                </Button>
+                <Grid container spacing={1.5}>
+                  <Grid xs={12} sm={6}>
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      size="large"
+                      startIcon={exporting ? <CircularProgress size={18} color="inherit" /> : <CloudDownloadIcon sx={{ color: '#FFFFFF' }} />}
+                      disabled={exporting || !selectedExportNode}
+                      onClick={handleOpenExportPreview}
+                      sx={{
+                        borderRadius: '12px',
+                        fontWeight: 800,
+                        py: 1.4,
+                        fontSize: '0.85rem',
+                        color: '#FFFFFF !important',
+                        background: 'linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)',
+                        boxShadow: '0 6px 16px -3px rgba(14, 165, 233, 0.4)',
+                        '&:hover': {
+                          background: 'linear-gradient(135deg, #0284C7 0%, #1D4ED8 100%)',
+                          boxShadow: '0 8px 20px -3px rgba(14, 165, 233, 0.55)'
+                        },
+                        '&.Mui-disabled': {
+                          background: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                          color: `${isDark ? '#64748B' : '#94A3B8'} !important`,
+                          boxShadow: 'none'
+                        }
+                      }}
+                    >
+                      {exporting ? 'Preparing...' : 'Download ZIP Package'}
+                    </Button>
+                  </Grid>
+                  <Grid xs={12} sm={6}>
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      size="large"
+                      startIcon={<CloudIcon sx={{ color: '#FFFFFF' }} />}
+                      disabled={exporting || !selectedExportNode}
+                      onClick={() => setExportDrivePickerOpen(true)}
+                      sx={{
+                        borderRadius: '12px',
+                        fontWeight: 800,
+                        py: 1.4,
+                        fontSize: '0.85rem',
+                        color: '#FFFFFF !important',
+                        background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                        boxShadow: '0 6px 16px -3px rgba(16, 185, 129, 0.4)',
+                        '&:hover': {
+                          background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                          boxShadow: '0 8px 20px -3px rgba(16, 185, 129, 0.55)'
+                        },
+                        '&.Mui-disabled': {
+                          background: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                          color: `${isDark ? '#64748B' : '#94A3B8'} !important`,
+                          boxShadow: 'none'
+                        }
+                      }}
+                    >
+                      Export to Google Drive
+                    </Button>
+                  </Grid>
+                </Grid>
               </Box>
             </CardContent>
           </Card>
@@ -912,6 +996,15 @@ const ImportExportTab = () => {
                     Browse Files / ZIP
                     <input type="file" multiple hidden onChange={handleFileChange} accept=".zip, .pdf, .docx, .xlsx, .csv, .png, .jpg, *" />
                   </Button>
+                  <input
+                    type="file"
+                    ref={folderInputRef}
+                    webkitdirectory=""
+                    directory=""
+                    multiple
+                    hidden
+                    onChange={handleFileChange}
+                  />
                   <Button
                     variant="contained"
                     size="small"
@@ -944,15 +1037,28 @@ const ImportExportTab = () => {
                   fullWidth
                   variant="contained"
                   size="large"
-                  color="success"
-                  startIcon={previewing ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon />}
+                  startIcon={previewing ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon sx={{ color: '#FFFFFF' }} />}
                   disabled={previewing || (!importFile && importFolderFiles.length === 0 && !(importSourceMode === 'google_drive' && selectedDriveItems.length > 0))}
                   onClick={handleOpenImportPreview}
                   sx={{
-                    borderRadius: '12px',
+                    borderRadius: '14px',
                     fontWeight: 800,
-                    py: 1.4,
-                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
+                    fontSize: '0.95rem',
+                    py: 1.6,
+                    color: '#FFFFFF !important',
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    boxShadow: '0 8px 20px -4px rgba(16, 185, 129, 0.4)',
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                      boxShadow: '0 12px 24px -4px rgba(16, 185, 129, 0.55)',
+                      transform: 'translateY(-1px)'
+                    },
+                    '&.Mui-disabled': {
+                      background: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                      color: `${isDark ? '#64748B' : '#94A3B8'} !important`,
+                      boxShadow: 'none'
+                    }
                   }}
                 >
                   {previewing ? 'Parsing Folder Package...' : 'Preview & Import Data'}
@@ -1173,7 +1279,7 @@ const ImportExportTab = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Reusable Modern Google Drive Folder Picker Modal */}
+      {/* Reusable Modern Google Drive Folder Picker Modal (For Import) */}
       <GoogleDrivePickerModal
         open={driveBrowserOpen}
         onClose={() => setDriveBrowserOpen(false)}
@@ -1182,6 +1288,17 @@ const ImportExportTab = () => {
         }}
         title="Select Folders & Documents from Google Drive to Import"
         actionLabel="Select Items for Import"
+      />
+
+      {/* Google Drive Export Destination Picker Modal */}
+      <GoogleDrivePickerModal
+        open={exportDrivePickerOpen}
+        onClose={() => setExportDrivePickerOpen(false)}
+        onSelectFolder={async (targetItem) => {
+          await handleExecuteExportToDrive(targetItem);
+        }}
+        title="Select Destination Location on Google Drive for Export"
+        actionLabel="Export to This Location"
       />
 
     </Box>

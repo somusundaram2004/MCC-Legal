@@ -361,7 +361,7 @@ const DepartmentSelect = ({ value, onChange, options, disabled, label = 'Departm
                 const isHigh = idx === highlightIdx;
                 return (
                   <Box
-                    key={opt.value}
+                    key={`dept-opt-${idx}-${opt.value || ''}`}
                     id={`dept-opt-${idx}`}
                     role="option"
                     aria-selected={isSel}
@@ -788,6 +788,7 @@ const UserManagement = () => {
       } else {
         payload.password = password;
         await api.post('/api/users/', payload);
+        showToast(`User account created! A welcome email with temporary password has been sent to ${email}.`, 'success');
       }
       setUserDialogOpen(false);
       loadData();
@@ -1036,7 +1037,7 @@ const UserManagement = () => {
                 >
                   <MenuItem value="">All Streams</MenuItem>
                   {masterStreams.map(c => (
-                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                    <MenuItem key={`filter-stream-${c.id}`} value={c.id}>{c.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -1051,8 +1052,8 @@ const UserManagement = () => {
                   sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Depts / Companies</MenuItem>
-                  {(filterCategory ? departments.filter(d => d.category === filterCategory) : departments).map(d => (
-                    <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
+                  {(filterCategory ? departments.filter(d => d.category === filterCategory) : departments).map((d, dIdx) => (
+                    <MenuItem key={`filter-dept-${d.id}-${dIdx}`} value={d.name}>{d.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -1085,7 +1086,7 @@ const UserManagement = () => {
                 >
                   <MenuItem value="">Role</MenuItem>
                   {roles.map(r => (
-                    <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
+                    <MenuItem key={`filter-role-${r.id}`} value={r.id}>{r.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -1149,7 +1150,7 @@ const UserManagement = () => {
                     </TableRow>
                   ) : (
                     filteredUsers.map((userItem) => (
-                      <TableRow key={userItem.id} hover sx={{ '& td': { verticalAlign: 'middle', py: 1.25, px: 2 } }}>
+                      <TableRow key={`user-row-${userItem.id}`} hover sx={{ '& td': { verticalAlign: 'middle', py: 1.25, px: 2 } }}>
                         <TableCell sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userItem.name}</TableCell>
                         <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem', color: 'text.secondary' }}>{userItem.email}</TableCell>
                         <TableCell>
@@ -1262,7 +1263,7 @@ const UserManagement = () => {
                 >
                   <MenuItem value="">All Streams</MenuItem>
                   {masterStreams.map(c => (
-                    <MenuItem key={c.id} value={c.name}>{c.name}</MenuItem>
+                    <MenuItem key={`inv-stream-${c.id}`} value={c.name}>{c.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -1277,8 +1278,8 @@ const UserManagement = () => {
                   sx={{ borderRadius: '8px', bgcolor: 'background.paper' }}
                 >
                   <MenuItem value="">All Depts / Companies</MenuItem>
-                  {departments.map(d => (
-                    <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
+                  {departments.map((d, dIdx) => (
+                    <MenuItem key={`inv-dept-${d.id}-${dIdx}`} value={d.name}>{d.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -1294,7 +1295,7 @@ const UserManagement = () => {
                 >
                   <MenuItem value="">All Roles</MenuItem>
                   {roles.map(r => (
-                    <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
+                    <MenuItem key={`inv-role-${r.id}`} value={r.id}>{r.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -1348,7 +1349,7 @@ const UserManagement = () => {
                       const isPending = invite.status === 'Pending';
                       
                       return (
-                        <TableRow key={invite.id} hover>
+                        <TableRow key={`invite-row-${invite.id}`} hover>
                           <TableCell sx={{ fontWeight: 600 }}>{invite.email}</TableCell>
                           <TableCell>{invite.stream || '—'}</TableCell>
                           <TableCell>{invite.department || '—'}</TableCell>
@@ -1744,7 +1745,7 @@ const UserManagement = () => {
                     sx={SELECT_SX}
                   >
                     {roles.map(r => (
-                      <MenuItem key={r.id} value={r.id} sx={MENU_ITEM_SX}>{r.name}</MenuItem>
+                      <MenuItem key={`modal-role-${r.id}`} value={r.id} sx={MENU_ITEM_SX}>{r.name}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -1762,7 +1763,7 @@ const UserManagement = () => {
                   >
                     <MenuItem value="" sx={MENU_ITEM_SX}>All Streams (Optional)</MenuItem>
                     {masterStreams.map(s => (
-                      <MenuItem key={s.id} value={s.id} sx={MENU_ITEM_SX}>{s.name}</MenuItem>
+                      <MenuItem key={`modal-stream-${s.id}`} value={s.id} sx={MENU_ITEM_SX}>{s.name}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -1778,7 +1779,7 @@ const UserManagement = () => {
                   >
                     <MenuItem value="" sx={MENU_ITEM_SX}>All Categories (Optional)</MenuItem>
                     {deptCategories.map(c => (
-                      <MenuItem key={c.id} value={c.id} sx={MENU_ITEM_SX}>{c.name}</MenuItem>
+                      <MenuItem key={`modal-cat-${c.id}`} value={c.id} sx={MENU_ITEM_SX}>{c.name}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>

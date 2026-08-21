@@ -92,23 +92,35 @@ class FileViewSet(viewsets.ModelViewSet):
             return Response({"file": ["No file was uploaded."]}, status=status.HTTP_400_BAD_REQUEST)
 
         if not folder_id or folder_id == 'null' or folder_id == 'undefined':
-            # Find or create a designated "General" root folder (parent=None)
-            folder = Folder.objects.filter(name="General", parent=None).first()
+            custom_page_id = request.data.get('custom_page_id')
+            folder = None
+            if custom_page_id:
+                from users.models import CustomDynamicPage
+                cp = CustomDynamicPage.objects.filter(id=custom_page_id).first()
+                if cp and cp.root_folder_id:
+                    folder = Folder.objects.filter(id=int(cp.root_folder_id), is_deleted=False).first()
+                if not folder and cp:
+                    drive_id = drive_service.get_or_create_module_folder_id(cp)
+                    folder, _ = Folder.objects.get_or_create(
+                        name=cp.title,
+                        parent=None,
+                        module_type='custom_page',
+                        custom_page=cp,
+                        is_deleted=False,
+                        defaults={'google_folder_id': drive_id}
+                    )
             if not folder:
-                drive_root_id = drive_service.get_root_folder_id()
-                google_id = None
-                try:
-                    if drive_root_id:
-                        google_id = drive_service.create_folder("General", drive_root_id)
-                except Exception as e:
-                    logger.warning(f"Failed to create General folder on Google Drive: {e}")
-                
-                folder = Folder.objects.create(
-                    name="General",
-                    parent=None,
-                    google_folder_id=google_id,
-                    created_by=request.user
-                )
+                mou_drive_id = drive_service.get_or_create_mou_repository_folder_id()
+                folder = Folder.objects.filter(name="MOU Repository", module_type='mou_repository', parent=None, is_deleted=False).first()
+                if not folder:
+                    folder, _ = Folder.objects.get_or_create(
+                        name="MOU Repository",
+                        parent=None,
+                        module_type='mou_repository',
+                        custom_page=None,
+                        is_deleted=False,
+                        defaults={'google_folder_id': mou_drive_id}
+                    )
         else:
             folder = get_object_or_404(Folder, id=folder_id)
 
@@ -264,6 +276,17 @@ class FileViewSet(viewsets.ModelViewSet):
                     )
                 else:
                     notify_admins("File Uploaded", f"File '{name}' was uploaded to '{folder.name}' by {request.user.name}.", metadata={'action': 'file_uploaded', 'file_id': file_instance.id, 'file_name': file_instance.name, 'folder_id': folder.id, 'folder_name': folder.name})
+
+                # Notify users who have access to this shared folder (excluding uploader)
+                from folders.models import FolderPermission
+                folder_perms = FolderPermission.objects.filter(folder=folder, is_granted=True).exclude(user=request.user)
+                for fp in folder_perms:
+                    create_notification(
+                        fp.user,
+                        "New File Uploaded",
+                        f"File '{name}' was uploaded to folder '{folder.name}'.",
+                        metadata={'action': 'file_uploaded', 'file_id': file_instance.id, 'file_name': file_instance.name, 'folder_id': folder.id, 'folder_name': folder.name}
+                    )
         except Exception as e:
             logger.exception(f"File upload view failed for '{name}' in folder '{folder.name}': {e}")
             return Response({"detail": f"Google Drive file upload failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

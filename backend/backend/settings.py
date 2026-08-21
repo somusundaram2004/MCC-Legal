@@ -44,7 +44,8 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
     'localhost',
     '127.0.0.1',
     'legal.mccmrfip.in',
-    '.mccmrfip.in'
+    '.mccmrfip.in',
+    'testserver'
 ])
 
 # Google Drive API Configuration

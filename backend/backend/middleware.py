@@ -149,6 +149,7 @@ class SecurityHeadersMiddleware:
         response['X-XSS-Protection'] = '1; mode=block'
         response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
+        response['Cross-Origin-Opener-Policy'] = 'same-origin-allow-popups'
 
         # Content Security Policy (CSP)
         csp_directives = [
