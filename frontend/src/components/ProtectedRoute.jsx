@@ -24,6 +24,7 @@ const ProtectedRoute = ({ children, requiredPermission, blockUserRole, onlySuper
   }
 
   if (requiredPermission && !hasPermission(requiredPermission)) {
+    const { logout } = useAuth();
     return (
       <Box 
         sx={{ 
@@ -31,7 +32,7 @@ const ProtectedRoute = ({ children, requiredPermission, blockUserRole, onlySuper
           flexDirection: 'column', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          height: '70vh', 
+          minHeight: '80vh', 
           textAlign: 'center', 
           p: 3 
         }}
@@ -41,12 +42,31 @@ const ProtectedRoute = ({ children, requiredPermission, blockUserRole, onlySuper
           Access Denied
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 450, mb: 3 }}>
-          You do not have the required permissions ({requiredPermission}) to view this module. 
+          You do not have the required permissions (<code>{requiredPermission}</code>) to view this module. 
           Please contact your administrator if you believe this is an error.
         </Typography>
-        <Button variant="contained" href="/" sx={{ px: 4 }}>
-          Go to Dashboard
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {hasPermission('view_folder') ? (
+            <Button variant="contained" href="/explorer" sx={{ px: 3, borderRadius: '10px' }}>
+              Go to Explorer
+            </Button>
+          ) : (
+            <Button variant="contained" href="/" sx={{ px: 3, borderRadius: '10px' }}>
+              Go to Dashboard
+            </Button>
+          )}
+          <Button 
+            variant="outlined" 
+            color="error" 
+            onClick={() => {
+              logout();
+              window.location.href = '/login';
+            }} 
+            sx={{ px: 3, borderRadius: '10px' }}
+          >
+            Log Out / Switch Account
+          </Button>
+        </Box>
       </Box>
     );
   }
