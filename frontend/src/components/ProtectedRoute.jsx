@@ -5,7 +5,7 @@ import { Box, Typography, Button } from '@mui/material';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 
 const ProtectedRoute = ({ children, requiredPermission, blockUserRole, onlySuperAdmin }) => {
-  const { user, loading, hasPermission } = useAuth();
+  const { user, loading, hasPermission, logout } = useAuth();
 
   if (loading) {
     return null; // AuthContext handles loading internally, or we can render a spinner

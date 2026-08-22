@@ -67,6 +67,8 @@ const DynamicPageContainer = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
 
+  const [pageFoundInApi, setPageFoundInApi] = useState(false);
+
   const fetchPageConfig = useCallback(async () => {
     setLoadingConfig(true);
     setError(null);
@@ -80,6 +82,7 @@ const DynamicPageContainer = () => {
       );
       if (found) {
         setPageConfig(found);
+        setPageFoundInApi(true);
       } else {
         setPageConfig({
           title: slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
@@ -89,6 +92,7 @@ const DynamicPageContainer = () => {
           description: `Dynamic repository for ${slug.replace(/-/g, ' ')}.`,
           crud_permissions: { create: true, read: true, upload: true, download: true, preview: true, share: true }
         });
+        setPageFoundInApi(false);
       }
     } catch (err) {
       console.error('Failed to load page config:', err);
@@ -138,12 +142,9 @@ const DynamicPageContainer = () => {
 
   const isAllowed = React.useMemo(() => {
     if (!pageConfig) return true;
-    if (userRole === 'Super Admin') return true;
-    const roles = pageConfig.allowed_roles || [];
-    const allowedUserIds = (pageConfig.allowed_permissions || []).map(String);
-    if (roles.length === 0 && allowedUserIds.length === 0) return true;
-    return roles.includes(userRole) || allowedUserIds.includes(userId);
-  }, [pageConfig, userRole, userId]);
+    if (userRole === 'Super Admin' || userRole === 'Admin') return true;
+    return pageFoundInApi;
+  }, [pageConfig, userRole, pageFoundInApi]);
 
   if (loadingConfig) {
     return (

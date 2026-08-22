@@ -1102,40 +1102,16 @@ class CustomDynamicPageViewSet(viewsets.ModelViewSet):
             return qs
 
         # For standard User: only return custom modules that have at least one folder/file shared with or created by the user
-        from folders.models import Folder, FolderPermission
-        from django.db.models import Q
+        from folders.models import Folder
 
-        user_fp_folder_ids = list(FolderPermission.objects.filter(user=user, is_granted=True).values_list('folder_id', flat=True))
         accessible_page_ids = []
 
         for page in qs:
-            # 1. Check if any folder directly linked to this custom page is accessible to user
-            has_shared_folder = Folder.objects.filter(
-                custom_page=page,
-                is_deleted=False
-            ).filter(
-                Q(created_by=user) | Q(id__in=user_fp_folder_ids)
-            ).exists()
-
-            if has_shared_folder:
+            # Check if user has access to any folder belonging to this page (including root and nested folders)
+            page_folders = Folder.objects.filter(custom_page=page, is_deleted=False)
+            has_accessible_folder = any(f.has_access(user) for f in page_folders)
+            if has_accessible_folder:
                 accessible_page_ids.append(page.id)
-                continue
-
-            # 2. Check if the module root folder or any of its descendants are shared with user
-            if page.root_folder_id:
-                try:
-                    rf_id = int(page.root_folder_id)
-                    root_folder = Folder.objects.filter(id=rf_id, is_deleted=False).first()
-                    if root_folder and (root_folder.id in user_fp_folder_ids or root_folder.created_by == user):
-                        accessible_page_ids.append(page.id)
-                        continue
-
-                    # Check descendants
-                    if Folder.objects.filter(parent=root_folder, is_deleted=False).filter(Q(created_by=user) | Q(id__in=user_fp_folder_ids)).exists():
-                        accessible_page_ids.append(page.id)
-                        continue
-                except (ValueError, TypeError):
-                    pass
 
         return qs.filter(id__in=accessible_page_ids)
 

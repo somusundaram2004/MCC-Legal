@@ -521,48 +521,12 @@ const UserManagement = () => {
   useEffect(() => { loadData(); }, [loadData]);
 
   // Global Auto Refresh Subscription
-  useAutoRefresh(REFRESH_CATEGORIES.USERS, loadData);
-
-  // Background polling for real-time synchronization across admins
-  useEffect(() => {
-    const fetchUsersBackground = async () => {
-      try {
-        const usersRes = await api.get('/api/users/');
-        setUsers(usersRes.data);
-      } catch (err) {
-        console.error('Background user poll failed:', err);
-      }
-    };
-
-    const fetchInvitationsBackground = async () => {
-      try {
-        const params = {};
-        if (invitationSearch) params.search = invitationSearch;
-        if (invitationFilterStream) params.stream = invitationFilterStream;
-        if (invitationFilterDept) params.department = invitationFilterDept;
-        if (invitationFilterRole) params.role = invitationFilterRole;
-        if (invitationFilterStatus) params.status = invitationFilterStatus;
-        
-        const res = await api.get('/api/users/invitations/', { params });
-        if (res.data.results) {
-          setInvitations(res.data.results);
-        } else {
-          setInvitations(res.data);
-        }
-      } catch (err) {
-        console.error('Background invitations poll failed:', err);
-      }
-    };
-
-    const interval = setInterval(() => {
-      fetchUsersBackground();
-      if (currentTab === 1) {
-        fetchInvitationsBackground();
-      }
-    }, 5000); // Poll every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [currentTab, invitationSearch, invitationFilterStream, invitationFilterDept, invitationFilterRole, invitationFilterStatus]);
+  useAutoRefresh(REFRESH_CATEGORIES.USERS, () => {
+    loadData();
+    if (currentTab === 1) {
+      loadInvitations();
+    }
+  });
 
   const loadInvitations = async () => {
     setInvitationsLoading(true);

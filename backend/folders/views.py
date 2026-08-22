@@ -98,6 +98,28 @@ def sync_drive_directory(parent_google_id=None, parent_folder_obj=None, user=Non
         logger.warning(f"Google Drive sync error for folder '{parent_google_id}': {e}")
 
 
+def check_folder_modification_allowed(user, folder):
+    """
+    Checks if a user is allowed to modify (rename, delete, move) a folder.
+    Returns None if allowed, or a Response object with 403 Forbidden if not allowed.
+    """
+    is_admin = user.role and user.role.name in ["Super Admin", "Admin"]
+    
+    # 1. Creator always has full access to delete/rename/move their own folders
+    if folder.created_by == user:
+        return None
+        
+    # 2. System-seeded folders (created_by is None) can be managed by Super Admin / Admin
+    if folder.created_by is None and is_admin:
+        return None
+        
+    # 3. Otherwise, modification is denied
+    return Response(
+        {"detail": "Only the creator of this folder can edit, delete, or move it."},
+        status=status.HTTP_403_FORBIDDEN
+    )
+
+
 class FolderViewSet(viewsets.ModelViewSet):
     serializer_class = FolderSerializer
     permission_classes = [HasDynamicPermission]
@@ -157,7 +179,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         # Access check for retrieve
         has_access = instance.has_access(request.user)
         if not has_access:
-            is_custom_page_system_root = (instance.parent is None and instance.custom_page_id is not None)
+            is_custom_page_system_root = (instance.custom_page is not None and str(instance.id) == str(instance.custom_page.root_folder_id))
             has_child_access = any(child.has_access(request.user) for child in instance.children.all())
             if not is_custom_page_system_root and not has_child_access:
                 return Response(
@@ -295,31 +317,10 @@ class FolderViewSet(viewsets.ModelViewSet):
         folder = self.get_object()
         old_name = folder.name
         
-        # Access check: user created the folder or has folder access
-        if not folder.has_access(request.user):
-            return Response(
-                {"detail": "You do not have access to edit this folder."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-            
-        # Share permission restriction (unless user created the folder)
-        is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
-        if not is_admin and folder.created_by != request.user:
-            from folders.models import FolderPermission
-            explicit_perm = FolderPermission.objects.filter(user=request.user, folder=folder).first()
-            if explicit_perm:
-                if not explicit_perm.can_upload:
-                    return Response(
-                        {"detail": "You do not have permission to edit this folder."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-            else:
-                share_perm = get_mou_share_permission(request.user, folder)
-                if share_perm in ['View Only', 'Upload Only']:
-                    return Response(
-                        {"detail": "You only have read/upload access and cannot edit folders here."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+        # Creator check
+        creator_resp = check_folder_modification_allowed(request.user, folder)
+        if creator_resp:
+            return creator_resp
             
         try:
             with transaction.atomic():
@@ -350,31 +351,10 @@ class FolderViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         folder = self.get_object()
         
-        # Access check: user created the folder or has access
-        if not folder.has_access(request.user):
-            return Response(
-                {"detail": "You do not have access to move this folder to Recycle Bin."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-            
-        # Share permission restriction (unless user created the folder)
-        is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
-        if not is_admin and folder.created_by != request.user:
-            from folders.models import FolderPermission
-            explicit_perm = FolderPermission.objects.filter(user=request.user, folder=folder).first()
-            if explicit_perm:
-                if not explicit_perm.can_upload:
-                    return Response(
-                        {"detail": "You do not have permission to delete this folder."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-            else:
-                share_perm = get_mou_share_permission(request.user, folder)
-                if share_perm in ['View Only', 'Upload Only']:
-                    return Response(
-                        {"detail": "You only have read/upload access and cannot delete folders here."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+        # Creator check
+        creator_resp = check_folder_modification_allowed(request.user, folder)
+        if creator_resp:
+            return creator_resp
             
         folder_name = folder.name
         now = timezone.now()
@@ -464,18 +444,11 @@ class FolderViewSet(viewsets.ModelViewSet):
             return Response({"folder_id": ["This field is required."], "name": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
         
         folder = get_object_or_404(Folder, id=folder_id)
-        if not folder.has_access(request.user):
-            return Response({"detail": "You do not have access to this folder."}, status=status.HTTP_403_FORBIDDEN)
-            
-        # Share permission restriction
-        is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
-        if not is_admin:
-            share_perm = get_mou_share_permission(request.user, folder)
-            if share_perm in ['View Only', 'Upload Only']:
-                return Response(
-                    {"detail": "You only have read/upload access and cannot edit folders here."},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        
+        # Creator check
+        creator_resp = check_folder_modification_allowed(request.user, folder)
+        if creator_resp:
+            return creator_resp
             
         old_name = folder.name
         try:
@@ -503,18 +476,11 @@ class FolderViewSet(viewsets.ModelViewSet):
             return Response({"folder_id": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
         
         folder = get_object_or_404(Folder, id=folder_id)
-        if not folder.has_access(request.user):
-            return Response({"detail": "You do not have access to this folder."}, status=status.HTTP_403_FORBIDDEN)
-            
-        # Share permission restriction
-        is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
-        if not is_admin:
-            share_perm = get_mou_share_permission(request.user, folder)
-            if share_perm in ['View Only', 'Upload Only']:
-                return Response(
-                    {"detail": "You only have read/upload access and cannot delete folders here."},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        
+        # Creator check
+        creator_resp = check_folder_modification_allowed(request.user, folder)
+        if creator_resp:
+            return creator_resp
             
         folder_name = folder.name
         now = timezone.now()
@@ -568,19 +534,10 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         
         # Access & Permission check for all folders
-        is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
         for folder in folders:
-            if not folder.has_access(request.user):
-                return Response({"detail": f"You do not have access to delete folder '{folder.name}'."}, status=status.HTTP_403_FORBIDDEN)
-            
-            # Share permission restriction
-            if not is_admin:
-                share_perm = get_mou_share_permission(request.user, folder)
-                if share_perm in ['View Only', 'Upload Only']:
-                    return Response(
-                        {"detail": f"You only have read/upload access and cannot delete folder '{folder.name}'."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+            creator_resp = check_folder_modification_allowed(request.user, folder)
+            if creator_resp:
+                return creator_resp
         
         deleted_names = []
         now = timezone.now()
@@ -624,11 +581,10 @@ class FolderViewSet(viewsets.ModelViewSet):
         """
         folder = self.get_object()
         
-        if not folder.has_access(request.user):
-            return Response(
-                {"detail": "You do not have access to move this folder."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Creator check
+        creator_resp = check_folder_modification_allowed(request.user, folder)
+        if creator_resp:
+            return creator_resp
 
         target_custom_page_id = request.data.get('target_custom_page_id')
         if not target_custom_page_id:
@@ -845,7 +801,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         # or if user has access to any child folder inside
         has_access = folder.has_access(request.user)
         if not has_access:
-            is_custom_page_system_root = (folder.parent is None and folder.custom_page_id is not None)
+            is_custom_page_system_root = (folder.custom_page is not None and str(folder.id) == str(folder.custom_page.root_folder_id))
             has_child_access = any(child.has_access(request.user) for child in folder.children.filter(is_deleted=False))
             if not is_custom_page_system_root and not has_child_access:
                 return Response(

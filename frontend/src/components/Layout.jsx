@@ -226,11 +226,7 @@ const Layout = ({ children }) => {
 
       setCustomPages(rawList.filter(p => {
         if (p.is_published === false || p.is_enabled === false) return false;
-        if (isSuperOrAdmin) return true;
-        const roles = p.allowed_roles || [];
-        const allowedUserIds = (p.allowed_permissions || []).map(String);
-        if (roles.length === 0 && allowedUserIds.length === 0) return true;
-        return roles.some(r => r.toLowerCase() === userRole.toLowerCase()) || allowedUserIds.includes(userId);
+        return true;
       }));
     } catch (err) {
       if (err?.response?.status !== 401) {

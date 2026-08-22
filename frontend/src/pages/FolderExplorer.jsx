@@ -649,37 +649,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   // Global Auto Refresh Subscription
   useAutoRefresh([REFRESH_CATEGORIES.FOLDERS, REFRESH_CATEGORIES.FILES, REFRESH_CATEGORIES.MOUS], fetchContents);
 
-  // Background polling for dynamic updates (real-time updates of files/folders)
-  useEffect(() => {
-    const fetchContentsBackground = async () => {
-      if (isFilteredView || !localStorage.getItem('access_token')) return;
-      try {
-        if (searchParamQuery) {
-          const res = await api.get(`/api/search/?q=${encodeURIComponent(searchParamQuery)}`);
-          if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
-          setFolderData({ subfolders: res.data.folders, files: res.data.files });
-        } else if (currentFolderId === null) {
-          const params = {};
-          if (customPageId) params.custom_page_id = customPageId;
-          const res = await api.get('/api/folders/root/', { params });
-          if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
-          setFolderData({ subfolders: res.data.subfolders || [], files: res.data.files || [] });
-        } else {
-          const res = await api.get(`/api/folders/${currentFolderId}/contents/`);
-          if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
-          setFolderData(res.data);
-          const folderRes = await api.get(`/api/folders/${currentFolderId}/`);
-          if (currentFolderId !== activeFolderIdRef.current || searchParamQuery !== activeSearchQueryRef.current) return;
-          setCurrentFolder(folderRes.data);
-        }
-      } catch (err) {
-        console.error("Background content sync failed:", err);
-      }
-    };
 
-    const interval = setInterval(fetchContentsBackground, 5000); // sync every 5 seconds
-    return () => clearInterval(interval);
-  }, [currentFolderId, searchParamQuery, isFilteredView]);
 
   // Navigate folder helper
   const handleFolderClick = (folderId) => {

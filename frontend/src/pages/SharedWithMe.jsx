@@ -10,6 +10,7 @@ import FolderIcon from '@mui/icons-material/Folder';
 
 import api from '../services/api';
 import EmptyState from '../components/EmptyState';
+import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 const SharedWithMe = () => {
   const navigate = useNavigate();
@@ -34,21 +35,7 @@ const SharedWithMe = () => {
     fetchData();
   }, []);
 
-  // Background polling to dynamically sync newly shared folders
-  useEffect(() => {
-    const fetchSharedBackground = async () => {
-      if (!localStorage.getItem('access_token')) return;
-      try {
-        const foldersResponse = await api.get('/api/folders/shared/');
-        setSharedFoldersList(foldersResponse.data);
-      } catch (err) {
-        console.error('Background shared folders sync failed:', err);
-      }
-    };
-
-    const interval = setInterval(fetchSharedBackground, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  useAutoRefresh([REFRESH_CATEGORIES.FOLDERS, REFRESH_CATEGORIES.ALL], fetchData);
 
   if (loading) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>

@@ -1,0 +1,48 @@
+# =============================================================================
+# MCC Legal Backend Environment Configuration
+# =============================================================================
+
+SECRET_KEY=django-insecure-mcc-legal-dev-secret-key-1234567890
+DEBUG=True
+
+ALLOWED_HOSTS=localhost,127.0.0.1,testserver,legal.mccmrfip.in,.mccmrfip.in
+CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000,https://legal.mccmrfip.in,http://legal.mccmrfip.in
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000,https://legal.mccmrfip.in,http://legal.mccmrfip.in
+
+# Frontend Base URL
+FRONTEND_URL=https://legal.mccmrfip.in
+
+# Database Configuration (MySQL / PostgreSQL / SQLite)
+DB_ENGINE=django.db.backends.sqlite3
+DB_NAME=db.sqlite3
+DB_USER=root
+DB_PASSWORD=
+DB_HOST=localhost
+DB_PORT=3306
+
+# Google OAuth Credentials
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_REDIRECT_URI=
+GOOGLE_DRIVE_ROOT_FOLDER_ID=
+
+# Google Drive Service Account Configuration
+GOOGLE_DRIVE_TYPE=service_account
+GOOGLE_DRIVE_PROJECT_ID=
+GOOGLE_DRIVE_PRIVATE_KEY_ID=
+GOOGLE_DRIVE_PRIVATE_KEY=
+GOOGLE_DRIVE_CLIENT_EMAIL=
+
+# File Upload Limits & Validation
+MAX_UPLOAD_SIZE=52428800
+ALLOWED_FILE_TYPES=pdf,doc,docx,xls,xlsx,png,jpg,jpeg
+
+# Email / SMTP Configuration
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_USE_SSL=False
+EMAIL_HOST_USER=
+EMAIL_HOST_PASSWORD=
+DEFAULT_FROM_EMAIL=MCC Legal Repository <no-reply@mccmrfip.in>
