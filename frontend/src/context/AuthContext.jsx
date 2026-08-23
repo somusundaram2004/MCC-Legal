@@ -25,7 +25,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Restore user session from tokens on startup
+  // Restore user session from tokens on startup and validate with backend
   useEffect(() => {
     const accessToken = localStorage.getItem('access_token');
     const cachedUser = localStorage.getItem('user');
@@ -37,11 +37,12 @@ export const AuthProvider = ({ children }) => {
         } catch {
           setUser(null);
         }
-        setLoading(false);
-      } else {
-        fetchCurrentUser();
       }
+      // Always validate token and refresh active permissions from the backend
+      fetchCurrentUser();
     } else {
+      setUser(null);
+      localStorage.removeItem('user');
       setLoading(false);
     }
   }, [fetchCurrentUser]);

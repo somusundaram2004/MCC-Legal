@@ -86,6 +86,7 @@ function App() {
                     {/* Public Login & Register Pages */}
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/register/:token" element={<Register />} />
                     <Route path="/reset-password" element={<ResetPassword />} />
 
                     {/* Protected Application Routes */}

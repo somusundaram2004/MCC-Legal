@@ -28,14 +28,16 @@ class TokenService:
         """
         Verifies the token signature and returns the payload data.
         """
-        try:
-            return signing.loads(token, max_age=86400) # 24 hours
-        except signing.SignatureExpired:
-            logger.warning("Invitation token signature has expired.")
+        if not token:
             return None
-        except signing.BadSignature:
-            logger.warning("Invitation token has an invalid signature.")
-            return None
+        import urllib.parse
+        clean_token = str(token).strip().strip('"\'').rstrip('/')
+        for candidate in [clean_token, urllib.parse.unquote(clean_token)]:
+            try:
+                return signing.loads(candidate)
+            except Exception:
+                pass
+        return None
 
 class InvitationService:
     @staticmethod
@@ -44,15 +46,13 @@ class InvitationService:
         Creates a new invitation, generates the token, and sends it via email.
         """
         now = timezone.now()
-        # Prevent duplicate pending invitations
+        # Update existing pending invitation if already active
         existing = UserInvitation.objects.filter(
             email=email,
             is_used=False,
             is_cancelled=False,
             expires_at__gt=now
         ).first()
-        if existing:
-            raise ValueError("An active invitation already exists for this email address.")
 
         # Prevent duplicate active users
         if CustomUser.objects.filter(email=email).exists():
@@ -61,15 +61,25 @@ class InvitationService:
         expires_at = now + timedelta(hours=24)
         token = TokenService.generate_token(email, stream, department, system_role.id, expires_at)
 
-        invitation = UserInvitation.objects.create(
-            email=email,
-            stream=stream,
-            department=department,
-            system_role=system_role,
-            token=token,
-            expires_at=expires_at,
-            created_by=created_by
-        )
+        if existing:
+            existing.token = token
+            existing.stream = stream
+            existing.department = department
+            existing.system_role = system_role
+            existing.expires_at = expires_at
+            existing.created_by = created_by
+            existing.save()
+            invitation = existing
+        else:
+            invitation = UserInvitation.objects.create(
+                email=email,
+                stream=stream,
+                department=department,
+                system_role=system_role,
+                token=token,
+                expires_at=expires_at,
+                created_by=created_by
+            )
         
         # Construct registration URL
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')

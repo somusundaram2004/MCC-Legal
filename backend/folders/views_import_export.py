@@ -1,5 +1,7 @@
 import os
 import io
+import time
+import uuid
 import zipfile
 import shutil
 import tempfile
@@ -11,7 +13,9 @@ from rest_framework.response import Response
 from rest_framework import status, permissions
 from django.http import HttpResponse, FileResponse
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 
 from folders.models import Folder
 from files.models import File
@@ -33,7 +37,11 @@ def get_module_destinations():
     for pm in predefined:
         if pm['id'] == 'recycle_bin':
             continue
-        drive_id = drive_service.get_or_create_predefined_module_folder_id(pm['id'])
+        drive_id = None
+        if pm['id'] == 'mou_repository':
+            mou_f = Folder.objects.filter(name='MOU Repository', parent=None, is_deleted=False).first()
+            if mou_f and mou_f.google_folder_id:
+                drive_id = mou_f.google_folder_id
         modules.append({
             'id': pm['id'],
             'name': pm['name'],
@@ -42,13 +50,12 @@ def get_module_destinations():
         })
     custom_pages = CustomDynamicPage.objects.filter(is_published=True, is_enabled=True)
     for cp in custom_pages:
-        drive_id = drive_service.get_or_create_module_folder_id(cp)
         modules.append({
             'id': f"custom_{cp.id}",
             'real_id': cp.id,
             'name': cp.title,
             'type': 'custom_page',
-            'drive_id': drive_id
+            'drive_id': cp.google_drive_folder_id or None
         })
     return modules
 
@@ -121,9 +128,7 @@ class ImportExportTreeView(APIView):
                 continue
             mou_sys_folder = None
             if pm['id'] == 'mou_repository':
-                mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
-                if mou_root_id:
-                    mou_sys_folder = Folder.objects.filter(google_folder_id=mou_root_id).first()
+                mou_sys_folder = Folder.objects.filter(name='MOU Repository', parent=None, is_deleted=False).first()
             if mou_sys_folder:
                 mod_folders = Folder.objects.filter(
                     Q(parent=mou_sys_folder) | Q(module_type=pm['id'], parent__isnull=True, custom_page__isnull=True),
@@ -206,6 +211,94 @@ class ImportExportTreeView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+def resolve_module_target(target_id):
+    """
+    Resolves module target_id (e.g. 'module_mou_repository', 'mou_repository', 'module_custom_<uuid>', '<uuid>', etc.)
+    Returns tuple: (module_title, root_folders_queryset_or_list)
+    """
+    target_str = str(target_id or '').strip()
+
+    # 1. Custom Page check with prefixes
+    if target_str.startswith('module_custom_') or target_str.startswith('custom_'):
+        raw_id = target_str.replace('module_custom_', '').replace('custom_', '')
+        try:
+            cp = CustomDynamicPage.objects.get(id=raw_id)
+            rf = None
+            if cp.root_folder_id:
+                try:
+                    rf = Folder.objects.filter(id=int(cp.root_folder_id)).first()
+                except (ValueError, TypeError):
+                    pass
+            if not rf and cp.google_drive_folder_id:
+                rf = Folder.objects.filter(google_folder_id=cp.google_drive_folder_id).first()
+
+            if rf:
+                root_folders = Folder.objects.filter(
+                    Q(parent=rf) | Q(custom_page=cp, parent__isnull=True),
+                    is_deleted=False
+                ).exclude(id=rf.id)
+            else:
+                root_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
+            return cp.title, root_folders
+        except (CustomDynamicPage.DoesNotExist, ValueError, ValidationError):
+            pass
+
+    # 2. Try raw UUID lookup if raw UUID was passed
+    try:
+        uuid.UUID(target_str)
+        cp = CustomDynamicPage.objects.get(id=target_str)
+        rf = None
+        if cp.root_folder_id:
+            try:
+                rf = Folder.objects.filter(id=int(cp.root_folder_id)).first()
+            except (ValueError, TypeError):
+                pass
+        if not rf and cp.google_drive_folder_id:
+            rf = Folder.objects.filter(google_folder_id=cp.google_drive_folder_id).first()
+
+        if rf:
+            root_folders = Folder.objects.filter(
+                Q(parent=rf) | Q(custom_page=cp, parent__isnull=True),
+                is_deleted=False
+            ).exclude(id=rf.id)
+        else:
+            root_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
+        return cp.title, root_folders
+    except (ValueError, AttributeError, CustomDynamicPage.DoesNotExist, ValidationError):
+        pass
+
+    # 3. System / Predefined Module (MOU Repository, etc.)
+    clean_id = target_str.replace('module_', '')
+    if clean_id in ('mou', 'mou_repository') or target_str in ('module_mou', 'module_mou_repository', 'mou_repository', 'mou'):
+        mou_sys_folder = None
+        mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+        if mou_root_id:
+            mou_sys_folder = Folder.objects.filter(google_folder_id=mou_root_id).first()
+        if mou_sys_folder:
+            root_folders = Folder.objects.filter(
+                Q(parent=mou_sys_folder) | Q(module_type='mou_repository', parent__isnull=True, custom_page__isnull=True),
+                is_deleted=False
+            ).exclude(id=mou_sys_folder.id)
+        else:
+            root_folders = Folder.objects.filter(
+                module_type='mou_repository', parent__isnull=True, custom_page__isnull=True, is_deleted=False
+            )
+        return "MOU Repository", root_folders
+
+    # 4. Any other predefined module
+    predefined = drive_service.get_predefined_modules()
+    for pm in predefined:
+        if clean_id == pm['id'] or target_str == f"module_{pm['id']}":
+            root_folders = Folder.objects.filter(
+                module_type=pm['id'], parent__isnull=True, custom_page__isnull=True, is_deleted=False
+            )
+            return pm['name'], root_folders
+
+    # Fallback to MOU repository
+    root_folders = Folder.objects.filter(module_type='mou_repository', parent__isnull=True, is_deleted=False)
+    return "MOU Repository", root_folders
+
+
 class ExportPreviewView(APIView):
     """
     Returns item metadata preview before Export download.
@@ -234,7 +327,7 @@ class ExportPreviewView(APIView):
                 total_files = 1
                 total_size = fi.file_size or fi.size or 0
                 export_format = f"Direct Download ({fi.file_type or 'File'})"
-            except File.DoesNotExist:
+            except (File.DoesNotExist, ValueError):
                 return Response({'detail': 'File not found or deleted.'}, status=status.HTTP_404_NOT_FOUND)
 
         elif target_type == 'folder':
@@ -261,21 +354,11 @@ class ExportPreviewView(APIView):
                     return f_cnt, fl_cnt, sz
 
                 total_folders, total_files, total_size = get_folder_stats(folder)
-            except Folder.DoesNotExist:
+            except (Folder.DoesNotExist, ValueError):
                 return Response({'detail': 'Folder not found or deleted.'}, status=status.HTTP_404_NOT_FOUND)
 
         elif target_type == 'module':
-            if target_id.startswith('module_custom_') or target_id.startswith('custom_') or target_id != 'module_mou':
-                cp_id = target_id.replace('module_custom_', '').replace('custom_', '')
-                try:
-                    cp = CustomDynamicPage.objects.get(id=cp_id)
-                    title = cp.title
-                    root_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
-                except (CustomDynamicPage.DoesNotExist, ValueError):
-                    return Response({'detail': 'Custom page module not found.'}, status=status.HTTP_404_NOT_FOUND)
-            else:
-                title = "MOU Repository"
-                root_folders = Folder.objects.filter(module_type='mou_repository', parent__isnull=True, is_deleted=False)
+            title, root_folders = resolve_module_target(target_id)
 
             def get_folders_stats(folders):
                 f_cnt = 0
@@ -356,7 +439,7 @@ class ExportDownloadView(APIView):
                 response['Content-Disposition'] = f'attachment; filename="{clean_name}"'
                 return response
 
-            except File.DoesNotExist:
+            except (File.DoesNotExist, ValueError):
                 return Response({'detail': 'File not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         # 2. Folder / Module / Root Export (ZIP Archive)
@@ -383,7 +466,7 @@ class ExportDownloadView(APIView):
                     zip_file.writestr(rel_path, file_bytes)
 
             def add_folder_to_zip(folder, current_path):
-                folder_path = os.path.join(current_path, sanitize_filename(folder.name))
+                folder_path = os.path.join(current_path, sanitize_filename(folder.name)).replace("\\", "/")
                 # Add subfolders recursively
                 sub_folders = Folder.objects.filter(parent=folder, is_deleted=False)
                 for sf in sub_folders:
@@ -392,7 +475,7 @@ class ExportDownloadView(APIView):
                 # Add files in this folder
                 files = File.objects.filter(folder=folder, is_deleted=False)
                 for fi in files:
-                    file_rel_path = os.path.join(folder_path, sanitize_filename(fi.name))
+                    file_rel_path = os.path.join(folder_path, sanitize_filename(fi.name)).replace("\\", "/")
                     add_file_to_zip(fi, file_rel_path)
 
             if target_type == 'folder':
@@ -401,37 +484,26 @@ class ExportDownloadView(APIView):
                     folder = Folder.objects.get(id=int(folder_id), is_deleted=False)
                     zip_name = f"{sanitize_filename(folder.name)}_Export.zip"
                     add_folder_to_zip(folder, "")
-                except Folder.DoesNotExist:
+                except (Folder.DoesNotExist, ValueError):
                     return Response({'detail': 'Folder not found.'}, status=status.HTTP_404_NOT_FOUND)
 
             elif target_type == 'module':
-                if target_id.startswith('module_custom_') or target_id.startswith('custom_') or target_id != 'module_mou':
-                    cp_id = target_id.replace('module_custom_', '').replace('custom_', '')
-                    try:
-                        cp = CustomDynamicPage.objects.get(id=cp_id)
-                        zip_name = f"{sanitize_filename(cp.title)}_Module_Export.zip"
-                        root_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
-                        for rf in root_folders:
-                            add_folder_to_zip(rf, sanitize_filename(cp.title))
-                    except (CustomDynamicPage.DoesNotExist, ValueError):
-                        return Response({'detail': 'Module not found.'}, status=status.HTTP_404_NOT_FOUND)
-                else:
-                    zip_name = "MOU_Repository_Module_Export.zip"
-                    root_folders = Folder.objects.filter(module_type='mou_repository', parent__isnull=True, is_deleted=False)
-                    for rf in root_folders:
-                        add_folder_to_zip(rf, "MOU Repository")
+                module_title, root_folders = resolve_module_target(target_id)
+                zip_name = f"{sanitize_filename(module_title)}_Module_Export.zip"
+                for rf in root_folders:
+                    add_folder_to_zip(rf, sanitize_filename(module_title))
 
             elif target_type == 'root':
                 zip_name = "Application_Root_Export.zip"
                 # Add MOU Repository
-                mou_folders = Folder.objects.filter(module_type='mou_repository', parent__isnull=True, is_deleted=False)
+                mou_title, mou_folders = resolve_module_target('mou_repository')
                 for rf in mou_folders:
-                    add_folder_to_zip(rf, "MOU Repository")
+                    add_folder_to_zip(rf, sanitize_filename(mou_title))
                 
                 # Add Custom Dynamic Modules
                 custom_pages = CustomDynamicPage.objects.filter(is_published=True, is_enabled=True)
                 for cp in custom_pages:
-                    cp_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
+                    _, cp_folders = resolve_module_target(f"module_custom_{cp.id}")
                     for rf in cp_folders:
                         add_folder_to_zip(rf, sanitize_filename(cp.title))
 
@@ -446,12 +518,15 @@ class ExportToDriveView(APIView):
     Exports a local database item (Root, Module, Folder, or File) directly to Google Drive.
     Creates Google Drive folder structure and uploads/copies files to destination_drive_folder_id (defaults to My Drive 'root' or 'app_root').
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         target_type = request.data.get('target_type')
         target_id = request.data.get('target_id')
         destination_drive_folder_id = request.data.get('destination_drive_folder_id') or 'root'
+
+        if not target_type or not target_id:
+            return Response({'detail': 'target_type and target_id are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if destination_drive_folder_id == 'root':
             drive_parent_id = 'root'
@@ -499,31 +574,22 @@ class ExportToDriveView(APIView):
                 fo = Folder.objects.get(id=int(folder_id), is_deleted=False)
                 export_folder_obj_to_drive(fo, drive_parent_id)
             elif target_type == 'module':
-                target_str = str(target_id)
-                if target_str.startswith('module_custom_') or target_str.startswith('custom_') or target_str != 'module_mou':
-                    cp_id = target_str.replace('module_custom_', '').replace('custom_', '')
-                    cp = CustomDynamicPage.objects.get(id=cp_id)
-                    module_folder_id = drive_service.create_folder(cp.title, drive_parent_id)
-                    root_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
-                    for rf in root_folders:
-                        export_folder_obj_to_drive(rf, module_folder_id)
-                else:
-                    mou_folder_id = drive_service.create_folder("MOU Repository", drive_parent_id)
-                    root_folders = Folder.objects.filter(module_type='mou_repository', parent__isnull=True, is_deleted=False)
-                    for rf in root_folders:
-                        export_folder_obj_to_drive(rf, mou_folder_id)
+                module_title, root_folders = resolve_module_target(target_id)
+                module_folder_id = drive_service.create_folder(module_title, drive_parent_id)
+                for rf in root_folders:
+                    export_folder_obj_to_drive(rf, module_folder_id)
             elif target_type == 'root':
                 app_root_drive_id = drive_service.create_folder("MCC Legal Repository Backup", drive_parent_id)
                 
-                mou_folder_id = drive_service.create_folder("MOU Repository", app_root_drive_id)
-                mou_folders = Folder.objects.filter(module_type='mou_repository', parent__isnull=True, is_deleted=False)
+                mou_title, mou_folders = resolve_module_target('mou_repository')
+                mou_folder_id = drive_service.create_folder(mou_title, app_root_drive_id)
                 for rf in mou_folders:
                     export_folder_obj_to_drive(rf, mou_folder_id)
 
                 cps = CustomDynamicPage.objects.filter(is_published=True, is_enabled=True)
                 for cp in cps:
+                    _, cp_folders = resolve_module_target(f"module_custom_{cp.id}")
                     cp_folder_id = drive_service.create_folder(cp.title, app_root_drive_id)
-                    cp_folders = Folder.objects.filter(custom_page=cp, parent__isnull=True, is_deleted=False)
                     for rf in cp_folders:
                         export_folder_obj_to_drive(rf, cp_folder_id)
 
@@ -736,11 +802,12 @@ class ImportExecuteView(APIView):
                 target_custom_page = CustomDynamicPage.objects.get(id=cp_id)
                 target_module_type = 'custom_page'
                 destination_drive_parent_id = drive_service.get_or_create_module_folder_id(target_custom_page)
-            except (CustomDynamicPage.DoesNotExist, ValueError):
+            except (CustomDynamicPage.DoesNotExist, ValueError, ValidationError):
                 return Response({'detail': 'Selected destination module was not found.'}, status=status.HTTP_404_NOT_FOUND)
         else:
-            target_module_type = str(module_id)
-            destination_drive_parent_id = drive_service.get_or_create_predefined_module_folder_id(module_id)
+            clean_mod_id = str(module_id).replace('module_', '')
+            target_module_type = clean_mod_id
+            destination_drive_parent_id = drive_service.get_or_create_predefined_module_folder_id(clean_mod_id)
 
         user = request.user if request.user and request.user.is_authenticated else None
         successful_files = []

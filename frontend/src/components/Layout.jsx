@@ -1210,20 +1210,20 @@ const Layout = ({ children }) => {
               <List sx={{ p: 0 }}>
                 <ListItemButton onClick={() => handleCommandAction('/')} sx={{ py: 1.2, px: 2.5, gap: 2 }}>
                   <DashboardIcon sx={{ color: '#2563eb', fontSize: '1.2rem' }} />
-                  <ListItemText primary="Go to Dashboard" slotProps={{ primary: { fontSize: '0.9rem', fontWeight: 600 } }} />
+                  <ListItemText primary="Go to Dashboard" slotProps={{ primary: { sx: { fontSize: '0.9rem', fontWeight: 600 } } }} />
                   <ArrowForwardIosIcon sx={{ fontSize: '0.65rem', color: 'text.secondary' }} />
                 </ListItemButton>
 
                 <ListItemButton onClick={() => handleCommandAction('/explorer')} sx={{ py: 1.2, px: 2.5, gap: 2 }}>
                   <FolderCopyIcon sx={{ color: '#10b981', fontSize: '1.2rem' }} />
-                  <ListItemText primary="Go to MOU Repositories" slotProps={{ primary: { fontSize: '0.9rem', fontWeight: 600 } }} />
+                  <ListItemText primary="Go to MOU Repositories" slotProps={{ primary: { sx: { fontSize: '0.9rem', fontWeight: 600 } } }} />
                   <ArrowForwardIosIcon sx={{ fontSize: '0.65rem', color: 'text.secondary' }} />
                 </ListItemButton>
 
                 {hasPermission('manage_users') && user?.role?.name?.toLowerCase() !== 'user' && (
                   <ListItemButton onClick={() => handleCommandAction('/users')} sx={{ py: 1.2, px: 2.5, gap: 2 }}>
                     <ManageAccountsIcon sx={{ color: '#8b5cf6', fontSize: '1.2rem' }} />
-                    <ListItemText primary="Go to User Management" slotProps={{ primary: { fontSize: '0.9rem', fontWeight: 600 } }} />
+                    <ListItemText primary="Go to User Management" slotProps={{ primary: { sx: { fontSize: '0.9rem', fontWeight: 600 } } }} />
                     <ArrowForwardIosIcon sx={{ fontSize: '0.65rem', color: 'text.secondary' }} />
                   </ListItemButton>
                 )}
@@ -1231,14 +1231,14 @@ const Layout = ({ children }) => {
                 {hasPermission('manage_users') && (
                   <ListItemButton onClick={() => handleCommandAction('/logs')} sx={{ py: 1.2, px: 2.5, gap: 2 }}>
                     <AdminPanelSettingsIcon sx={{ color: '#64748b', fontSize: '1.2rem' }} />
-                    <ListItemText primary="Go to Activity Logs Audit" slotProps={{ primary: { fontSize: '0.9rem', fontWeight: 600 } }} />
+                    <ListItemText primary="Go to Activity Logs Audit" slotProps={{ primary: { sx: { fontSize: '0.9rem', fontWeight: 600 } } }} />
                     <ArrowForwardIosIcon sx={{ fontSize: '0.65rem', color: 'text.secondary' }} />
                   </ListItemButton>
                 )}
 
                 <ListItemButton onClick={() => handleCommandAction(toggleTheme)} sx={{ py: 1.2, px: 2.5, gap: 2 }}>
                   <KeyboardIcon sx={{ color: '#f59e0b', fontSize: '1.2rem' }} />
-                  <ListItemText primary={`Switch to ${mode === 'dark' ? 'Light Mode' : 'Dark Mode'}`} slotProps={{ primary: { fontSize: '0.9rem', fontWeight: 600 } }} />
+                  <ListItemText primary={`Switch to ${mode === 'dark' ? 'Light Mode' : 'Dark Mode'}`} slotProps={{ primary: { sx: { fontSize: '0.9rem', fontWeight: 600 } } }} />
                   <Chip label="Theme Toggle" size="small" variant="outlined" sx={{ height: 20, fontSize: '0.68rem', fontWeight: 700 }} />
                 </ListItemButton>
               </List>
@@ -1271,8 +1271,8 @@ const Layout = ({ children }) => {
                           primary={f.name} 
                           secondary={`${f.file_count || 0} files • ${f.subfolder_count || 0} subfolders`}
                           slotProps={{
-                            primary: { fontSize: '0.88rem', fontWeight: 600 },
-                            secondary: { fontSize: '0.72rem' }
+                            primary: { sx: { fontSize: '0.88rem', fontWeight: 600 } },
+                            secondary: { sx: { fontSize: '0.72rem' } }
                           }}
                         />
                       </ListItemButton>
@@ -1295,8 +1295,8 @@ const Layout = ({ children }) => {
                           primary={file.name} 
                           secondary={`v${file.version_number} • ${file.size_formatted} • Modified ${new Date(file.updated_at).toLocaleDateString()}`}
                           slotProps={{
-                            primary: { fontSize: '0.88rem', fontWeight: 600 },
-                            secondary: { fontSize: '0.72rem' }
+                            primary: { sx: { fontSize: '0.88rem', fontWeight: 600 } },
+                            secondary: { sx: { fontSize: '0.72rem' } }
                           }}
                         />
                       </ListItemButton>
@@ -1321,8 +1321,8 @@ const Layout = ({ children }) => {
                           primary={u.name} 
                           secondary={`${u.email} • ${u.designation || 'Staff'} - ${u.department || 'MOU Office'}`}
                           slotProps={{
-                            primary: { fontSize: '0.88rem', fontWeight: 600 },
-                            secondary: { fontSize: '0.72rem' }
+                            primary: { sx: { fontSize: '0.88rem', fontWeight: 600 } },
+                            secondary: { sx: { fontSize: '0.72rem' } }
                           }}
                         />
                       </ListItemButton>
@@ -1422,8 +1422,8 @@ const Layout = ({ children }) => {
                     primary={n.title}
                     secondary={n.description}
                     slotProps={{
-                      primary: { fontSize: '0.88rem', fontWeight: 700, color: 'text.primary', mb: 0.2 },
-                      secondary: { fontSize: '0.78rem', color: 'text.secondary', lineHeight: 1.4 }
+                      primary: { sx: { fontSize: '0.88rem', fontWeight: 700, color: 'text.primary', mb: 0.2 } },
+                      secondary: { sx: { fontSize: '0.78rem', color: 'text.secondary', lineHeight: 1.4 } }
                     }}
                   />
                 </ListItem>

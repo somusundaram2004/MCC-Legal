@@ -23,8 +23,10 @@ urlpatterns = [
     path('auth/reset-password/', ResetPasswordView.as_view(), name='reset_password'),
     
     # Invitation routes
+    path('invitation/', UserViewSet.as_view({'get': 'get_invitation'}), name='get-invitation-query'),
     path('invitation/<uuid:pk>/', UserViewSet.as_view({'delete': 'delete_invitation'}), name='delete-invitation'),
-    path('invitation/<str:token>/', UserViewSet.as_view({'get': 'get_invitation'}), name='get-invitation'),
+    path('invitation/<path:token>/', UserViewSet.as_view({'get': 'get_invitation'}), name='get-invitation'),
+    path('invitation/<path:token>', UserViewSet.as_view({'get': 'get_invitation'}), name='get-invitation-noslash'),
     
     # User endpoints
     path('', include(router.urls)),

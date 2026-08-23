@@ -281,7 +281,6 @@ const Login = () => {
 
         {/* Left Side: Modern SVG Artwork Illustration Panel */}
         <Grid
-          item
           xs={0}
           md={6}
           sx={{
@@ -363,7 +362,6 @@ const Login = () => {
 
         {/* Right Side: Sign In Card Form Panel */}
         <Grid
-          item
           xs={12}
           md={6}
           sx={{

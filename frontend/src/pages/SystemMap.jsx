@@ -408,7 +408,7 @@ const StageDrawer = ({ stage, onClose, isDark }) => {
               </ListItemIcon>
               <ListItemText
                 primary={n}
-                slotProps={{ primary: { fontSize: '0.82rem', color: isDark ? '#94A3B8' : '#475569', lineHeight: 1.5 } }}
+                slotProps={{ primary: { sx: { fontSize: '0.82rem', color: isDark ? '#94A3B8' : '#475569', lineHeight: 1.5 } } }}
               />
             </ListItem>
           ))}

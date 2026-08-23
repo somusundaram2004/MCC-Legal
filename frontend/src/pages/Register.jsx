@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
 import { 
   Box, Card, CardContent, Typography, TextField, Button, 
   Alert, InputAdornment, IconButton, CircularProgress,
@@ -23,8 +23,9 @@ import { useAuth } from '../context/AuthContext';
 
 const Register = () => {
   const { login } = useAuth();
+  const { token: pathToken } = useParams();
   const [searchParams] = useSearchParams();
-  const rawToken = searchParams.get('token') || '';
+  const rawToken = pathToken || searchParams.get('token') || '';
   const token = rawToken.trim().replace(/^["']|["']$/g, '');
   const navigate = useNavigate();
 
@@ -107,7 +108,7 @@ const Register = () => {
       return;
     }
 
-    api.get(`/api/users/invitation/${encodeURIComponent(token)}/`)
+    api.get(`/api/users/invitation/${encodeURIComponent(token)}/`, { params: { token } })
       .then(res => {
         setInvitation(res.data);
       })
@@ -268,7 +269,6 @@ const Register = () => {
         
         {/* Left Panel: Branding */}
         <Grid 
-          item 
           xs={0} 
           md={6} 
           sx={{ 
@@ -317,7 +317,6 @@ const Register = () => {
 
         {/* Right Panel: Form */}
         <Grid 
-          item 
           xs={12} 
           md={6} 
           sx={{ 

@@ -718,6 +718,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if not token_val:
             return Response({"detail": "Invitation token is required."}, status=status.HTTP_400_BAD_REQUEST)
             
+        now = timezone.now()
         invitation = UserInvitation.objects.filter(token=token_val).first()
         if not invitation:
             import urllib.parse
@@ -725,9 +726,54 @@ class UserViewSet(viewsets.ModelViewSet):
             invitation = UserInvitation.objects.filter(token=unquoted).first()
 
         if not invitation:
+            from .invitation_services import TokenService
+            payload = TokenService.verify_token(token_val)
+            if payload and payload.get('email'):
+                invitation = UserInvitation.objects.filter(
+                    email=payload['email'],
+                    is_used=False,
+                    is_cancelled=False
+                ).order_by('-created_at').first()
+                if not invitation:
+                    if User.objects.filter(email=payload['email']).exists():
+                        return Response({
+                            "status": "Accepted",
+                            "detail": "This invitation link has already been used to register an account."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    from datetime import datetime
+                    exp_val = payload.get('expires_at')
+                    if exp_val:
+                        try:
+                            exp_dt = datetime.fromisoformat(exp_val)
+                            if exp_dt < now:
+                                return Response({
+                                    "status": "Expired",
+                                    "detail": "This invitation link has expired (valid for 24 hours). Please request a new link."
+                                }, status=status.HTTP_400_BAD_REQUEST)
+                        except Exception:
+                            pass
+                    from roles.models import Role
+                    role = Role.objects.filter(id=payload.get('role_id', 3)).first() or Role.objects.filter(name='User').first()
+                    return Response({
+                        "id": str(uuid.uuid4()),
+                        "email": payload['email'],
+                        "stream": payload.get('stream', ''),
+                        "department": payload.get('department', ''),
+                        "system_role": {
+                            "id": role.id if role else 3,
+                            "name": role.name if role else "User",
+                            "description": role.description if role else "Standard User"
+                        },
+                        "token": token_val,
+                        "expires_at": payload.get('expires_at'),
+                        "is_used": False,
+                        "is_cancelled": False,
+                        "status": "Pending"
+                    })
+
+        if not invitation:
             return Response({"detail": "This invitation link is invalid or no longer exists. Please ask an admin to send a new invitation link."}, status=status.HTTP_404_NOT_FOUND)
 
-        now = timezone.now()
         status_val = 'Pending'
         detail_msg = ''
         
@@ -765,7 +811,36 @@ class UserViewSet(viewsets.ModelViewSet):
         department_val = serializer.validated_data.get('department', '')
         company_name = serializer.validated_data.get('company_name', '')
         
-        invitation = get_object_or_404(UserInvitation, token=token)
+        invitation = UserInvitation.objects.filter(token=token).first()
+        if not invitation:
+            import urllib.parse
+            unquoted = urllib.parse.unquote(token)
+            invitation = UserInvitation.objects.filter(token=unquoted).first()
+
+        if not invitation:
+            from .invitation_services import TokenService
+            payload = TokenService.verify_token(token)
+            if payload and payload.get('email'):
+                invitation = UserInvitation.objects.filter(
+                    email=payload['email'],
+                    is_used=False,
+                    is_cancelled=False
+                ).order_by('-created_at').first()
+                if not invitation:
+                    from roles.models import Role
+                    from datetime import timedelta
+                    role = Role.objects.filter(id=payload.get('role_id', 3)).first() or Role.objects.filter(name='User').first()
+                    invitation = UserInvitation.objects.create(
+                        email=payload['email'],
+                        stream=payload.get('stream', ''),
+                        department=payload.get('department', ''),
+                        system_role=role,
+                        token=token,
+                        expires_at=timezone.now() + timedelta(hours=24)
+                    )
+
+        if not invitation:
+            return Response({"detail": "This invitation link is invalid, expired, used, or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
         now = timezone.now()
         
         if invitation.is_used or invitation.is_cancelled or invitation.expires_at < now:
