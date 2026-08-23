@@ -485,6 +485,9 @@ const Login = () => {
                         color: isDark ? '#ffffff !important' : '#000000 !important',
                         fontWeight: 600,
                       },
+                      '& input::-ms-reveal, & input::-ms-clear': {
+                        display: 'none !important',
+                      },
                       '& input:-webkit-autofill': {
                         WebkitBoxShadow: isDark ? '0 0 0 100px #1e293b inset !important' : '0 0 0 100px #ffffff inset !important',
                         WebkitTextFillColor: isDark ? '#ffffff !important' : '#000000 !important',

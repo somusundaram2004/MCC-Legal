@@ -311,6 +311,14 @@ body { margin: 0; min-width: 320px; min-height: 100vh; -webkit-font-smoothing: a
 .avatar-ring-rose    { box-shadow:0 0 0 3px #F43F5E!important; }
 
 /* ── Browser Autofill Reset & Seamless Input Integration ────────────── */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
