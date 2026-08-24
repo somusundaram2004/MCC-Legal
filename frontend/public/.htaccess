@@ -1,0 +1,15 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. Directly serve existing physical files and directories
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 2. Prevent static asset directories from falling back to index.html (return 404 if missing)
+  RewriteRule ^assets/ - [L,R=404]
+
+  # 3. SPA Fallback: Rewrite all other non-file/non-dir routes to /index.html
+  RewriteRule . /index.html [L]
+</IfModule>
