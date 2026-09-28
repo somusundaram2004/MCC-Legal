@@ -13,11 +13,11 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhos
 FRONTEND_URL=http://localhost:5173
 
 # Database Configuration (MySQL / PostgreSQL / SQLite)
-DB_ENGINE=django.db.backends.sqlite3
-DB_NAME=db.sqlite3
+DB_ENGINE=django.db.backends.mysql
+DB_NAME=mcc_legal
 DB_USER=root
 DB_PASSWORD=
-DB_HOST=localhost
+DB_HOST=127.0.0.1
 DB_PORT=3306
 
 # Google OAuth Credentials

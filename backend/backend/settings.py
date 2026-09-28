@@ -140,10 +140,10 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Database Configuration (Environment-driven: MySQL / PostgreSQL / SQLite)
 DB_ENGINE = env('DB_ENGINE', default='django.db.backends.mysql')
-DB_NAME = env('DB_NAME', default='mou_dashboard')
+DB_NAME = env('DB_NAME', default='mcc_legal')
 DB_USER = env('DB_USER', default='root')
 DB_PASSWORD = env('DB_PASSWORD', default='')
-DB_HOST = env('DB_HOST', default='localhost')
+DB_HOST = env('DB_HOST', default='127.0.0.1')
 env_port = env('DB_PORT', default=None)
 if env_port:
     DB_PORT = env_port
