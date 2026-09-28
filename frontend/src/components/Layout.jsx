@@ -250,7 +250,7 @@ const Layout = ({ children }) => {
     { text: 'Shared With Me',  icon: <ShareIcon />,              path: '/shared',     permission: 'view_dashboard', iconColor: '#3B82F6' },
     { text: 'Departments',     icon: <BusinessIcon />,           path: '/departments', permission: 'view_dashboard', iconColor: '#14B8A6' },
     { text: 'Notifications',   icon: <NotificationsIcon />,      path: '/notifications', permission: 'view_notifications', iconColor: '#F43F5E' },
-    { text: 'MOU Templates',   icon: <ExtensionIcon />,          path: '/templates',  permission: 'manage_users',   iconColor: '#F59E0B' },
+    { text: 'Templates',       icon: <ExtensionIcon />,          path: '/templates',  permission: 'manage_users',   iconColor: '#F59E0B' },
     { text: 'MOU Repositories', icon: <FolderCopyIcon />,          path: '/explorer',   permission: 'view_folder',    iconColor: '#0EA5E9' },
     { text: 'User Management', icon: <ManageAccountsIcon />,      path: '/users',      permission: 'manage_users',   iconColor: '#EC4899' },
     { text: 'Activity Logs',   icon: <AdminPanelSettingsIcon />,  path: '/logs',       permission: 'manage_users',   iconColor: '#F97316' },

@@ -6,6 +6,7 @@ import zipfile
 import shutil
 import tempfile
 import logging
+import posixpath
 from datetime import datetime
 
 from rest_framework.views import APIView
@@ -931,18 +932,31 @@ class ImportExecuteView(APIView):
                                 parent_f, parent_d = folder_map.get(parent_acc, (top_folder, top_drive_id))
                                 clean_dir_name = sanitize_filename(p)
 
-                                sub_f, _ = Folder.objects.get_or_create(
-                                    google_folder_id=sub_g_id if sub_g_id else None,
-                                    defaults={
-                                        'name': clean_dir_name,
-                                        'parent': parent_f,
-                                        'module_type': target_module_type,
-                                        'custom_page': target_custom_page,
-                                        'import_source': 'google_drive',
-                                        'created_by': user,
-                                        'status': 'Active'
-                                    }
-                                )
+                                if sub_g_id:
+                                    sub_f, _ = Folder.objects.get_or_create(
+                                        google_folder_id=sub_g_id,
+                                        defaults={
+                                            'name': clean_dir_name,
+                                            'parent': parent_f,
+                                            'module_type': target_module_type,
+                                            'custom_page': target_custom_page,
+                                            'import_source': 'google_drive',
+                                            'created_by': user,
+                                            'status': 'Active'
+                                        }
+                                    )
+                                else:
+                                    sub_f, _ = Folder.objects.get_or_create(
+                                        name=clean_dir_name,
+                                        parent=parent_f,
+                                        defaults={
+                                            'module_type': target_module_type,
+                                            'custom_page': target_custom_page,
+                                            'import_source': 'google_drive',
+                                            'created_by': user,
+                                            'status': 'Active'
+                                        }
+                                    )
                                 if not sub_f.parent:
                                     sub_f.parent = parent_f
                                     sub_f.save(update_fields=['parent'])
@@ -955,7 +969,7 @@ class ImportExecuteView(APIView):
                             f_path = fi_info['path']
                             source_f_id = fi_info['id']
 
-                            dir_path = os.path.dirname(f_path)
+                            dir_path = posixpath.dirname(f_path)
                             target_f, target_d = folder_map.get(dir_path, (top_folder, top_drive_id))
 
                             clean_file_name = sanitize_filename(f_name)
@@ -974,8 +988,7 @@ class ImportExecuteView(APIView):
                                     'web_view_link': fi_info.get('webViewLink'),
                                     'web_content_link': fi_info.get('webContentLink'),
                                     'import_source': 'google_drive',
-                                    'source_google_file_id': source_f_id,
-                                    'status': 'Active'
+                                    'source_google_file_id': source_f_id
                                 }
                             )
                             if not f_created:

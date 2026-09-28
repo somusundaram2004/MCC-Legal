@@ -1131,22 +1131,24 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
             </Select>
           </FormControl>
 
-          {/* MOU Type */}
-          <FormControl size="small" sx={{ flex: '1 1 145px', minWidth: 130 }}>
-            <InputLabel>MOU Type</InputLabel>
-            <Select
-              value={filterType}
-              label="MOU Type"
-              onChange={(e) => setFilterType(e.target.value)}
-              sx={{ borderRadius: '10px' }}
-            >
-              <MenuItem value="">All Types</MenuItem>
-              {mouTypes.map(t => <MenuItem key={`explorer-type-${t.id}`} value={t.id}>{t.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          {/* MOU Type - Only for MOU Repositories */}
+          {!customPageId && (
+            <FormControl size="small" sx={{ flex: '1 1 145px', minWidth: 130 }}>
+              <InputLabel>MOU Type</InputLabel>
+              <Select
+                value={filterType}
+                label="MOU Type"
+                onChange={(e) => setFilterType(e.target.value)}
+                sx={{ borderRadius: '10px' }}
+              >
+                <MenuItem value="">All Types</MenuItem>
+                {mouTypes.map(t => <MenuItem key={`explorer-type-${t.id}`} value={t.id}>{t.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
 
           {/* Clear Filters */}
-          {(filterCategory || filterDept || filterStatus || filterType) && (
+          {(filterCategory || filterDept || filterStatus || (!customPageId && filterType)) && (
             <Button
               size="small"
               variant="outlined"
@@ -1217,14 +1219,14 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         </Box>
 
         {/* Active filter chips */}
-        {(filterStream || filterCategory || filterDept || filterStatus || filterType) && (
+        {(filterStream || filterCategory || filterDept || filterStatus || (!customPageId && filterType)) && (
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider', alignItems: 'center' }}>
             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, mr: 0.5 }}>Active:</Typography>
             {filterStream && <Chip size="small" label={masterStreams.find(s => s.id === filterStream)?.name || 'Stream'} onDelete={() => { setFilterStream(''); setFilterDept(''); setFilteredExplorerDepts(departments); }} color="primary" variant="outlined" />}
             {filterCategory && <Chip size="small" label={deptCategories.find(c => c.id === filterCategory)?.name} onDelete={() => { setFilterCategory(''); setFilterDept(''); setFilteredExplorerDepts(departments); }} color="secondary" variant="outlined" />}
             {filterDept && <Chip size="small" label={filterDept} onDelete={() => setFilterDept('')} variant="outlined" />}
             {filterStatus && <Chip size="small" label={filterStatus} onDelete={() => setFilterStatus('')} color="success" variant="outlined" />}
-            {filterType && <Chip size="small" label={mouTypes.find(t => t.id === filterType)?.name} onDelete={() => setFilterType('')} color="info" variant="outlined" />}
+            {!customPageId && filterType && <Chip size="small" label={mouTypes.find(t => t.id === filterType)?.name} onDelete={() => setFilterType('')} color="info" variant="outlined" />}
           </Box>
         )}
       </Card>
