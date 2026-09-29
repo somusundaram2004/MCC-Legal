@@ -35,7 +35,8 @@ class FileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'size', 'size_formatted', 'file_type', 
             'folder_id', 'uploaded_by', 'file_url', 
-            'version_number', 'versions', 'created_at', 'updated_at',
+            'version_number', 'versions', 'is_signed', 'signed_date', 'expiry_date',
+            'created_at', 'updated_at',
             'google_file_id', 'mime_type', 'file_size', 'web_view_link', 'web_content_link',
             'submission_metadata', 'sha256_hash', 'virus_scan_status', 'encrypted', 'encryption_key_id'
         ]

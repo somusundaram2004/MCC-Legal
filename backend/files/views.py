@@ -263,7 +263,44 @@ class FileViewSet(viewsets.ModelViewSet):
                     folder.status = 'Signed'
                     if summary_text:
                         folder.summary = summary_text
-                    folder.save(update_fields=['status', 'summary'])
+
+                    from datetime import date
+                    signed_date_val = request.data.get('signed_date')
+                    expiry_date_val = request.data.get('expiry_date')
+                    
+                    parsed_signed_date = None
+                    parsed_expiry_date = None
+
+                    if signed_date_val and str(signed_date_val).strip():
+                        try:
+                            parsed_signed_date = date.fromisoformat(str(signed_date_val).strip()[:10])
+                        except Exception as dt_err:
+                            logger.warning(f"Could not parse signed_date '{signed_date_val}': {dt_err}")
+
+                    if expiry_date_val and str(expiry_date_val).strip():
+                        try:
+                            parsed_expiry_date = date.fromisoformat(str(expiry_date_val).strip()[:10])
+                        except Exception as dt_err:
+                            logger.warning(f"Could not parse expiry_date '{expiry_date_val}': {dt_err}")
+
+                    if parsed_signed_date:
+                        folder.signed_date = parsed_signed_date
+                        file_instance.signed_date = parsed_signed_date
+                    if parsed_expiry_date:
+                        folder.expiry_date = parsed_expiry_date
+                        file_instance.expiry_date = parsed_expiry_date
+                    
+                    file_instance.is_signed = True
+                    file_instance.save(update_fields=['is_signed', 'signed_date', 'expiry_date'])
+                    
+                    folder_update_fields = ['status']
+                    if summary_text:
+                        folder_update_fields.append('summary')
+                    if parsed_signed_date:
+                        folder_update_fields.append('signed_date')
+                    if parsed_expiry_date:
+                        folder_update_fields.append('expiry_date')
+                    folder.save(update_fields=folder_update_fields)
 
                 # Log & Notify
                 log_activity(request.user, f"Uploaded file '{name}' to folder '{folder.name}'", "files", request)

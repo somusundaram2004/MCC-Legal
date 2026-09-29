@@ -49,7 +49,7 @@ class FolderSerializer(serializers.ModelSerializer):
             'id', 'name', 'parent_id', 'created_by', 
             'created_at', 'updated_at', 'subfolder_count', 
             'file_count', 'path', 'google_folder_id', 'status',
-            'summary', 'expiry_date', 'is_viewed',
+            'summary', 'expiry_date', 'signed_date', 'is_viewed',
             'custom_page_id', 'custom_page_slug', 'custom_page_title', 'module_type'
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']

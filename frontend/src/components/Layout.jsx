@@ -50,6 +50,8 @@ import { useThemeMode } from '../context/ThemeContext';
 import { useSiteTime } from '../context/SiteTimeContext';
 import { useSiteCustomization } from '../context/SiteCustomizationContext';
 import api from '../services/api';
+import { getStoredShortcuts } from '../utils/keyboardShortcuts';
+import customToast from '../utils/customToast';
 
 const drawerWidth = 260;
 const drawerWidthCollapsed = 68;
@@ -110,17 +112,56 @@ const Layout = ({ children }) => {
   };
 
 
-  // Keyboard shortcut listener for Ctrl+K
+  // Global Sidebar Keyboard Shortcuts Listener
   useEffect(() => {
+    let activeShortcuts = getStoredShortcuts();
+
+    const handleUpdateShortcuts = (e) => {
+      activeShortcuts = e.detail || getStoredShortcuts();
+    };
+
     const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setCmdOpen((prev) => !prev);
+      // Command palette shortcut Ctrl+K
+      if ((e.ctrlKey || e.metaKey) && e.key?.toLowerCase() === 'k') {
+        const tag = e.target?.tagName?.toLowerCase();
+        if (tag !== 'input' && tag !== 'textarea' && !e.target?.isContentEditable) {
+          e.preventDefault();
+          setCmdOpen((prev) => !prev);
+          return;
+        }
+      }
+
+      if (!user) return;
+
+      // Ignore shortcut triggering when user is actively typing in text inputs, textareas, selects, or contenteditable areas
+      const targetTag = e.target?.tagName?.toLowerCase();
+      if (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select' || e.target?.isContentEditable) {
+        return;
+      }
+
+      // Check Ctrl, Alt, or Cmd combinations
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        const pressedKey = e.key ? e.key.toUpperCase() : '';
+        if (!pressedKey) return;
+
+        const match = activeShortcuts.find(
+          (s) => s.enabled && s.key?.toUpperCase() === pressedKey
+        );
+
+        if (match && match.path) {
+          e.preventDefault();
+          navigate(match.path);
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    window.addEventListener('mcc_shortcuts_updated', handleUpdateShortcuts);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('mcc_shortcuts_updated', handleUpdateShortcuts);
+    };
+  }, [user, navigate]);
 
   // Poll notifications only when user is authenticated
   useEffect(() => {

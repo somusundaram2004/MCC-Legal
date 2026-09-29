@@ -36,6 +36,7 @@ class Folder(models.Model):
     )
     summary = models.TextField(blank=True, null=True)
     expiry_date = models.DateField(blank=True, null=True)
+    signed_date = models.DateField(blank=True, null=True)
 
     # Module Isolation Fields
     module_type = models.CharField(max_length=100, default='mou_repository', db_index=True)

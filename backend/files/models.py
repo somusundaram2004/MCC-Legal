@@ -32,6 +32,8 @@ class File(models.Model):
     file_field = models.FileField(upload_to=file_upload_path, null=True, blank=True)
     version_number = models.IntegerField(default=1)
     is_signed = models.BooleanField(default=False)
+    signed_date = models.DateField(blank=True, null=True)
+    expiry_date = models.DateField(blank=True, null=True)
     
     google_file_id = models.CharField(max_length=255, blank=True, null=True)
     mime_type = models.CharField(max_length=255, blank=True, null=True)

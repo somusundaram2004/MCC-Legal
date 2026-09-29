@@ -506,3 +506,4 @@ showCustomToastFn.serverError = () => {
 };
 
 export const showCustomToast = showCustomToastFn;
+export default showCustomToast;

@@ -38,8 +38,10 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
+import KeyboardIcon from '@mui/icons-material/Keyboard';
 import GoogleDriveSettingsTab from '../components/GoogleDriveSettingsTab';
 import ImportExportTab from '../components/ImportExportTab';
+import KeyboardShortcutsTab from '../components/KeyboardShortcutsTab';
 import CustomizerHub from '../components/CustomizerHub/CustomizerHub';
 import { showCustomToast } from '../utils/customToast';
 import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
@@ -1452,6 +1454,7 @@ const Settings = () => {
             <Tab icon={<SettingsSuggestIcon fontSize="small" />} iconPosition="start" label="Master Data Config" sx={tabSx} />
             <Tab icon={<NotificationsActiveIcon fontSize="small" />} iconPosition="start" label="Notifications" sx={tabSx} />
             <Tab icon={<StorageIcon fontSize="small" />} iconPosition="start" label="Storage" sx={tabSx} />
+            <Tab icon={<KeyboardIcon fontSize="small" />} iconPosition="start" label="Keyboard Shortcuts" sx={tabSx} />
             {['Super Admin', 'Admin'].includes(user?.role?.name) && (
               <Tab icon={<MailIcon fontSize="small" />} iconPosition="start" label="Email Settings" sx={tabSx} />
             )}
@@ -1627,23 +1630,26 @@ const Settings = () => {
               </Grid>
             </Grid>
            </TabPanel>
+           <TabPanel value={activeTab} index={4}>
+             <KeyboardShortcutsTab />
+           </TabPanel>
           {['Super Admin', 'Admin'].includes(user?.role?.name) && (
-            <TabPanel value={activeTab} index={4}>
+            <TabPanel value={activeTab} index={5}>
               <EmailSettingsTab />
             </TabPanel>
           )}
           {['Super Admin', 'Admin'].includes(user?.role?.name) && (
-            <TabPanel value={activeTab} index={5}>
+            <TabPanel value={activeTab} index={6}>
               <GoogleDriveSettingsTab />
             </TabPanel>
           )}
           {['Super Admin', 'Admin'].includes(user?.role?.name) && (
-            <TabPanel value={activeTab} index={6}>
+            <TabPanel value={activeTab} index={7}>
               <ModulePermissionsMatrix />
             </TabPanel>
           )}
           {['Super Admin', 'Admin'].includes(user?.role?.name) && (
-            <TabPanel value={activeTab} index={7}>
+            <TabPanel value={activeTab} index={8}>
               <ImportExportTab />
             </TabPanel>
           )}

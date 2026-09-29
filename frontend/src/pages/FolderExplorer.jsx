@@ -237,6 +237,8 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
 
   const [isSignedUpload, setIsSignedUpload] = useState(false);
   const [uploadSummary, setUploadSummary] = useState('');
+  const [uploadSignedDate, setUploadSignedDate] = useState('');
+  const [uploadExpiryDate, setUploadExpiryDate] = useState('');
 
   // Move Folder to Module Dialog state
   const [moveModuleDialogOpen, setMoveModuleDialogOpen] = useState(false);
@@ -727,6 +729,10 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
     formData.append('created_at', getFormattedSiteDateTime());
     formData.append('is_signed', isSignedUpload ? 'true' : 'false');
     formData.append('summary', uploadSummary.trim());
+    if (isSignedUpload) {
+      if (uploadSignedDate) formData.append('signed_date', uploadSignedDate);
+      if (uploadExpiryDate) formData.append('expiry_date', uploadExpiryDate);
+    }
 
     try {
       await api.post('/api/files/', formData, {
@@ -735,10 +741,13 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
       setFileDialogOpen(false);
       setSelectedFile(null);
       setUploadSummary('');
+      setUploadSignedDate('');
+      setUploadExpiryDate('');
       setSuccess(isSignedUpload ? "Signed copy uploaded successfully! Folder status updated to Signed." : "File uploaded successfully.");
       fetchContents();
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to upload file.");
+      const errMsg = err.response?.data?.detail || (Array.isArray(err.response?.data?.file) ? err.response?.data?.file[0] : null) || "Failed to upload file.";
+      setError(errMsg);
     }
   };
 
@@ -1831,19 +1840,48 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               sx={{ mt: 2, display: 'block' }}
             />
             {isSignedUpload && (
-              <TextField
-                margin="dense"
-                label="Upload Summary / Comments"
-                placeholder="Describe what you are uploading (e.g. Executed Agreement)..."
-                type="text"
-                fullWidth
-                multiline
-                rows={2}
-                value={uploadSummary}
-                onChange={(e) => setUploadSummary(e.target.value)}
-                required
-                sx={{ mt: 1.5 }}
-              />
+              <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Grid container spacing={1.5}>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 0.5, display: 'block' }}>
+                      Signed Date *
+                    </Typography>
+                    <TextField
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={uploadSignedDate}
+                      onChange={(e) => setUploadSignedDate(e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 0.5, display: 'block' }}>
+                      Expiry Date *
+                    </Typography>
+                    <TextField
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={uploadExpiryDate}
+                      onChange={(e) => setUploadExpiryDate(e.target.value)}
+                      required
+                    />
+                  </Grid>
+                </Grid>
+                <TextField
+                  margin="dense"
+                  label="Upload Summary / Comments *"
+                  placeholder="Describe what you are uploading (e.g. Executed Agreement)..."
+                  type="text"
+                  fullWidth
+                  multiline
+                  rows={2}
+                  value={uploadSummary}
+                  onChange={(e) => setUploadSummary(e.target.value)}
+                  required
+                />
+              </Box>
             )}
           </DialogContent>
           <DialogActions>
