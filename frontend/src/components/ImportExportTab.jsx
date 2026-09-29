@@ -379,53 +379,6 @@ const ImportExportTab = () => {
   const handlePickFolderDirectory = async () => {
     setImportSourceMode('local');
     setSelectedDriveItems([]);
-    if (window.showDirectoryPicker) {
-      try {
-        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-        setPreviewing(true);
-
-        const filesArr = [];
-        const scanDirectoryHandle = async (handle, path = '') => {
-          for await (const entry of handle.values()) {
-            if (entry.kind === 'file') {
-              const originalFile = await entry.getFile();
-              const fullRelativePath = path + entry.name;
-              
-              const fileWithRelativePath = new File([originalFile], originalFile.name, {
-                type: originalFile.type,
-                lastModified: originalFile.lastModified
-              });
-              
-              fileWithRelativePath.customRelativePath = fullRelativePath;
-              try {
-                Object.defineProperty(fileWithRelativePath, 'webkitRelativePath', {
-                  value: fullRelativePath,
-                  writable: true,
-                  configurable: true
-                });
-              } catch (_) {}
-
-              filesArr.push(fileWithRelativePath);
-            } else if (entry.kind === 'directory') {
-              await scanDirectoryHandle(entry, path + entry.name + '/');
-            }
-          }
-        };
-
-        await scanDirectoryHandle(dirHandle, dirHandle.name + '/');
-        if (filesArr.length > 0) {
-          setImportFolderFiles(filesArr);
-          setImportFile(null);
-        }
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        console.warn("window.showDirectoryPicker failed, using fallback input:", err);
-      } finally {
-        setPreviewing(false);
-      }
-    }
-
     if (folderInputRef.current) {
       folderInputRef.current.webkitdirectory = true;
       folderInputRef.current.directory = true;

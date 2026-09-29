@@ -342,47 +342,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   }, []);
 
   const handleTriggerFolderImportInput = async () => {
-    if (window.showDirectoryPicker) {
-      try {
-        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-        setFolderImportLoading(true);
-
-        const filesArr = [];
-        const scanDirectoryHandle = async (handle, path = '') => {
-          for await (const entry of handle.values()) {
-            if (entry.kind === 'file') {
-              const file = await entry.getFile();
-              try {
-                Object.defineProperty(file, 'webkitRelativePath', {
-                  value: path + entry.name,
-                  writable: false,
-                  configurable: true
-                });
-              } catch (_) {}
-              filesArr.push(file);
-            } else if (entry.kind === 'directory') {
-              await scanDirectoryHandle(entry, path + entry.name + '/');
-            }
-          }
-        };
-
-        await scanDirectoryHandle(dirHandle, dirHandle.name + '/');
-        if (filesArr.length > 0) {
-          setFolderImportFiles(filesArr);
-          setFolderImportModalOpen(true);
-        }
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          return;
-        }
-        console.warn("window.showDirectoryPicker failed, falling back to input:", err);
-      } finally {
-        setFolderImportLoading(false);
-      }
-    }
-
-    // Fallback for browsers without showDirectoryPicker
+    // Trigger standard directory file input (avoids raw Chrome system permission warnings)
     if (folderInputRef.current) {
       folderInputRef.current.webkitdirectory = true;
       folderInputRef.current.directory = true;
