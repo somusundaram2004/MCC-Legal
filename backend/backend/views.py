@@ -239,17 +239,21 @@ class DashboardStatsView(APIView):
                 next_m = 1
                 next_y += 1
             end_date = datetime.date(next_y, next_m, 1)
+            end_datetime = datetime.datetime.combine(end_date, datetime.time.min)
+            if getattr(settings, 'USE_TZ', False):
+                from django.utils import timezone
+                end_datetime = timezone.make_aware(end_datetime)
 
             # Cumulative Active count for this month
             active_cnt = mous_qs.filter(
-                Q(created_at__lt=datetime.datetime.combine(end_date, datetime.time.min)),
+                Q(created_at__lt=end_datetime),
                 Q(status__in=['Active', 'Renewed', 'Signed']),
                 Q(expiry_date__isnull=True) | Q(expiry_date__gte=start_date)
             ).count()
 
             # Pending count for this month
             pending_cnt = mous_qs.filter(
-                Q(created_at__lt=datetime.datetime.combine(end_date, datetime.time.min)),
+                Q(created_at__lt=end_datetime),
                 Q(status__in=['Pending Verification', 'Pending Review'])
             ).count()
 

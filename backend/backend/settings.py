@@ -16,14 +16,6 @@ env = environ.Env(
 # Read environment variables
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
-# Initialize environment variables reader
-env = environ.Env(
-    DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, ['*'])
-)
-
-# Read environment variables
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 # Verify required configuration variables
 required_vars = [

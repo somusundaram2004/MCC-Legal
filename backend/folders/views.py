@@ -877,7 +877,11 @@ class FolderViewSet(viewsets.ModelViewSet):
             # Dedicated MOU Repository module root
             mou_sys_folder = Folder.objects.filter(name='MOU Repository', module_type='mou_repository', custom_page=None, parent=None, is_deleted=False).first()
             if not mou_sys_folder:
-                mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+                try:
+                    mou_root_id = drive_service.get_or_create_mou_repository_folder_id()
+                except Exception as drive_err:
+                    logger.warning(f"Google Drive MOU Repository fallback: {drive_err}")
+                    mou_root_id = None
                 mou_sys_folder, _ = Folder.objects.get_or_create(
                     name='MOU Repository',
                     module_type='mou_repository',
