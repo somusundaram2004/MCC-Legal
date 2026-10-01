@@ -25,7 +25,7 @@ class DashboardStatsView(APIView):
 
     def get(self, request):
         user = request.user
-        role_name = user.role.name if user.role else 'User'
+        role_name = user.role.name if (user and user.role) else 'User'
 
         # Auto-check expiries to ensure DB status is up-to-date
         try:
