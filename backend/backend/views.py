@@ -242,7 +242,8 @@ class DashboardStatsView(APIView):
             end_datetime = datetime.datetime.combine(end_date, datetime.time.min)
             if getattr(settings, 'USE_TZ', False):
                 from django.utils import timezone
-                end_datetime = timezone.make_aware(end_datetime)
+                if timezone.is_naive(end_datetime):
+                    end_datetime = timezone.make_aware(end_datetime)
 
             # Cumulative Active count for this month
             active_cnt = mous_qs.filter(
