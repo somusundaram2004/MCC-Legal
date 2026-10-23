@@ -103,15 +103,9 @@ const MOUDetail = () => {
     setReviewing(true);
     try {
       if (selectedSubmissionId) {
-        await reviewDepartmentSubmission(selectedSubmissionId, {
-          action: reviewAction,
-          remarks: reviewComments
-        });
+        await reviewDepartmentSubmission(selectedSubmissionId, reviewAction, reviewComments);
       } else {
-        await approveRejectMOU(id, {
-          action: reviewAction,
-          remarks: reviewComments
-        });
+        await approveRejectMOU(id, reviewAction, reviewComments);
       }
       setReviewDialogOpen(false);
       if (reviewAction === 'approve') {

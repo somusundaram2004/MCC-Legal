@@ -34,6 +34,7 @@ urlpatterns = [
     path('<int:pk>/submit-signed/', MOUSubmitSignedView.as_view(), name='mou-submit-signed'),
     path('<int:pk>/approve-reject/', MOUApproveRejectView.as_view(), name='mou-approve-reject'),
     path('<int:pk>/renew/', MOURenewView.as_view(), name='mou-renew'),
+    path('<int:pk>/renewals/', MOURenewView.as_view(), name='mou-renewals'),
     path('reports/stats/', MOUReportsView.as_view(), name='mou-reports-stats'),
     
     # Sharing & Department Collaboration

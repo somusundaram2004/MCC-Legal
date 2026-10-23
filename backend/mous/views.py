@@ -369,6 +369,25 @@ class MOURenewView(APIView):
 
         return Response(MOUSerializer(renewed_mou, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
+    def get(self, request, pk):
+        try:
+            mou = MOU.objects.get(pk=pk)
+        except MOU.DoesNotExist:
+            return Response({"detail": "MOU not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        renewals = MOURenewal.objects.filter(original_mou=mou).order_by('-renewed_at')
+        data = [{
+            'id': r.id,
+            'original_mou_id': r.original_mou_id,
+            'renewed_mou_id': r.renewed_mou_id,
+            'renewed_mou_title': r.renewed_mou.title if r.renewed_mou else None,
+            'renewed_mou_number': r.renewed_mou.mou_number if r.renewed_mou else None,
+            'renewed_by': r.renewed_by.name if (r.renewed_by and hasattr(r.renewed_by, 'name')) else (r.renewed_by.email if r.renewed_by else None),
+            'renewed_at': r.renewed_at,
+            'notes': r.notes
+        } for r in renewals]
+        return Response(data)
+
 class MOUReportsView(APIView):
     permission_classes = [IsAuthenticated]
 

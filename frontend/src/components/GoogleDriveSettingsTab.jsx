@@ -94,16 +94,17 @@ const GoogleDriveSettingsTab = () => {
           code: authCode,
           redirect_uri: redirectUri
         });
-        setSuccess(response.data.detail || 'Google Drive connected successfully!');
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
-        fetchStatus();
+        await fetchStatus();
+        setSuccess(response.data.detail || 'Google Drive connected successfully!');
       } catch (err) {
         console.error("Google Drive Code Exchange Failed:", err);
-        setError(err.response?.data?.detail || 'Failed to exchange authorization code with Google Drive server.');
+        const errMsg = err.response?.data?.detail || 'Failed to exchange authorization code with Google Drive server.';
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
-        fetchStatus();
+        await fetchStatus();
+        setError(errMsg);
       } finally {
         setConnecting(false);
       }
@@ -577,6 +578,18 @@ const GoogleDriveSettingsTab = () => {
                                 sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, fontSize: '0.75rem' }}
                               >
                                 {repairingModule === item.module_id ? 'Repairing...' : 'Repair Location'}
+                              </Button>
+                            )}
+                            {!isOk && !isMisplaced && (
+                              <Button
+                                size="small"
+                                variant="contained"
+                                color="error"
+                                disabled={repairingModule === item.module_id}
+                                onClick={() => handleRepairHierarchy(item.module_id)}
+                                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, fontSize: '0.75rem' }}
+                              >
+                                {repairingModule === item.module_id ? 'Creating...' : 'Create Folder'}
                               </Button>
                             )}
                             {isOk && (

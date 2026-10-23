@@ -1,6 +1,8 @@
 import io
 import time
 import logging
+import threading
+import os
 from django.conf import settings
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
@@ -8,8 +10,6 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
-
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -156,11 +156,19 @@ def get_or_create_mou_repository_folder_id():
             try:
                 f_meta = service.files().get(
                     fileId=mou_db.google_folder_id.strip(),
-                    fields="id, name, trashed",
+                    fields="id, name, trashed, parents",
                     supportsAllDrives=True
                 ).execute()
                 if f_meta and not f_meta.get('trashed', False):
-                    return f_meta['id']
+                    parents = f_meta.get('parents', [])
+                    if master_root_id in parents:
+                        return f_meta['id']
+                    else:
+                        try:
+                            move_file(f_meta['id'], master_root_id)
+                            return f_meta['id']
+                        except Exception as mv_err:
+                            logger.warning(f"Could not auto-move MOU Repository to master root: {mv_err}")
             except Exception:
                 pass
 
@@ -243,7 +251,15 @@ def get_or_create_module_folder_id(custom_page):
                     supportsAllDrives=True
                 ).execute()
                 if f_meta and not f_meta.get('trashed', False):
-                    return f_meta['id']
+                    parents = f_meta.get('parents', [])
+                    if master_root_id in parents:
+                        return f_meta['id']
+                    else:
+                        try:
+                            move_file(f_meta['id'], master_root_id)
+                            return f_meta['id']
+                        except Exception as mv_err:
+                            logger.warning(f"Could not auto-move module folder '{custom_page.title}' to master root: {mv_err}")
             except Exception:
                 pass
         
@@ -450,20 +466,19 @@ def initialize_and_sync_all_drive_modules(new_root_id=None):
         return False
 
 
-_cached_drive_service = None
-_cached_drive_service_time = 0
+_thread_local = threading.local()
 
 def authenticate(force_refresh=False):
     """
     Authenticates with Google Drive using either Web OAuth 2.0 credentials
     or Service Account credentials. Returns the Google Drive service object.
-    Caches the client instance in memory to speed up performance.
+    Caches the client instance in thread-local memory to avoid cross-thread socket/SSL corruption.
     """
-    global _cached_drive_service, _cached_drive_service_time
-    import time
     now = time.time()
-    if not force_refresh and _cached_drive_service is not None and (now - _cached_drive_service_time) < 120:
-        return _cached_drive_service
+    cached_service = getattr(_thread_local, 'service', None)
+    cached_time = getattr(_thread_local, 'time', 0)
+    if not force_refresh and cached_service is not None and (now - cached_time) < 120:
+        return cached_service
 
     SCOPES = ['https://www.googleapis.com/auth/drive']
     try:
@@ -473,7 +488,9 @@ def authenticate(force_refresh=False):
         # Check if we have Web OAuth 2.0 credentials in the active setting
         if active_setting and active_setting.refresh_token:
             client_id = active_setting.client_id or getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', '')
-            client_secret = active_setting.client_secret or getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', '')
+            raw_secret = active_setting.client_secret or getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', '')
+            from users.views_google_drive import sanitize_secret
+            client_secret = sanitize_secret(raw_secret)
             
             if not client_id or not client_secret:
                 import json
@@ -513,17 +530,19 @@ def authenticate(force_refresh=False):
                     active_setting.connection_status = 'Refresh Failed'
                     active_setting.save(update_fields=['connection_status'])
 
-            _cached_drive_service = build('drive', 'v3', credentials=creds)
-            _cached_drive_service_time = time.time()
-            return _cached_drive_service
+            service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+            _thread_local.service = service
+            _thread_local.time = time.time()
+            return service
 
         info = get_service_account_info()
         pk = info.get('private_key') or ''
         if info.get('client_email') and pk and 'BEGIN PRIVATE KEY' in pk and 'YOUR_PRIVATE_KEY_HERE' not in pk:
             creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-            _cached_drive_service = build('drive', 'v3', credentials=creds)
-            _cached_drive_service_time = time.time()
-            return _cached_drive_service
+            service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+            _thread_local.service = service
+            _thread_local.time = time.time()
+            return service
 
         sa_file = getattr(settings, 'GOOGLE_SERVICE_ACCOUNT_FILE', None)
         if sa_file and os.path.exists(sa_file):
@@ -534,9 +553,10 @@ def authenticate(force_refresh=False):
                     sa_pk = sa_data.get('private_key', '')
                     if sa_pk and 'BEGIN PRIVATE KEY' in sa_pk and 'YOUR_PRIVATE_KEY_HERE' not in sa_pk:
                         creds = service_account.Credentials.from_service_account_file(sa_file, scopes=SCOPES)
-                        _cached_drive_service = build('drive', 'v3', credentials=creds)
-                        _cached_drive_service_time = time.time()
-                        return _cached_drive_service
+                        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+                        _thread_local.service = service
+                        _thread_local.time = time.time()
+                        return service
             except Exception as sa_err:
                 logger.debug(f"Service account file check skipped: {sa_err}")
 
@@ -804,26 +824,35 @@ def rename_file(file_id, new_name):
 
 def move_file(file_id, new_parent_id):
     """
-    Moves a folder or file to a different parent folder on Google Drive.
+    Moves a folder or file to a different parent folder on Google Drive safely.
+    Handles existing parents, excludes target parent from remove list, and avoids empty removeParents strings.
     """
     if not file_id or file_id.startswith('drive_file_') or file_id.startswith('drive_folder_'):
         logger.warning(f"Skipping move for fallback or empty Google Drive ID: '{file_id}'")
         return None
     try:
         service = authenticate()
-        # Retrieve the existing parents to remove
-        file_metadata = service.files().get(fileId=file_id, fields='parents', supportsAllDrives=True).execute()
-        previous_parents = ",".join(file_metadata.get('parents', []))
-
+        file_metadata = service.files().get(fileId=file_id, fields='id, parents', supportsAllDrives=True).execute()
+        current_parents = file_metadata.get('parents', [])
         
-        # Update parents
-        updated_file = service.files().update(
-            fileId=file_id,
-            addParents=new_parent_id,
-            removeParents=previous_parents,
-            fields='id, parents',
-            supportsAllDrives=True
-        ).execute()
+        # Exclude target parent so we never try to remove and add the same parent
+        parents_to_remove = [p for p in current_parents if p != new_parent_id]
+        
+        # If target parent is already set and no other parents need removing, return immediately
+        if new_parent_id in current_parents and not parents_to_remove:
+            return file_metadata
+
+        update_kwargs = {
+            'fileId': file_id,
+            'fields': 'id, parents',
+            'supportsAllDrives': True
+        }
+        if new_parent_id not in current_parents:
+            update_kwargs['addParents'] = new_parent_id
+        if parents_to_remove:
+            update_kwargs['removeParents'] = ','.join(parents_to_remove)
+
+        updated_file = service.files().update(**update_kwargs).execute()
         logger.info(f"Moved Google Drive object '{file_id}' to parent '{new_parent_id}'")
         return updated_file
     except Exception as e:
@@ -1150,7 +1179,8 @@ def validate_drive_hierarchy():
 
 def repair_module_drive_parent(module_id):
     """
-    Safely moves a misplaced module folder back directly under APPLICATION ROOT.
+    Safely moves a misplaced module folder back directly under APPLICATION ROOT,
+    or creates/provisions the folder under APPLICATION ROOT if missing or corrupted.
     """
     master_root_id = get_root_folder_id()
     if not master_root_id:
@@ -1158,24 +1188,87 @@ def repair_module_drive_parent(module_id):
 
     drive_folder_id = None
     module_name = str(module_id)
+    cp = None
 
     if str(module_id).startswith('custom_') or str(module_id).startswith('module_custom_'):
         cp_id = str(module_id).replace('module_custom_', '').replace('custom_', '')
         from users.models import CustomDynamicPage
         cp = CustomDynamicPage.objects.filter(id=cp_id).first()
         if cp:
-            drive_folder_id = get_or_create_module_folder_id(cp)
             module_name = cp.title
-    else:
-        drive_folder_id = get_or_create_predefined_module_folder_id(module_id)
+            drive_folder_id = cp.google_drive_folder_id
+    elif str(module_id).strip().lower() == 'mou_repository':
+        module_name = 'MOU Repository'
+        from folders.models import Folder
+        mou_db = Folder.objects.filter(name='MOU Repository', parent=None, is_deleted=False).first()
+        if mou_db:
+            drive_folder_id = mou_db.google_folder_id
+    elif str(module_id).strip().lower() == 'recycle_bin':
+        module_name = 'Recycle Bin'
+        drive_folder_id = None
 
-    if not drive_folder_id or drive_folder_id.startswith('drive_folder_'):
-        return False, f"Module '{module_name}' does not have a valid Google Drive folder."
+    # Check if folder exists on Google Drive
+    service = authenticate()
+    folder_exists_on_drive = False
+    if drive_folder_id and not drive_folder_id.startswith('drive_folder_'):
+        try:
+            meta = service.files().get(fileId=drive_folder_id, fields='id, name, trashed, parents', supportsAllDrives=True).execute()
+            if meta and not meta.get('trashed', False):
+                folder_exists_on_drive = True
+        except Exception:
+            folder_exists_on_drive = False
 
+    if folder_exists_on_drive:
+        try:
+            move_file(drive_folder_id, master_root_id)
+            logger.info(f"Successfully repaired Google Drive parent for module '{module_name}' (ID: {drive_folder_id}) -> moved to APPLICATION ROOT ({master_root_id})")
+            return True, f"Successfully moved module folder '{module_name}' to APPLICATION ROOT."
+        except Exception as e:
+            logger.warning(f"Failed to move existing folder '{module_name}' ({drive_folder_id}): {e}. Attempting to provision new folder under APPLICATION ROOT.")
+
+    # If folder doesn't exist on Google Drive or moving failed, create or link under APPLICATION ROOT
     try:
-        move_file(drive_folder_id, master_root_id)
-        logger.info(f"Successfully repaired Google Drive parent for module '{module_name}' (ID: {drive_folder_id}) -> moved to APPLICATION ROOT ({master_root_id})")
-        return True, f"Successfully moved module folder '{module_name}' to APPLICATION ROOT."
+        new_folder_id = create_folder(module_name, master_root_id)
+        if new_folder_id and not new_folder_id.startswith('drive_folder_'):
+            if str(module_id).strip().lower() == 'mou_repository':
+                from folders.models import Folder
+                mou_db = Folder.objects.filter(name='MOU Repository', parent=None, is_deleted=False).first()
+                if not mou_db:
+                    Folder.objects.create(name='MOU Repository', google_folder_id=new_folder_id, module_type='mou_repository', parent=None)
+                else:
+                    mou_db.google_folder_id = new_folder_id
+                    mou_db.save(update_fields=['google_folder_id'])
+            elif cp:
+                from folders.models import Folder
+                cp.google_drive_folder_id = new_folder_id
+                cp.save(update_fields=['google_drive_folder_id'])
+                root_folder = None
+                if cp.root_folder_id:
+                    try:
+                        root_folder = Folder.objects.filter(id=int(cp.root_folder_id)).first()
+                    except (ValueError, TypeError):
+                        root_folder = None
+                if not root_folder:
+                    root_folder = Folder.objects.filter(google_folder_id=new_folder_id).first()
+                if not root_folder:
+                    root_folder = Folder.objects.create(
+                        name=cp.title,
+                        google_folder_id=new_folder_id,
+                        module_type='custom_page',
+                        custom_page=cp
+                    )
+                else:
+                    root_folder.name = cp.title
+                    root_folder.google_folder_id = new_folder_id
+                    root_folder.save(update_fields=['name', 'google_folder_id'])
+                if str(cp.root_folder_id) != str(root_folder.id):
+                    cp.root_folder_id = str(root_folder.id)
+                    cp.root_folder_name = root_folder.name
+                    cp.save(update_fields=['root_folder_id', 'root_folder_name'])
+            
+            return True, f"Successfully created/provisioned module folder '{module_name}' under APPLICATION ROOT."
+        else:
+            return False, f"Could not create module folder '{module_name}' on Google Drive."
     except Exception as e:
-        logger.error(f"Failed to repair module folder parent for '{module_name}': {e}")
+        logger.error(f"Failed to create/repair module folder for '{module_name}': {e}")
         return False, str(e)

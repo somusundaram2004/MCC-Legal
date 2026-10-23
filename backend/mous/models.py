@@ -92,6 +92,8 @@ class MOU(models.Model):
         return (self.expiry_date - today).days
 
     def save(self, *args, **kwargs):
+        if self.signed_date and not self.expiry_date:
+            self.expiry_date = self.calculate_expiry(self.signed_date, self.duration_months)
         is_new = self.pk is None
         super().save(*args, **kwargs)
         if is_new and not self.department:

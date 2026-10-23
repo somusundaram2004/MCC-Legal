@@ -206,9 +206,21 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         try:
             res = requests.post(token_url, data=payload)
             if res.status_code != 200:
+                err_text = res.text
+                err_msg = f"Failed to exchange code with Google: {err_text}"
+                try:
+                    err_json = res.json()
+                    err_code = err_json.get('error')
+                    err_desc = err_json.get('error_description', '')
+                    if err_code == 'invalid_client' or 'client secret is invalid' in err_desc.lower():
+                        err_msg = "Google rejected credentials: The Google OAuth Client Secret is invalid or expired. Please update and save the valid Client Secret in Settings > Google Drive."
+                    elif err_code == 'invalid_grant':
+                        err_msg = "The authorization code has expired or was already used. Please click 'Connect to Google Drive' to re-authenticate."
+                except Exception:
+                    pass
                 if is_json_req:
-                    return Response({"detail": f"Failed to exchange code with Google: {res.text}"}, status=status.HTTP_400_BAD_REQUEST)
-                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/') + f'/settings?drive=failed&error={urllib.parse.quote(res.text)}'
+                    return Response({"detail": err_msg}, status=status.HTTP_400_BAD_REQUEST)
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/') + f'/settings?drive=failed&error={urllib.parse.quote(err_msg)}'
                 return HttpResponseRedirect(frontend_url)
 
             tokens = res.json()
@@ -261,6 +273,15 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             if not setting.project_id:
                 setting.project_id = 'Web OAuth Project'
             setting.save()
+
+            # Automatically initialize and create required module folders in the newly connected Google Drive account
+            try:
+                from services import drive_service
+                drive_service.authenticate(force_refresh=True)
+                drive_service.initialize_and_sync_all_drive_modules()
+                logger.info(f"Auto-initialized module folders on connected account: {setting.connected_email}")
+            except Exception as auto_init_err:
+                logger.warning(f"Auto-initialization of drive folders on account connect skipped: {auto_init_err}")
 
             if request.user and request.user.is_authenticated:
                 log_activity(request.user, f"Connected Google Drive account: {setting.connected_email}", "drive")
@@ -390,6 +411,16 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         setting.root_folder_id = root_folder_id
         setting.save()
 
+        # Automatically verify and create module folders under the newly configured root folder
+        if setting.oauth_connected:
+            try:
+                from services import drive_service
+                drive_service.authenticate(force_refresh=True)
+                drive_service.initialize_and_sync_all_drive_modules()
+                logger.info(f"Auto-synced module folders under root folder: {root_folder_id}")
+            except Exception as auto_sync_err:
+                logger.warning(f"Auto-sync of drive folders on root folder update skipped: {auto_sync_err}")
+
         warning_msg = None
         if setting.oauth_connected and root_folder_id and root_folder_id.lower() != 'default':
             try:
@@ -413,10 +444,11 @@ class GoogleDriveViewSet(viewsets.ViewSet):
         root_folder_id = request.data.get('root_folder_id', '').strip()
 
         setting = GoogleDriveSetting.objects.filter(is_active=True).first() or GoogleDriveSetting.objects.first()
+        clean_secret = sanitize_secret(client_secret)
         if not setting:
             setting = GoogleDriveSetting.objects.create(
                 client_id=client_id,
-                client_secret=client_secret,
+                client_secret=clean_secret,
                 root_folder_id=root_folder_id,
                 connection_status='Disconnected',
                 default_upload_folder='Root Repository'
@@ -425,7 +457,7 @@ class GoogleDriveViewSet(viewsets.ViewSet):
             if client_id:
                 setting.client_id = client_id
             if client_secret and client_secret != '••••••••':
-                setting.client_secret = client_secret
+                setting.client_secret = clean_secret
             if root_folder_id:
                 if 'drive.google.com' in root_folder_id:
                     import re

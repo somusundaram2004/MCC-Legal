@@ -31,8 +31,14 @@ export const submitSignedMOU = async (id, data) => {
   return res.data;
 };
 
-export const approveRejectMOU = async (id, action, remarks = '') => {
-  const res = await api.post(`/api/mous/${id}/approve-reject/`, { action, remarks });
+export const approveRejectMOU = async (id, actionOrObj, remarks = '') => {
+  let action = actionOrObj;
+  let rem = remarks;
+  if (typeof actionOrObj === 'object' && actionOrObj !== null) {
+    action = actionOrObj.action;
+    rem = actionOrObj.remarks || actionOrObj.comments || '';
+  }
+  const res = await api.post(`/api/mous/${id}/approve-reject/`, { action, remarks: rem });
   return res.data;
 };
 
@@ -81,8 +87,14 @@ export const submitDepartmentMOU = async (data) => {
   return res.data;
 };
 
-export const reviewDepartmentSubmission = async (submissionId, action, comments = '') => {
-  const res = await api.post(`/api/mous/submissions/${submissionId}/review/`, { action, comments });
+export const reviewDepartmentSubmission = async (submissionId, actionOrObj, comments = '') => {
+  let action = actionOrObj;
+  let comm = comments;
+  if (typeof actionOrObj === 'object' && actionOrObj !== null) {
+    action = actionOrObj.action;
+    comm = actionOrObj.comments || actionOrObj.remarks || '';
+  }
+  const res = await api.post(`/api/mous/submissions/${submissionId}/review/`, { action, comments: comm });
   return res.data;
 };
 

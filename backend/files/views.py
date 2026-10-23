@@ -231,8 +231,8 @@ class FileViewSet(viewsets.ModelViewSet):
                 file_instance.web_view_link = drive_metadata.get('webViewLink') or drive_metadata.get('web_view_link')
                 file_instance.web_content_link = drive_metadata.get('webContentLink') or drive_metadata.get('web_content_link')
 
-                # Clean up local file copy after successful Google Drive upload to conserve server disk space
-                if file_instance.file_field and os.path.exists(file_instance.file_field.path):
+                # Clean up local file copy ONLY after genuine Google Drive upload (never for fallback/disconnected mode)
+                if not file_instance.google_file_id.startswith('drive_file_') and file_instance.file_field and os.path.exists(file_instance.file_field.path):
                     try:
                         file_path = file_instance.file_field.path
                         file_instance.file_field = None
@@ -632,8 +632,8 @@ class FileViewSet(viewsets.ModelViewSet):
                 file_instance.virus_scan_status = virus_status
                 file_instance.save()
 
-                # Clean up local file copy after successful Google Drive upload to conserve server disk space
-                if file_instance.file_field and os.path.exists(file_instance.file_field.path):
+                # Clean up local file copy ONLY after genuine Google Drive upload (never for fallback/disconnected mode)
+                if not file_instance.google_file_id.startswith('drive_file_') and file_instance.file_field and os.path.exists(file_instance.file_field.path):
                     try:
                         file_path = file_instance.file_field.path
                         file_instance.file_field = None

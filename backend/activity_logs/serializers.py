@@ -56,7 +56,12 @@ class ActivityLogSerializer(serializers.ModelSerializer):
         if not obj.created_at:
             return ""
         now = timezone.now()
-        diff = now - obj.created_at
+        created_at = obj.created_at
+        if timezone.is_naive(created_at):
+            created_at = timezone.make_aware(created_at)
+        if timezone.is_naive(now):
+            now = timezone.make_aware(now)
+        diff = now - created_at
         seconds = diff.total_seconds()
 
         if seconds < 60:

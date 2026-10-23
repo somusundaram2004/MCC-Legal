@@ -60,7 +60,12 @@ def calculate_days_remaining(deleted_at, retention_period):
         '1_year': 365
     }.get(retention_period, 30)
     expiry_dt = deleted_at + timedelta(days=period_days)
-    remaining_seconds = (expiry_dt - timezone.now()).total_seconds()
+    now = timezone.now()
+    if timezone.is_naive(expiry_dt):
+        expiry_dt = timezone.make_aware(expiry_dt)
+    if timezone.is_naive(now):
+        now = timezone.make_aware(now)
+    remaining_seconds = (expiry_dt - now).total_seconds()
     return max(0, int(remaining_seconds // 86400))
 
 
