@@ -5,6 +5,7 @@
 *.json
 !package.json
 !tsconfig.json
+!classified_mous_data.json
 
 # Credentials & Service Account Keys
 credentials/
