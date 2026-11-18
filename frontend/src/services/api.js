@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { jwtDecode } from 'jwt-decode';
 import { triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 const getApiBaseUrl = () => {
@@ -14,6 +15,70 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
+export const isTokenExpired = (token, bufferSeconds = 30) => {
+  if (!token || typeof token !== 'string') return true;
+  try {
+    const decoded = jwtDecode(token);
+    if (!decoded || typeof decoded.exp !== 'number') return true;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    return decoded.exp <= nowSeconds + bufferSeconds;
+  } catch {
+    return true;
+  }
+};
+
+const clearSessionAndRedirect = () => {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('user');
+  if (typeof window !== 'undefined') {
+    const isPublicPage = ['/login', '/register', '/reset-password'].some((p) =>
+      window.location.pathname.startsWith(p)
+    );
+    if (!isPublicPage) {
+      window.location.href = '/login';
+    }
+  }
+};
+
+let refreshPromise = null;
+
+export const refreshAccessToken = async () => {
+  if (refreshPromise) return refreshPromise;
+
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken || isTokenExpired(refreshToken, 5)) {
+    clearSessionAndRedirect();
+    return null;
+  }
+
+  refreshPromise = axios
+    .post(`${API_BASE_URL}/api/users/auth/refresh/`, {
+      refresh: refreshToken,
+    })
+    .then((res) => {
+      if (res.status === 200 && res.data?.access) {
+        const { access, refresh } = res.data;
+        localStorage.setItem('access_token', access);
+        if (refresh) {
+          localStorage.setItem('refresh_token', refresh);
+        }
+        return access;
+      }
+      clearSessionAndRedirect();
+      return null;
+    })
+    .catch((err) => {
+      clearSessionAndRedirect();
+      throw err;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -21,14 +86,15 @@ const api = axios.create({
   },
 });
 
-// Request Interceptor: Attach access token and custom time header to requests
+// Request Interceptor: Attach valid access token (proactively refreshing if expired) and custom time header
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
     const method = (config.method || 'get').toLowerCase();
     const isPublicEndpoint = config.url && (
       config.url.includes('/auth/login/') ||
       config.url.includes('/auth/google/') ||
       config.url.includes('/auth/google-client-id/') ||
+      config.url.includes('/auth/refresh/') ||
       config.url.includes('/auth/register/') ||
       config.url.includes('/auth/forgot-password/') ||
       config.url.includes('/auth/reset-password/') ||
@@ -37,9 +103,24 @@ api.interceptors.request.use(
       (config.url.includes('/customization/') && method === 'get')
     );
 
-    const token = localStorage.getItem('access_token');
-    if (token && !isPublicEndpoint) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (!isPublicEndpoint) {
+      let token = localStorage.getItem('access_token');
+      if (!token || isTokenExpired(token, 30)) {
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (refreshToken && !isTokenExpired(refreshToken, 5)) {
+          try {
+            token = await refreshAccessToken();
+          } catch {
+            return Promise.reject(new axios.CanceledError('Session expired.'));
+          }
+        } else {
+          clearSessionAndRedirect();
+          return Promise.reject(new axios.CanceledError('No valid authentication token.'));
+        }
+      }
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     
     // Attach simulated clock time if enabled
@@ -103,50 +184,17 @@ api.interceptors.response.use(
     // Check if error is 401 (Unauthorized) and we haven't already retried
     if (error.response && error.response.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
-      const refreshToken = localStorage.getItem('refresh_token');
-      
-      if (refreshToken) {
-        try {
-          // Attempt to refresh token
-          const res = await axios.post(`${API_BASE_URL}/api/users/auth/refresh/`, {
-            refresh: refreshToken,
-          });
-          
-          if (res.status === 200) {
-            const { access, refresh } = res.data;
-            
-            // Store new tokens
-            localStorage.setItem('access_token', access);
-            if (refresh) {
-              localStorage.setItem('refresh_token', refresh);
-            }
-            
-            // Re-auth header and retry original request
-            originalRequest.headers.Authorization = `Bearer ${access}`;
-            return api(originalRequest);
-          }
-        } catch (refreshError) {
-          // Refresh token expired or failed -> Force logout
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          localStorage.removeItem('user');
-          const isPublicPage = ['/login', '/register', '/reset-password'].some(p => window.location.pathname.startsWith(p));
-          if (!isPublicPage) {
-            window.location.href = '/login';
-          }
-          return Promise.reject(refreshError);
+      try {
+        const newAccess = await refreshAccessToken();
+        if (newAccess) {
+          originalRequest.headers.Authorization = `Bearer ${newAccess}`;
+          return api(originalRequest);
         }
-      } else {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user');
-        const isPublicPage = ['/login', '/register', '/reset-password'].some(p => window.location.pathname.startsWith(p));
-        if (!isPublicPage) {
-          window.location.href = '/login';
-        }
+      } catch (refreshError) {
+        return Promise.reject(refreshError);
       }
     }
 
-    
     return Promise.reject(error);
   }
 );

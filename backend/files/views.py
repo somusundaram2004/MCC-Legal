@@ -2,7 +2,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from django.http import FileResponse, Http404
+from django.http import FileResponse, HttpResponse, Http404
 from django.contrib.auth import get_user_model
 from permissions.custom_permissions import HasDynamicPermission, get_user_permissions
 from activity_logs.utils import log_activity
@@ -13,6 +13,7 @@ from .serializers import FileSerializer, FileVersionSerializer
 import mimetypes
 import os
 import io
+import html
 from django.db import transaction
 from django.utils import timezone
 from services import drive_service
@@ -83,6 +84,38 @@ class FileViewSet(viewsets.ModelViewSet):
         accessible_folder_ids = [f.id for f in all_folders if f.has_access(user)]
         return base_qs.filter(folder_id__in=accessible_folder_ids).order_by('-updated_at')
 
+    def retrieve(self, request, *args, **kwargs):
+        file_id = kwargs.get('pk')
+        try:
+            instance = File.objects.get(pk=file_id, is_deleted=False)
+        except File.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not instance.folder.has_access(request.user):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        file_id = kwargs.get('pk')
+        try:
+            instance = File.objects.get(pk=file_id, is_deleted=False)
+        except File.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not instance.folder.has_access(request.user):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     def create(self, request, *args, **kwargs):
         # Read parameters
         folder_id = request.data.get('folder_id')
@@ -134,21 +167,12 @@ class FileViewSet(viewsets.ModelViewSet):
         # Share permission restriction (unless user created the folder)
         is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
         if not is_admin and folder.created_by != request.user:
-            from folders.models import FolderPermission
-            explicit_perm = FolderPermission.objects.filter(user=request.user, folder=folder).first()
-            if explicit_perm:
-                if not explicit_perm.can_upload:
-                    return Response(
-                        {"detail": "You do not have upload permission on this folder."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-            else:
-                share_perm = get_mou_share_permission(request.user, folder)
-                if share_perm == 'View Only':
-                    return Response(
-                        {"detail": "You only have View Only access and cannot upload files here."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+            perm_level = folder.get_user_permission_level(request.user)
+            if perm_level in [None, 'view']:
+                return Response(
+                    {"detail": "You do not have upload permission on this folder."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
         # Extract file info
         name = uploaded_file.name
@@ -160,6 +184,42 @@ class FileViewSet(viewsets.ModelViewSet):
 
         is_signed_copy = request.data.get('is_signed') == 'true'
         summary_text = request.data.get('summary', '')
+        title_val = (request.data.get('title') or '').strip()
+        description_val = (request.data.get('description') or summary_text or '').strip()
+        department_val = (request.data.get('department') or '').strip()
+        start_date_val = request.data.get('start_date') or request.data.get('effective_date')
+        expiry_date_val = request.data.get('expiry_date')
+        signed_date_val = request.data.get('signed_date')
+
+        from datetime import date
+        parsed_start_date = None
+        parsed_expiry_date = None
+        parsed_signed_date = None
+
+        if start_date_val and str(start_date_val).strip() and str(start_date_val).strip() != 'null':
+            try:
+                parsed_start_date = date.fromisoformat(str(start_date_val).strip()[:10])
+            except Exception as dt_err:
+                logger.warning(f"Could not parse start_date '{start_date_val}': {dt_err}")
+
+        if expiry_date_val and str(expiry_date_val).strip() and str(expiry_date_val).strip() != 'null':
+            try:
+                parsed_expiry_date = date.fromisoformat(str(expiry_date_val).strip()[:10])
+            except Exception as dt_err:
+                logger.warning(f"Could not parse expiry_date '{expiry_date_val}': {dt_err}")
+
+        if signed_date_val and str(signed_date_val).strip() and str(signed_date_val).strip() != 'null':
+            try:
+                parsed_signed_date = date.fromisoformat(str(signed_date_val).strip()[:10])
+            except Exception as dt_err:
+                logger.warning(f"Could not parse signed_date '{signed_date_val}': {dt_err}")
+
+        # Validation: Reject expiry date earlier than start date
+        if parsed_start_date and parsed_expiry_date and parsed_expiry_date < parsed_start_date:
+            return Response(
+                {"expiry_date": ["Expiry date cannot be earlier than start date."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             if hasattr(uploaded_file, 'seek'):
@@ -188,11 +248,17 @@ class FileViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 file_instance = File.objects.create(
                     name=name,
+                    title=title_val or None,
+                    description=description_val or None,
+                    department=department_val or None,
                     size=size,
                     file_type=file_type,
                     folder=folder,
                     uploaded_by=request.user,
                     is_signed=is_signed_copy,
+                    start_date=parsed_start_date,
+                    signed_date=parsed_signed_date,
+                    expiry_date=parsed_expiry_date,
                     file_field=uploaded_file,
                     sha256_hash=sha256_hash,
                     virus_scan_status=virus_status,
@@ -261,40 +327,15 @@ class FileViewSet(viewsets.ModelViewSet):
                 # Handle signed copy folder update and notifications
                 if is_signed_copy:
                     folder.status = 'Signed'
-                    if summary_text:
-                        folder.summary = summary_text
-
-                    from datetime import date
-                    signed_date_val = request.data.get('signed_date')
-                    expiry_date_val = request.data.get('expiry_date')
-                    
-                    parsed_signed_date = None
-                    parsed_expiry_date = None
-
-                    if signed_date_val and str(signed_date_val).strip():
-                        try:
-                            parsed_signed_date = date.fromisoformat(str(signed_date_val).strip()[:10])
-                        except Exception as dt_err:
-                            logger.warning(f"Could not parse signed_date '{signed_date_val}': {dt_err}")
-
-                    if expiry_date_val and str(expiry_date_val).strip():
-                        try:
-                            parsed_expiry_date = date.fromisoformat(str(expiry_date_val).strip()[:10])
-                        except Exception as dt_err:
-                            logger.warning(f"Could not parse expiry_date '{expiry_date_val}': {dt_err}")
-
+                    if summary_text or description_val:
+                        folder.summary = summary_text or description_val
                     if parsed_signed_date:
                         folder.signed_date = parsed_signed_date
-                        file_instance.signed_date = parsed_signed_date
                     if parsed_expiry_date:
                         folder.expiry_date = parsed_expiry_date
-                        file_instance.expiry_date = parsed_expiry_date
-                    
-                    file_instance.is_signed = True
-                    file_instance.save(update_fields=['is_signed', 'signed_date', 'expiry_date'])
                     
                     folder_update_fields = ['status']
-                    if summary_text:
+                    if summary_text or description_val:
                         folder_update_fields.append('summary')
                     if parsed_signed_date:
                         folder_update_fields.append('signed_date')
@@ -331,39 +372,97 @@ class FileViewSet(viewsets.ModelViewSet):
         return Response(FileSerializer(file_instance, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
-        # We handle renaming files via PUT/PATCH
+        # We handle renaming and metadata/validity updates via PUT/PATCH
         file_instance = self.get_object()
         
-        # Access check: user uploaded the file, created the folder, or has folder access
-        can_manage = (
-            file_instance.uploaded_by == request.user or
-            file_instance.folder.created_by == request.user or
-            file_instance.folder.has_access(request.user)
-        )
-        if not can_manage:
-            return Response({"detail": "You do not have access to rename this file."}, status=status.HTTP_403_FORBIDDEN)
+        # Access check: Super Admin / Admin, folder creator, or user with 'edit'/'manage' permission
+        is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
+        is_folder_creator = file_instance.folder and file_instance.folder.created_by == request.user
+        perm_level = file_instance.folder.get_user_permission_level(request.user) if file_instance.folder else None
+
+        can_edit = is_admin or is_folder_creator or (perm_level in ['edit', 'manage'])
+        if not can_edit:
+            return Response({"detail": "You do not have permission to edit this file or its metadata."}, status=status.HTTP_403_FORBIDDEN)
             
         old_name = file_instance.name
-        new_name = request.data.get('name')
-        
-        if not new_name:
-            return Response({"name": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+        new_name = request.data.get('name', old_name)
+        new_title = request.data.get('title')
+        new_description = request.data.get('description')
+        start_date_val = request.data.get('start_date')
+        expiry_date_val = request.data.get('expiry_date')
+
+        from datetime import date
+        parsed_start_date = file_instance.start_date
+        parsed_expiry_date = file_instance.expiry_date
+
+        if start_date_val is not None:
+            if str(start_date_val).strip() in ['', 'null']:
+                parsed_start_date = None
+            else:
+                try:
+                    parsed_start_date = date.fromisoformat(str(start_date_val).strip()[:10])
+                except Exception as dt_err:
+                    return Response({"start_date": ["Invalid start date format."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        if expiry_date_val is not None:
+            if str(expiry_date_val).strip() in ['', 'null']:
+                parsed_expiry_date = None
+            else:
+                try:
+                    parsed_expiry_date = date.fromisoformat(str(expiry_date_val).strip()[:10])
+                except Exception as dt_err:
+                    return Response({"expiry_date": ["Invalid expiry date format."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validation: Reject expiry date earlier than start date
+        if parsed_start_date and parsed_expiry_date and parsed_expiry_date < parsed_start_date:
+            return Response(
+                {"expiry_date": ["Expiry date cannot be earlier than start date."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             with transaction.atomic():
-                file_instance.name = new_name
-                file_instance.save(update_fields=['name', 'updated_at'])
+                update_fields = ['updated_at']
+                if new_name and new_name != old_name:
+                    file_instance.name = new_name
+                    update_fields.append('name')
+                    # Sync rename to Google Drive
+                    if file_instance.google_file_id:
+                        logger.info(f"Syncing file rename to Google Drive. File ID: '{file_instance.google_file_id}', new name: '{new_name}'...")
+                        drive_service.rename_file(file_instance.google_file_id, new_name)
+                        logger.info("Rename sync successful.")
+                    log_activity(request.user, f"Renamed file from '{old_name}' to '{new_name}'", "files", request)
 
-                # Sync rename to Google Drive
-                if file_instance.google_file_id:
-                    logger.info(f"Syncing file rename to Google Drive. File ID: '{file_instance.google_file_id}', new name: '{new_name}'...")
-                    drive_service.rename_file(file_instance.google_file_id, new_name)
-                    logger.info("Rename sync successful.")
+                if new_title is not None:
+                    file_instance.title = new_title.strip() or None
+                    update_fields.append('title')
+                if new_description is not None:
+                    file_instance.description = new_description.strip() or None
+                    update_fields.append('description')
+                if 'department' in request.data:
+                    file_instance.department = (request.data.get('department') or '').strip() or None
+                    update_fields.append('department')
+                if 'is_signed' in request.data:
+                    file_instance.is_signed = str(request.data.get('is_signed')).lower() == 'true'
+                    update_fields.append('is_signed')
+                if 'department' in request.data:
+                    file_instance.department = (request.data.get('department') or '').strip() or None
+                    update_fields.append('department')
+                if 'is_signed' in request.data:
+                    file_instance.is_signed = str(request.data.get('is_signed')).lower() == 'true'
+                    update_fields.append('is_signed')
+                if start_date_val is not None:
+                    file_instance.start_date = parsed_start_date
+                    update_fields.append('start_date')
+                if expiry_date_val is not None:
+                    file_instance.expiry_date = parsed_expiry_date
+                    update_fields.append('expiry_date')
 
-                log_activity(request.user, f"Renamed file from '{old_name}' to '{new_name}'", "files", request)
+                file_instance.save(update_fields=update_fields)
+                log_activity(request.user, f"Updated file metadata for '{file_instance.name}'", "files", request)
         except Exception as e:
-            logger.exception(f"File rename failed for file '{old_name}' (ID: {file_instance.id}) to '{new_name}': {e}")
-            return Response({"detail": f"Rename sync with Google Drive failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception(f"File update failed for file '{old_name}' (ID: {file_instance.id}): {e}")
+            return Response({"detail": f"File update failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response(FileSerializer(file_instance, context={'request': request}).data)
 
@@ -382,21 +481,12 @@ class FileViewSet(viewsets.ModelViewSet):
         # Share permission restriction (unless user created the folder)
         is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
         if not is_admin and file_instance.folder.created_by != request.user:
-            from folders.models import FolderPermission
-            explicit_perm = FolderPermission.objects.filter(user=request.user, folder=file_instance.folder).first()
-            if explicit_perm:
-                if not explicit_perm.can_upload:
-                    return Response(
-                        {"detail": "You do not have permission to delete files in this folder."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-            else:
-                share_perm = get_mou_share_permission(request.user, file_instance.folder)
-                if share_perm in ['View Only', 'Upload Only']:
-                    return Response(
-                        {"detail": "You only have read/upload access and cannot delete files here."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+            perm_level = file_instance.folder.get_user_permission_level(request.user)
+            if perm_level in [None, 'view']:
+                return Response(
+                    {"detail": "You do not have permission to delete files in this folder."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             
         name = file_instance.name
         folder_name = file_instance.folder.name
@@ -431,11 +521,15 @@ class FileViewSet(viewsets.ModelViewSet):
     def download(self, request, pk=None):
         file_instance = self.get_object()
         
-        # Access check: user uploaded file or has folder access
+        # Access check: user is admin/superuser, uploaded the file, or has folder access
         can_view = (
+            request.user.is_superuser or
+            (request.user.role and request.user.role.name in ["Super Admin", "Admin"]) or
             file_instance.uploaded_by == request.user or
-            file_instance.folder.created_by == request.user or
-            file_instance.folder.has_access(request.user)
+            (file_instance.folder and (
+                file_instance.folder.created_by == request.user or
+                file_instance.folder.has_access(request.user)
+            ))
         )
         if not can_view:
             return Response({"detail": "You do not have access to download this file."}, status=status.HTTP_403_FORBIDDEN)
@@ -468,58 +562,118 @@ class FileViewSet(viewsets.ModelViewSet):
     def preview(self, request, pk=None):
         file_instance = self.get_object()
         
-        # Access check: user uploaded file or has folder access
+        # Access check: user is admin/superuser, uploaded the file, or has folder access
         can_view = (
+            request.user.is_superuser or
+            (request.user.role and request.user.role.name in ["Super Admin", "Admin"]) or
             file_instance.uploaded_by == request.user or
-            file_instance.folder.created_by == request.user or
-            file_instance.folder.has_access(request.user)
+            (file_instance.folder and (
+                file_instance.folder.created_by == request.user or
+                file_instance.folder.has_access(request.user)
+            ))
         )
         if not can_view:
             return Response({"detail": "You do not have access to preview this file."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Check if local file exists first (extremely fast and robust fallback)
+        fname_lower = file_instance.name.lower()
+        is_pdf = fname_lower.endswith('.pdf') or (file_instance.mime_type == 'application/pdf')
+        is_docx = fname_lower.endswith('.docx') or (file_instance.mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        is_doc = fname_lower.endswith('.doc') or (file_instance.mime_type == 'application/msword')
+
+        def render_docx_stream(stream):
+            try:
+                import docx
+                doc = docx.Document(stream)
+                html_parts = [
+                    '<!DOCTYPE html><html><head><meta charset="utf-8">',
+                    f'<title>{html.escape(file_instance.name)}</title>',
+                    '<style>',
+                    'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 24px; background: #f8fafc; color: #1e293b; line-height: 1.6; }',
+                    '.doc-container { max-width: 850px; margin: 0 auto; background: #ffffff; padding: 40px 48px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }',
+                    'h1, h2, h3, h4, h5, h6 { color: #0f172a; margin-top: 1.4em; margin-bottom: 0.6em; font-weight: 700; line-height: 1.25; }',
+                    'h1 { font-size: 1.75rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }',
+                    'h2 { font-size: 1.4rem; }',
+                    'h3 { font-size: 1.15rem; }',
+                    'p { margin: 0.7em 0; min-height: 1.2em; font-size: 0.95rem; }',
+                    'table { border-collapse: collapse; width: 100%; margin: 1.5em 0; font-size: 0.9rem; }',
+                    'th, td { border: 1px solid #cbd5e1; padding: 10px 14px; text-align: left; }',
+                    'th { background-color: #f1f5f9; font-weight: 600; color: #334155; }',
+                    'strong { font-weight: 600; }',
+                    '</style></head><body>',
+                    '<div class="doc-container">',
+                    f'<div style="border-bottom: 2px solid #3b82f6; padding-bottom: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;"><span style="font-weight: 700; color: #2563eb; font-size: 1.1rem;">📄 {html.escape(file_instance.name)}</span><span style="font-size: 0.8rem; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 6px;">Microsoft Word Preview</span></div>'
+                ]
+                for p in doc.paragraphs:
+                    if not p.text.strip():
+                        html_parts.append('<p>&nbsp;</p>')
+                        continue
+                    p_style_name = getattr(p.style, 'name', '') or ''
+                    if p_style_name.startswith('Heading'):
+                        lvl = p_style_name.replace('Heading', '').strip()
+                        tag = f'h{lvl}' if lvl in ['1', '2', '3', '4', '5', '6'] else 'h2'
+                        html_parts.append(f'<{tag}>{html.escape(p.text)}</{tag}>')
+                        continue
+                    runs_html = []
+                    for run in p.runs:
+                        t = html.escape(run.text)
+                        if run.bold:
+                            t = f'<strong>{t}</strong>'
+                        if run.italic:
+                            t = f'<em>{t}</em>'
+                        if run.underline:
+                            t = f'<u>{t}</u>'
+                        runs_html.append(t)
+                    html_parts.append(f'<p>{"".join(runs_html)}</p>')
+                for table in doc.tables:
+                    html_parts.append('<table>')
+                    for row_idx, row in enumerate(table.rows):
+                        html_parts.append('<tr>')
+                        for cell in row.cells:
+                            cell_tag = 'th' if row_idx == 0 else 'td'
+                            html_parts.append(f'<{cell_tag}>{html.escape(cell.text)}</{cell_tag}>')
+                        html_parts.append('</tr>')
+                    html_parts.append('</table>')
+                html_parts.append('</div></body></html>')
+                return "".join(html_parts)
+            except Exception as docx_err:
+                logger.error(f"Docx HTML conversion error: {docx_err}")
+                return f'<!DOCTYPE html><html><body style="font-family: sans-serif; padding: 40px; text-align: center;"><p>Could not render document content: {html.escape(str(docx_err))}</p></body></html>'
+
+        # 1. Local file on disk
         if file_instance.file_field and os.path.exists(file_instance.file_field.path):
+            if is_docx:
+                with open(file_instance.file_field.path, 'rb') as f:
+                    html_content = render_docx_stream(f)
+                log_activity(request.user, f"Previewed Word document '{file_instance.name}'", "files", request)
+                return HttpResponse(html_content, content_type='text/html; charset=utf-8')
+
+            mime = 'application/pdf' if is_pdf else (file_instance.mime_type or file_instance.file_type or 'application/octet-stream')
             response = FileResponse(open(file_instance.file_field.path, 'rb'), as_attachment=False)
-            response['Content-Type'] = file_instance.mime_type or file_instance.file_type
-            return response
-
-        if not file_instance.google_file_id or file_instance.google_file_id.startswith('drive_file_'):
-            raise Http404("File does not exist on storage.")
-
-        try:
-            # Download file from Google Drive
-            file_bytes = drive_service.download_file(file_instance.google_file_id)
-
-            # Stream response securely
-            response = FileResponse(io.BytesIO(file_bytes), as_attachment=False)
-            response['Content-Type'] = file_instance.mime_type or file_instance.file_type
-            
+            response['Content-Type'] = mime
+            response['Content-Disposition'] = f'inline; filename="{file_instance.name}"'
             log_activity(request.user, f"Previewed file '{file_instance.name}'", "files", request)
             return response
-        except Exception as e:
-            return Response({"detail": f"Failed to preview file from Google Drive: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Check if Google File ID is stored
-        if not file_instance.google_file_id:
-            # Fallback to local storage (for old files)
-            if file_instance.file_field and os.path.exists(file_instance.file_field.path):
-                response = FileResponse(open(file_instance.file_field.path, 'rb'), as_attachment=False)
-                response['Content-Type'] = file_instance.file_type
+        # 2. Google Drive file
+        if file_instance.google_file_id and not file_instance.google_file_id.startswith('drive_file_'):
+            try:
+                file_bytes = drive_service.download_file(file_instance.google_file_id)
+                if is_docx:
+                    html_content = render_docx_stream(io.BytesIO(file_bytes))
+                    log_activity(request.user, f"Previewed Word document '{file_instance.name}'", "files", request)
+                    return HttpResponse(html_content, content_type='text/html; charset=utf-8')
+
+                mime = 'application/pdf' if is_pdf else (file_instance.mime_type or file_instance.file_type or 'application/octet-stream')
+                response = FileResponse(io.BytesIO(file_bytes), as_attachment=False)
+                response['Content-Type'] = mime
+                response['Content-Disposition'] = f'inline; filename="{file_instance.name}"'
+                log_activity(request.user, f"Previewed file '{file_instance.name}'", "files", request)
                 return response
-            raise Http404("File does not exist on storage.")
+            except Exception as e:
+                logger.error(f"Failed to preview file from Google Drive: {e}")
+                return Response({"detail": f"Failed to preview file from Google Drive: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        try:
-            # Download file from Google Drive
-            file_bytes = drive_service.download_file(file_instance.google_file_id)
-
-            # Stream response securely, hiding real Google URL
-            response = FileResponse(io.BytesIO(file_bytes), as_attachment=False)
-            response['Content-Type'] = file_instance.mime_type or file_instance.file_type
-            
-            log_activity(request.user, f"Previewed file '{file_instance.name}'", "files", request)
-            return response
-        except Exception as e:
-            return Response({"detail": f"Failed to preview file from Google Drive: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        raise Http404("File does not exist on storage.")
 
     @action(detail=True, methods=['post'])
     def replace(self, request, pk=None):
@@ -536,21 +690,12 @@ class FileViewSet(viewsets.ModelViewSet):
         # Share permission restriction
         is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
         if not is_admin:
-            from folders.models import FolderPermission
-            explicit_perm = FolderPermission.objects.filter(user=request.user, folder=file_instance.folder).first()
-            if explicit_perm:
-                if not explicit_perm.can_upload:
-                    return Response(
-                        {"detail": "You do not have permission to replace files in this folder."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-            else:
-                share_perm = get_mou_share_permission(request.user, file_instance.folder)
-                if share_perm in ['View Only', 'Upload Only']:
-                    return Response(
-                        {"detail": "You do not have permission to replace files in this folder."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+            perm_level = file_instance.folder.get_user_permission_level(request.user)
+            if perm_level in [None, 'view']:
+                return Response(
+                    {"detail": "You do not have permission to replace files in this folder."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
         if not uploaded_file:
             return Response({"file": ["No replacement file was uploaded."]}, status=status.HTTP_400_BAD_REQUEST)
@@ -701,6 +846,12 @@ class FileViewSet(viewsets.ModelViewSet):
         if not new_parent.has_access(request.user):
             return Response({"detail": "You do not have access to the target folder."}, status=status.HTTP_403_FORBIDDEN)
 
+        is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
+        if not is_admin and new_parent.created_by != request.user:
+            dest_perm = new_parent.get_user_permission_level(request.user)
+            if dest_perm in [None, 'view']:
+                return Response({"detail": "You do not have permission to add files to the destination folder."}, status=status.HTTP_403_FORBIDDEN)
+
         try:
             with transaction.atomic():
                 if item_type == 'file':
@@ -708,11 +859,10 @@ class FileViewSet(viewsets.ModelViewSet):
                     if not file_instance.folder.has_access(request.user):
                         return Response({"detail": "You do not have access to the source file."}, status=status.HTTP_403_FORBIDDEN)
 
-                    # Share permission check
-                    is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
-                    if not is_admin:
-                        src_perm = get_mou_share_permission(request.user, file_instance.folder)
-                        if src_perm in ['View Only', 'Upload Only']:
+                    # Source folder edit permission check
+                    if not is_admin and file_instance.folder.created_by != request.user:
+                        src_perm = file_instance.folder.get_user_permission_level(request.user)
+                        if src_perm in [None, 'view', 'upload']:
                             return Response({"detail": "You do not have permission to move files from the source folder."}, status=status.HTTP_403_FORBIDDEN)
 
                     # Move file in Google Drive

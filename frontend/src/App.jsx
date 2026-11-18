@@ -10,6 +10,7 @@ import { Toaster } from 'react-hot-toast';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import LoadingScreen from './components/LoadingScreen';
+import ErrorBoundary from './components/ErrorBoundary';
 import api from './services/api';
 
 // Lazy Loaded Page Components
@@ -33,6 +34,7 @@ const RecycleBin = lazy(() => import('./pages/RecycleBin'));
 const Register = lazy(() => import('./pages/Register'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const DynamicPageContainer = lazy(() => import('./pages/DynamicPageContainer'));
+const SharedDownload = lazy(() => import('./pages/SharedDownload'));
 
 // Dynamic Google OAuth Provider Wrapper
 const DynamicGoogleOAuthProvider = ({ children }) => {
@@ -81,13 +83,15 @@ function App() {
               <AutoRefreshProvider>
                 <DynamicGoogleOAuthProvider>
                   <AuthProvider>
-                    <Suspense fallback={<LoadingScreen loading={true} message="Loading module..." />}>
-                  <Routes>
+                    <ErrorBoundary>
+                      <Suspense fallback={<LoadingScreen loading={true} message="Loading module..." />}>
+                        <Routes>
                     {/* Public Login & Register Pages */}
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/register/:token" element={<Register />} />
                     <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/shared/download/:token" element={<SharedDownload />} />
 
                     {/* Protected Application Routes */}
                     <Route
@@ -185,7 +189,7 @@ function App() {
                     <Route
                       path="/departments"
                       element={
-                        <ProtectedRoute requiredPermission="view_dashboard">
+                        <ProtectedRoute blockUserRole requiredPermission="view_dashboard">
                           <Layout><Departments /></Layout>
                         </ProtectedRoute>
                       }
@@ -203,7 +207,7 @@ function App() {
                     <Route
                       path="/settings"
                       element={
-                        <ProtectedRoute requiredPermission="view_dashboard">
+                        <ProtectedRoute onlySuperAdmin>
                           <Layout><Settings /></Layout>
                         </ProtectedRoute>
                       }
@@ -257,8 +261,9 @@ function App() {
                     {/* Fallback redirect */}
                     <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
-                  </Suspense>
-                </AuthProvider>
+                      </Suspense>
+                    </ErrorBoundary>
+                  </AuthProvider>
               </DynamicGoogleOAuthProvider>
             </AutoRefreshProvider>
           </SiteTimeProvider>

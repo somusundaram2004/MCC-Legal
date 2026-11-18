@@ -20,7 +20,7 @@ class FolderPermissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = FolderPermission
         fields = [
-            'id', 'user', 'user_id', 'is_granted',
+            'id', 'user', 'user_id', 'is_granted', 'permission_level',
             'can_read', 'can_download', 'can_upload', 'can_delete_own_uploads'
         ]
 
@@ -41,23 +41,22 @@ class FolderSerializer(serializers.ModelSerializer):
     custom_page_id = serializers.ReadOnlyField(source='custom_page.id')
     custom_page_slug = serializers.ReadOnlyField(source='custom_page.slug')
     custom_page_title = serializers.ReadOnlyField(source='custom_page.title')
+    department_name = serializers.SerializerMethodField()
+    effective_expiry_date = serializers.SerializerMethodField()
 
     class Meta:
-
         model = Folder
         fields = [
             'id', 'name', 'parent_id', 'created_by', 
             'created_at', 'updated_at', 'subfolder_count', 
             'file_count', 'path', 'google_folder_id', 'status',
             'summary', 'expiry_date', 'signed_date', 'is_viewed',
-            'custom_page_id', 'custom_page_slug', 'custom_page_title', 'module_type'
+            'custom_page_id', 'custom_page_slug', 'custom_page_title', 'module_type',
+            'department_name', 'effective_expiry_date'
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
-
     def get_subfolder_count(self, obj):
-        # We only count subfolders that the user has access to, but in serializing we can just do raw count.
-        # Filtered counts can be done on demand or simple count is fine.
         return obj.children.count()
 
     def get_file_count(self, obj):
@@ -89,3 +88,75 @@ class FolderSerializer(serializers.ModelSerializer):
             return True
         from .models import FolderView
         return FolderView.objects.filter(user=request.user, folder=obj).exists()
+
+    def get_department_name(self, obj):
+        # 1. Custom page module title
+        if getattr(obj, 'custom_page', None):
+            return obj.custom_page.title
+
+        # 2. Direct MOU attached to folder
+        try:
+            mou = obj.mous.filter(department_name__isnull=False).exclude(department_name='').first()
+            if mou and mou.department_name:
+                return mou.department_name
+        except Exception:
+            pass
+
+        # 3. Child MOU under this folder's subfolders
+        try:
+            from mous.models import MOU
+            child_mou = MOU.objects.filter(department__parent=obj).exclude(department_name='').first()
+            if child_mou and child_mou.department_name:
+                return child_mou.department_name
+        except Exception:
+            pass
+
+        # 4. Children with explicit department name
+        try:
+            for ch in obj.children.all()[:10]:
+                if ch.name in ['BussAdministration', 'Tourism-Obed']:
+                    return ch.name
+        except Exception:
+            pass
+
+        # 5. Check if folder name matches known department
+        try:
+            from mous.models import Department
+            dept = Department.objects.filter(name__iexact=obj.name).first()
+            if dept:
+                return dept.name
+        except Exception:
+            pass
+
+        # 6. File inside folder with department
+        try:
+            file_with_dept = obj.files.exclude(department__isnull=True).exclude(department='').first()
+            if file_with_dept and file_with_dept.department:
+                return file_with_dept.department
+        except Exception:
+            pass
+
+        # 7. Ancestors
+        try:
+            for anc in obj.get_ancestors():
+                if anc.parent_id is not None and anc.name != 'MOU Repository':
+                    return anc.name
+        except Exception:
+            pass
+
+        return 'MOU Repository'
+
+    def get_effective_expiry_date(self, obj):
+        if obj.expiry_date:
+            return str(obj.expiry_date)
+        try:
+            mou = obj.mous.filter(expiry_date__isnull=False).first()
+            if mou and mou.expiry_date:
+                return str(mou.expiry_date)
+            from files.models import File
+            file_exp = obj.files.filter(expiry_date__isnull=False).first()
+            if file_exp and file_exp.expiry_date:
+                return str(file_exp.expiry_date)
+        except Exception:
+            pass
+        return None

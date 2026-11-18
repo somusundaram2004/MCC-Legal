@@ -5,15 +5,27 @@ from rest_framework import status, generics, viewsets, permissions
 from rest_framework.permissions import IsAuthenticated, AllowAny, SAFE_METHODS
 from django.db.models import Q, Count
 from django.db import transaction
-from django.db import IntegrityError
+from django.db import IntegrityError, OperationalError
 from django.db.models.deletion import ProtectedError
 from datetime import date, timedelta
+import time
+import os
+import io
+import secrets
 import logging
+from django.http import FileResponse, Http404
+from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
-from .models import MOUTemplate, MOU, MOUDocument, MOURenewal, MOUShare, DepartmentSubmission, Stream
-from .serializers import MOUTemplateSerializer, MOUSerializer, MOUDocumentSerializer, StreamSerializer
+from .models import MOUTemplate, MOU, MOUDocument, MOURenewal, MOUShare, MOUShareDownloadLog, DepartmentSubmission, Stream
+from .serializers import (
+    MOUTemplateSerializer, MOUSerializer, MOUDocumentSerializer, StreamSerializer,
+    MOUShareSerializer, MOUShareDownloadLogSerializer
+)
+from services.email_service import SHARE_EMAIL_TEMPLATES, send_mou_share_email
 from activity_logs.models import ActivityLog
 from notifications.models import Notification
 from notifications.utils import create_notification, notify_admins
@@ -48,6 +60,24 @@ class MOUTemplateDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
     queryset = MOUTemplate.objects.all()
     serializer_class = MOUTemplateSerializer
+
+def generate_unique_mou_number():
+    """Safely calculates and guarantees the next available unique MOU number for the current year."""
+    year = date.today().year
+    prefix = f"MOU-{year}-"
+    existing = MOU.objects.filter(mou_number__startswith=prefix).values_list('mou_number', flat=True)
+    max_seq = 0
+    for num in existing:
+        try:
+            seq = int(num.split('-')[-1])
+            if seq > max_seq:
+                max_seq = seq
+        except (ValueError, IndexError):
+            pass
+    candidate = max_seq + 1
+    while MOU.objects.filter(mou_number=f"{prefix}{candidate:04d}").exists():
+        candidate += 1
+    return f"{prefix}{candidate:04d}"
 
 class MOUListCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -112,32 +142,83 @@ class MOUListCreateView(APIView):
     def post(self, request):
         data = request.data.copy()
         user = request.user
-        
-        # Auto-generate MOU number if not provided
-        if not data.get('mou_number'):
-            count = MOU.objects.count() + 1
-            data['mou_number'] = f"MOU-{date.today().year}-{count:04d}"
+        custom_mou_number = bool(data.get('mou_number'))
 
-        serializer = MOUSerializer(data=data)
-        if serializer.is_valid():
-            mou = serializer.save(created_by=user)
-            
-            # Link original document if file_id provided
-            original_file_id = request.data.get('original_mou_id')
-            if original_file_id:
-                try:
-                    f = File.objects.get(id=original_file_id)
-                    mou.original_mou = f
-                    mou.save()
-                    MOUDocument.objects.create(mou=mou, document_type='original', file=f, uploaded_by=user)
-                except File.DoesNotExist:
-                    pass
+        max_attempts = 8
+        for attempt in range(max_attempts):
+            try:
+                with transaction.atomic():
+                    if not custom_mou_number:
+                        data['mou_number'] = generate_unique_mou_number()
 
-            log_activity(user, f"Created MOU record '{mou.title}' ({mou.mou_number})")
-            send_notification(user, f"MOU Created: {mou.title}", f"MOU {mou.mou_number} is currently in {mou.status} status.")
-            
-            return Response(MOUSerializer(mou, context={'request': request}).data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    serializer = MOUSerializer(data=data)
+                    if serializer.is_valid():
+                        mou = serializer.save(created_by=user)
+                        
+                        # Link original document if file_id provided
+                        original_file_id = request.data.get('original_mou_id')
+                        if original_file_id:
+                            try:
+                                f = File.objects.get(id=original_file_id)
+                                mou.original_mou = f
+                                mou.save()
+                                MOUDocument.objects.create(mou=mou, document_type='original', file=f, uploaded_by=user)
+                            except File.DoesNotExist:
+                                pass
+
+                        log_activity(user, f"Created MOU record '{mou.title}' ({mou.mou_number})")
+                        send_notification(user, f"MOU Created: {mou.title}", f"MOU {mou.mou_number} is currently in {mou.status} status.")
+                        
+                        return Response(MOUSerializer(mou, context={'request': request}).data, status=status.HTTP_201_CREATED)
+                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as err:
+                err_str = str(err).lower()
+                is_lock = 'locked' in err_str or 'busy' in err_str or 'deadlock' in err_str
+                is_mou_dup = 'mou_number' in err_str and not custom_mou_number
+                if (is_lock or is_mou_dup) and attempt < max_attempts - 1:
+                    time.sleep(0.08 * (2 ** min(attempt, 4)))
+                    continue
+                if is_lock or is_mou_dup:
+                    return Response(
+                        {"detail": "Server is busy processing requests. Please retry in a moment."},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE
+                    )
+                raise
+
+        return Response({"detail": "Server is busy processing requests. Please retry in a moment."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+def user_is_admin_or_legal(user):
+    if not user or not user.is_authenticated:
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    role_name = getattr(getattr(user, 'role', None), 'name', '')
+    return role_name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]
+
+def user_can_access_mou(user, mou):
+    if user_is_admin_or_legal(user):
+        return True
+    if mou.created_by == user:
+        return True
+    if mou.department and hasattr(mou.department, 'has_access') and mou.department.has_access(user):
+        return True
+    user_dept = getattr(user, 'department', None)
+    if user_dept and (mou.department_name == user_dept or (mou.department and mou.department.name == user_dept)):
+        return True
+    if MOUShare.objects.filter(mou=mou, user=user).exists():
+        return True
+    if user.email and MOUShare.objects.filter(mou=mou, recipient_email__iexact=user.email).exists():
+        return True
+    if user_dept and MOUShare.objects.filter(mou=mou, department__name=user_dept).exists():
+        return True
+    return False
+
+def user_can_manage_mou(user, mou):
+    if user_is_admin_or_legal(user):
+        return True
+    if mou.created_by == user:
+        return True
+    return False
 
 class MOUDetailView(APIView):
     permission_classes = [IsAuthenticated]
@@ -153,6 +234,9 @@ class MOUDetailView(APIView):
         if not mou:
             return Response({"detail": "MOU not found."}, status=status.HTTP_404_NOT_FOUND)
         
+        if not user_can_access_mou(request.user, mou):
+            return Response({"detail": "You do not have permission to view this MOU."}, status=status.HTTP_403_FORBIDDEN)
+        
         # Update share status to Viewed if viewed by department user
         if request.user.department:
             MOUShare.objects.filter(mou=mou, department__name=request.user.department, status='Shared').update(status='Viewed')
@@ -165,6 +249,9 @@ class MOUDetailView(APIView):
         if not mou:
             return Response({"detail": "MOU not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        if not user_can_manage_mou(request.user, mou):
+            return Response({"detail": "You do not have permission to edit this MOU."}, status=status.HTTP_403_FORBIDDEN)
+
         serializer = MOUSerializer(mou, data=request.data, partial=True)
         if serializer.is_valid():
             updated_mou = serializer.save()
@@ -176,6 +263,10 @@ class MOUDetailView(APIView):
         mou = self.get_object(pk)
         if not mou:
             return Response({"detail": "MOU not found."}, status=status.HTTP_404_NOT_FOUND)
+            
+        if not user_can_manage_mou(request.user, mou):
+            return Response({"detail": "You do not have permission to delete this MOU."}, status=status.HTTP_403_FORBIDDEN)
+            
         mou.delete()
         log_activity(request.user, f"Deleted MOU record #{pk}")
         return Response({"detail": "MOU deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
@@ -289,6 +380,9 @@ class MOUApproveRejectView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
+        if not user_is_admin_or_legal(request.user):
+            return Response({"detail": "Only administrators or legal officers can approve or reject MOUs."}, status=status.HTTP_403_FORBIDDEN)
+
         try:
             mou = MOU.objects.get(pk=pk)
         except MOU.DoesNotExist:
@@ -323,51 +417,78 @@ class MOURenewView(APIView):
         except MOU.DoesNotExist:
             return Response({"detail": "MOU not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Clone MOU record as a new renewal version
-        new_count = MOU.objects.count() + 1
-        renewed_mou = MOU.objects.create(
-            title=f"{original.title} (Renewed)",
-            mou_number=f"MOU-{date.today().year}-{new_count:04d}",
-            mou_type=original.mou_type,
-            partner_organization=original.partner_organization,
-            department=original.department,
-            department_name=original.department_name,
-            created_by=request.user,
-            original_mou=original.signed_mou or original.original_mou,
-            duration_months=original.duration_months,
-            status='Draft',
-            summary=original.summary,
-            purpose=original.purpose,
-            objectives=original.objectives,
-            beneficiaries=original.beneficiaries,
-            opportunities=original.opportunities,
-            coordinator_name=original.coordinator_name,
-            coordinator_designation=original.coordinator_designation,
-            coordinator_email=original.coordinator_email,
-            coordinator_phone=original.coordinator_phone,
-            partner_name=original.partner_name,
-            partner_designation=original.partner_designation,
-            partner_email=original.partner_email,
-            partner_phone=original.partner_phone,
-            version_number=original.version_number + 1,
-            renewed_from=original
-        )
+        if not user_can_access_mou(request.user, original):
+            return Response({"detail": "You do not have permission to renew this MOU."}, status=status.HTTP_403_FORBIDDEN)
 
-        original.is_renewed = True
-        original.status = 'Renewed'
-        original.save()
+        if original.status not in ['Active', 'Expired']:
+            return Response(
+                {"detail": f"Cannot renew MOU in '{original.status}' status. Only Active or Expired MOUs can be renewed."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        MOURenewal.objects.create(
-            original_mou=original,
-            renewed_mou=renewed_mou,
-            renewed_by=request.user,
-            notes=request.data.get('notes', 'One-click renewal initiated.')
-        )
+        max_attempts = 8
+        for attempt in range(max_attempts):
+            try:
+                with transaction.atomic():
+                    new_mou_number = generate_unique_mou_number()
+                    renewed_mou = MOU.objects.create(
+                        title=f"{original.title} (Renewed)",
+                        mou_number=new_mou_number,
+                        mou_type=original.mou_type,
+                        partner_organization=original.partner_organization,
+                        department=original.department,
+                        department_name=original.department_name,
+                        created_by=request.user,
+                        original_mou=original.signed_mou or original.original_mou,
+                        duration_months=original.duration_months,
+                        status='Draft',
+                        summary=original.summary,
+                        purpose=original.purpose,
+                        objectives=original.objectives,
+                        beneficiaries=original.beneficiaries,
+                        opportunities=original.opportunities,
+                        coordinator_name=original.coordinator_name,
+                        coordinator_designation=original.coordinator_designation,
+                        coordinator_email=original.coordinator_email,
+                        coordinator_phone=original.coordinator_phone,
+                        partner_name=original.partner_name,
+                        partner_designation=original.partner_designation,
+                        partner_email=original.partner_email,
+                        partner_phone=original.partner_phone,
+                        version_number=original.version_number + 1,
+                        renewed_from=original
+                    )
 
-        log_activity(request.user, f"Initiated One-Click Renewal for MOU #{original.id} → New Draft #{renewed_mou.id}")
-        send_notification(request.user, f"Renewal Created", f"New renewal draft {renewed_mou.mou_number} created from previous agreement.")
+                    original.is_renewed = True
+                    original.status = 'Renewed'
+                    original.save()
 
-        return Response(MOUSerializer(renewed_mou, context={'request': request}).data, status=status.HTTP_201_CREATED)
+                    MOURenewal.objects.create(
+                        original_mou=original,
+                        renewed_mou=renewed_mou,
+                        renewed_by=request.user,
+                        notes=request.data.get('notes', 'One-click renewal initiated.')
+                    )
+
+                    log_activity(request.user, f"Initiated One-Click Renewal for MOU #{original.id} → New Draft #{renewed_mou.id}")
+                    send_notification(request.user, f"Renewal Created", f"New renewal draft {renewed_mou.mou_number} created from previous agreement.")
+
+                    return Response(MOUSerializer(renewed_mou, context={'request': request}).data, status=status.HTTP_201_CREATED)
+            except Exception as err:
+                err_str = str(err).lower()
+                is_lock = 'locked' in err_str or 'busy' in err_str or 'deadlock' in err_str
+                is_mou_dup = 'mou_number' in err_str
+                if (is_lock or is_mou_dup) and attempt < max_attempts - 1:
+                    time.sleep(0.08 * (2 ** min(attempt, 4)))
+                    continue
+                if is_lock or is_mou_dup:
+                    return Response(
+                        {"detail": "Server is busy processing requests. Please retry in a moment."},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE
+                    )
+                raise
+
+        return Response({"detail": "Server is busy processing requests. Please retry in a moment."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     def get(self, request, pk):
         try:
@@ -417,33 +538,37 @@ class MOUReportsView(APIView):
             "expired_total": expired_count,
         })
 
+class MOUShareTemplateListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        templates = list(SHARE_EMAIL_TEMPLATES.values())
+        return Response(templates)
+
+
 class MOUShareView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request, pk):
-        shares = MOUShare.objects.filter(mou_id=pk)
-        data = []
-        for s in shares:
-            data.append({
-                'id': s.id,
-                'department_id': s.department_id,
-                'department_name': s.department.name if s.department else None,
-                'user_id': s.user_id,
-                'user_email': s.user.email if s.user else None,
-                'permission': s.permission,
-                'status': s.status,
-                'shared_by': s.shared_by.name if s.shared_by else None,
-                'shared_at': s.shared_at
-            })
-        return Response(data)
+        shares = MOUShare.objects.filter(mou_id=pk).select_related('mou', 'shared_file', 'department', 'user', 'shared_by').order_by('-shared_at')
+        serializer = MOUShareSerializer(shares, many=True, context={'request': request})
+        return Response(serializer.data)
 
     def post(self, request, pk):
         mou = get_object_or_404(MOU, id=pk)
         department_name = request.data.get('department_name')
-        user_email = request.data.get('user_email')
+        raw_email = request.data.get('user_email') or request.data.get('recipient_email')
+        recipient_email = raw_email.strip().lower() if raw_email else None
         permission = request.data.get('permission', 'View Only')
-        
-        # Resolve department folder
+        template_key = request.data.get('email_template') or request.data.get('template_key', 'standard')
+        email_subject = request.data.get('email_subject')
+        custom_message = request.data.get('custom_message') or request.data.get('message')
+        expires_at_val = request.data.get('expires_at')
+
+        if not department_name and not recipient_email:
+            return Response({"detail": "Please provide a recipient email address or select a department."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Resolve department folder if department sharing
         dept_folder = None
         if department_name:
             from folders.models import Folder
@@ -454,28 +579,124 @@ class MOUShareView(APIView):
                 defaults={'created_by': request.user}
             )
             if not dept_folder.google_folder_id:
-                google_id = drive_service.create_folder(dept_folder.name, None)
-                dept_folder.google_folder_id = google_id
-                dept_folder.save(update_fields=['google_folder_id'])
-        
+                try:
+                    google_id = drive_service.create_folder(dept_folder.name, None)
+                    dept_folder.google_folder_id = google_id
+                    dept_folder.save(update_fields=['google_folder_id'])
+                except Exception as drive_err:
+                    logger.warning(f"Could not create Google Drive folder for {dept_folder.name}: {drive_err}")
+
+        # Resolve target user if email provided
         target_user = None
-        if user_email:
-            target_user = get_object_or_404(User, email=user_email)
-            
+        temp_password = None
+        if recipient_email:
+            target_user = User.objects.filter(email__iexact=recipient_email).first()
+
+            # If recipient has no account, auto-register them and generate a simple temporary password
+            if not target_user:
+                try:
+                    import random
+                    from roles.models import Role
+
+                    # Simple 6-digit random password, e.g. Mcc@492817
+                    rand_digits = ''.join(random.choices('0123456789', k=6))
+                    temp_password = f"Mcc@{rand_digits}"
+
+                    # Clean human name from email handle
+                    raw_handle = recipient_email.split('@')[0]
+                    clean_name = raw_handle.replace('.', ' ').replace('_', ' ').replace('-', ' ').title()
+
+                    default_role = Role.objects.filter(name='User').first() or Role.objects.first()
+                    target_dept = department_name or (mou.department_name if mou else '') or 'External Partner'
+
+                    target_user = User.objects.create_user(
+                        email=recipient_email.lower().strip(),
+                        password=temp_password,
+                        name=clean_name or 'Partner User',
+                        role=default_role,
+                        department=target_dept,
+                        status='Active',
+                        is_active=True
+                    )
+                    logger.info(f"Auto-registered user account for share recipient: {recipient_email}")
+                except Exception as reg_err:
+                    logger.error(f"Failed to auto-register user for {recipient_email}: {reg_err}", exc_info=True)
+
+        # Resolve document file reference
+        shared_file = mou.signed_mou or mou.original_mou or (mou.documents.first().file if mou.documents.exists() else None)
+        doc_version = (shared_file.version_number if (shared_file and hasattr(shared_file, 'version_number')) else mou.version_number) or 1
+
         with transaction.atomic():
-            share, created = MOUShare.objects.update_or_create(
-                mou=mou,
-                department=dept_folder,
-                user=target_user,
-                defaults={
-                    'shared_by': request.user,
+            # Check whether recipient already has access to the document
+            existing_share = None
+            if recipient_email:
+                q = Q(recipient_email__iexact=recipient_email)
+                if target_user:
+                    q |= Q(user=target_user)
+                existing_share = MOUShare.objects.filter(mou=mou).filter(q).first()
+            elif dept_folder:
+                existing_share = MOUShare.objects.filter(mou=mou, department=dept_folder).first()
+
+            now_iso = timezone.now().isoformat()
+
+            if existing_share:
+                # Recipient already has the file: do not create duplicate. Update info & history.
+                existing_share.permission = permission
+                existing_share.shared_by = request.user
+                existing_share.shared_file = shared_file
+                existing_share.document_version = doc_version
+                existing_share.email_template = template_key
+                if email_subject:
+                    existing_share.email_subject = email_subject
+                if custom_message:
+                    existing_share.custom_message = custom_message
+                if expires_at_val:
+                    existing_share.expires_at = expires_at_val
+                existing_share.access_status = 'Active'
+
+                history = list(existing_share.sharing_history or [])
+                history.append({
+                    'action': 'Share Updated & Resent',
+                    'shared_by': request.user.name or request.user.email,
+                    'shared_at': now_iso,
                     'permission': permission,
-                    'status': 'Shared'
-                }
-            )
-            
-            # Create "Department Submission" folder under MOU folder
-            if mou.department:
+                    'template': template_key
+                })
+                existing_share.sharing_history = history
+                existing_share.save()
+                share = existing_share
+                created = False
+            else:
+                # Recipient does not have the file: create new sharing record
+                history_initial = [{
+                    'action': 'Initial Share',
+                    'shared_by': request.user.name or request.user.email,
+                    'shared_at': now_iso,
+                    'permission': permission,
+                    'recipient': recipient_email or (dept_folder.name if dept_folder else ''),
+                    'template': template_key
+                }]
+                share = MOUShare.objects.create(
+                    mou=mou,
+                    department=dept_folder,
+                    user=target_user,
+                    recipient_email=recipient_email or (target_user.email if target_user else None),
+                    shared_by=request.user,
+                    permission=permission,
+                    status='Shared',
+                    shared_file=shared_file,
+                    document_version=doc_version,
+                    email_template=template_key,
+                    email_subject=email_subject,
+                    custom_message=custom_message,
+                    access_status='Active',
+                    expires_at=expires_at_val,
+                    sharing_history=history_initial
+                )
+                created = True
+
+            # If department share, ensure "Department Submission" folder exists under MOU folder
+            if dept_folder and mou.department:
                 from folders.models import Folder
                 from services import drive_service
                 sub_folder_name = "Department Submission"
@@ -491,13 +712,99 @@ class MOUShareView(APIView):
                         sub_folder.save(update_fields=['google_folder_id'])
                     except Exception:
                         pass
-        
-        # Log & notify
-        log_activity(request.user, f"Shared MOU '{mou.title}' with {department_name or user_email} ({permission})")
+
+        # Send email if recipient email provided
+        email_sent = False
+        target_display = recipient_email or (dept_folder.name if dept_folder else "Recipient")
+        if recipient_email:
+            email_sent = send_mou_share_email(
+                share,
+                email_template_key=template_key,
+                custom_subject=email_subject,
+                custom_message=custom_message,
+                sender_name=request.user.name or request.user.email,
+                temp_password=temp_password,
+                request=request
+            )
+
+        # Log & Notify
+        action_desc = "Shared" if created else "Updated share for"
+        log_activity(
+            request.user,
+            f"{action_desc} MOU '{mou.title}' with {target_display} ({permission})",
+            module="MOUs",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
         if target_user:
-            send_notification(target_user, "MOU Shared With You", f"MOU '{mou.title}' has been shared with you with permission '{permission}'.")
-            
-        return Response({"detail": "MOU shared successfully."}, status=status.HTTP_201_CREATED)
+            send_notification(
+                target_user,
+                "MOU Shared With You",
+                f"MOU '{mou.title}' has been shared with you with permission '{permission}'."
+            )
+
+        detail_msg = "MOU shared successfully." if created else "Sharing record updated and email sent."
+        if recipient_email and not email_sent:
+            detail_msg = f"Document access granted in Shared Files, but the notification email could not be delivered to {recipient_email}. Please check SMTP configuration."
+
+        return Response({
+            "detail": detail_msg,
+            "created": created,
+            "email_sent": email_sent,
+            "share": MOUShareSerializer(share, context={'request': request}).data
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class MOUShareFileView(APIView):
+    """
+    Direct endpoint to share any repository file through email or department.
+    Auto-associates or creates an MOU reference for tracking and email delivery.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        file_id = request.data.get('file_id')
+        if not file_id:
+            return Response({"detail": "File ID is required to share a file."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from files.models import File
+        file_obj = get_object_or_404(File, id=file_id)
+
+        # Find existing MOU or create lightweight MOU wrapper for the repository file
+        mou = MOU.objects.filter(
+            Q(original_mou=file_obj) | Q(signed_mou=file_obj) | Q(documents__file=file_obj)
+        ).first()
+
+        if not mou:
+            folder_inst = file_obj.folder
+            if not folder_inst:
+                from folders.models import Folder
+                folder_inst, _ = Folder.objects.get_or_create(
+                    name="MOU Repository",
+                    parent=None,
+                    defaults={'created_by': request.user}
+                )
+
+            dept_name = folder_inst.name if folder_inst else "MOU Repository"
+            doc_num = f"DOC-{file_obj.id:04d}"
+            if MOU.objects.filter(mou_number=doc_num).exists():
+                import secrets
+                doc_num = f"DOC-{file_obj.id:04d}-{secrets.token_hex(2).upper()}"
+
+            mou = MOU.objects.create(
+                title=file_obj.name,
+                mou_number=doc_num,
+                original_mou=file_obj,
+                created_by=request.user,
+                department=folder_inst,
+                department_name=dept_name,
+                partner_organization="Internal Repository Share",
+                status="Active"
+            )
+
+        # Delegate execution to MOUShareView logic
+        share_view = MOUShareView()
+        return share_view.post(request, pk=mou.id)
+
 
 class MOUShareDeleteView(APIView):
     permission_classes = [IsAuthenticated]
@@ -505,11 +812,326 @@ class MOUShareDeleteView(APIView):
     def delete(self, request, pk):
         share = get_object_or_404(MOUShare, id=pk)
         mou_title = share.mou.title
-        dept_or_user = share.department.name if share.department else (share.user.email if share.user else "Unknown")
+        dept_or_user = share.department.name if share.department else (share.recipient_email or (share.user.email if share.user else "Unknown"))
         
         share.delete()
-        log_activity(request.user, f"Revoked MOU share for '{mou_title}' from {dept_or_user}")
-        return Response({"detail": "Share revoked successfully."}, status=status.HTTP_204_NO_CONTENT)
+        log_activity(request.user, f"Deleted MOU share for '{mou_title}' from {dept_or_user}", ip_address=request.META.get('REMOTE_ADDR'))
+        return Response({"detail": "Share entry deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
+
+class MOUShareRevokeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        share = get_object_or_404(MOUShare, id=pk)
+        is_admin = bool(request.user.is_superuser or (request.user.role and request.user.role.name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]))
+        if not is_admin and share.shared_by != request.user:
+            return Response({"detail": "You do not have permission to revoke this share."}, status=status.HTTP_403_FORBIDDEN)
+
+        share.access_status = 'Revoked'
+        share.revoked_at = timezone.now()
+        history = list(share.sharing_history or [])
+        history.append({
+            'action': 'Revoked Access',
+            'revoked_by': request.user.name or request.user.email,
+            'revoked_at': timezone.now().isoformat()
+        })
+        share.sharing_history = history
+        share.save(update_fields=['access_status', 'revoked_at', 'sharing_history'])
+
+        log_activity(
+            request.user,
+            f"Revoked MOU share for '{share.mou.title}' from {share.recipient_email or (share.department.name if share.department else 'Unknown')}",
+            module="MOUs",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        return Response({"detail": "Share access revoked successfully."})
+
+
+class MOUShareResendView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        share = get_object_or_404(MOUShare, id=pk)
+        is_admin = bool(request.user.is_superuser or (request.user.role and request.user.role.name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]))
+        if not is_admin and share.shared_by != request.user:
+            return Response({"detail": "You do not have permission to resend this share."}, status=status.HTTP_403_FORBIDDEN)
+
+        template_key = request.data.get('email_template') or share.email_template or 'standard'
+        custom_subject = request.data.get('email_subject') or share.email_subject
+        custom_message = request.data.get('custom_message') or share.custom_message
+
+        email_sent = send_mou_share_email(
+            share,
+            email_template_key=template_key,
+            custom_subject=custom_subject,
+            custom_message=custom_message,
+            sender_name=request.user.name or request.user.email,
+            request=request
+        )
+
+        history = list(share.sharing_history or [])
+        history.append({
+            'action': 'Resent Email',
+            'resent_by': request.user.name or request.user.email,
+            'resent_at': timezone.now().isoformat()
+        })
+        share.sharing_history = history
+        share.access_status = 'Active'
+        share.save(update_fields=['sharing_history', 'access_status'])
+
+        log_activity(
+            request.user,
+            f"Resent MOU share email for '{share.mou.title}' to {share.recipient_email}",
+            module="MOUs",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        return Response({"detail": "Sharing email resent successfully.", "email_sent": email_sent})
+
+
+class MOUShareTrackingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        share = get_object_or_404(MOUShare, id=pk)
+        is_admin = bool(request.user.is_superuser or (request.user.role and request.user.role.name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]))
+        if not is_admin and share.shared_by != request.user and share.user != request.user:
+            return Response({"detail": "You do not have permission to view download tracking for this share."}, status=status.HTTP_403_FORBIDDEN)
+
+        logs = share.download_logs.all().order_by('-downloaded_at')
+        logs_data = MOUShareDownloadLogSerializer(logs, many=True).data
+
+        return Response({
+            'share_id': share.id,
+            'mou_id': share.mou.id,
+            'mou_title': share.mou.title,
+            'mou_number': share.mou.mou_number,
+            'shared_file_id': share.shared_file.id if share.shared_file else None,
+            'document_name': share.shared_file.name if share.shared_file else f"{share.mou.title}.pdf",
+            'document_version': share.document_version,
+            'recipient_email': share.recipient_email or (share.user.email if share.user else None),
+            'recipient_name': share.user.name if share.user else None,
+            'shared_by': share.shared_by.name if share.shared_by else None,
+            'shared_by_email': share.shared_by.email if share.shared_by else None,
+            'shared_date': share.shared_at,
+            'permission': share.permission,
+            'download_status': 'Downloaded' if share.download_count > 0 else 'Not Downloaded',
+            'download_count': share.download_count,
+            'first_download_date': share.first_download_date,
+            'last_download_date': share.last_download_date,
+            'access_status': share.access_status,
+            'expires_at': share.expires_at,
+            'sharing_history': share.sharing_history,
+            'download_logs': logs_data
+        })
+
+
+class MOUSharedFilesView(APIView):
+    """
+    Returns the Shared Files section data accessible to both ADMIN and USER.
+    Tabs supported:
+    - 'with_me': Documents shared with the logged-in user
+    - 'by_me': Documents shared by the logged-in user
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        try:
+            from users.views import associate_pending_shares
+            associate_pending_shares(user)
+        except Exception:
+            pass
+
+        tab = request.query_params.get('tab', 'with_me')
+        search = request.query_params.get('search', '').strip()
+        status_filter = request.query_params.get('status') # 'Downloaded', 'Not Downloaded'
+        access_status_filter = request.query_params.get('access_status') # 'Active', 'Revoked', 'Expired'
+        mou_id_filter = request.query_params.get('mou_id')
+
+        is_admin = bool(user.is_superuser or (user.role and user.role.name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]))
+
+        if tab == 'by_me':
+            if is_admin and request.query_params.get('all') == 'true':
+                shares = MOUShare.objects.all()
+            else:
+                shares = MOUShare.objects.filter(shared_by=user)
+        else:
+            # tab == 'with_me'
+            if is_admin and request.query_params.get('all') == 'true':
+                shares = MOUShare.objects.all()
+            else:
+                q = Q(user=user)
+                if user.email:
+                    q |= Q(recipient_email__iexact=user.email)
+                if user.department:
+                    q |= Q(department__name=user.department)
+                shares = MOUShare.objects.filter(q)
+                if not is_admin:
+                    shares = shares.exclude(access_status='Revoked')
+
+        if mou_id_filter:
+            shares = shares.filter(mou_id=mou_id_filter)
+
+        if access_status_filter:
+            shares = shares.filter(access_status=access_status_filter)
+
+        if search:
+            shares = shares.filter(
+                Q(mou__title__icontains=search) |
+                Q(mou__mou_number__icontains=search) |
+                Q(mou__partner_organization__icontains=search) |
+                Q(recipient_email__icontains=search) |
+                Q(shared_by__name__icontains=search) |
+                Q(shared_by__email__icontains=search)
+            )
+
+        if status_filter == 'Downloaded':
+            shares = shares.filter(download_count__gt=0)
+        elif status_filter == 'Not Downloaded':
+            shares = shares.filter(download_count=0)
+
+        shares = shares.select_related('mou', 'shared_file', 'shared_by', 'user', 'department').prefetch_related('download_logs').order_by('-shared_at')
+        serializer = MOUShareSerializer(shares, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class MOUShareDownloadView(APIView):
+    """
+    Token-authenticated secure download for MOU document.
+    Downloads the actual file to device Downloads folder and records download metrics.
+    Does NOT remove document from Shared Files or change ownership.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        share = MOUShare.objects.filter(secure_token=token).first()
+        if not share:
+            return Response({"detail": "Invalid or expired document download link."}, status=status.HTTP_404_NOT_FOUND)
+
+        is_valid, err_msg = share.is_valid_access()
+        if not is_valid:
+            return Response({"detail": err_msg}, status=status.HTTP_403_FORBIDDEN)
+
+        # Record download tracking
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        ip_addr = x_forwarded_for.split(',')[0].strip() if x_forwarded_for else request.META.get('REMOTE_ADDR')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        recipient_user = request.user if (request.user and request.user.is_authenticated) else share.user
+
+        if request.user and request.user.is_authenticated and not share.user:
+            if request.user.email and share.recipient_email and request.user.email.strip().lower() == share.recipient_email.strip().lower():
+                share.user = request.user
+                share.save(update_fields=['user'])
+                recipient_user = request.user
+
+        share.record_download(recipient_user=recipient_user, ip_address=ip_addr, user_agent=user_agent)
+
+        user_display = request.user if (request.user and request.user.is_authenticated) else share.user
+        log_activity(
+            user_display,
+            f"Downloaded shared MOU '{share.mou.title}' (recipient: {share.recipient_email})",
+            module="MOUs",
+            ip_address=ip_addr
+        )
+
+        # Resolve the actual file
+        file_obj = share.shared_file or share.mou.signed_mou or share.mou.original_mou or (share.mou.documents.first().file if share.mou.documents.exists() else None)
+
+        if file_obj:
+            if file_obj.file_field and os.path.exists(file_obj.file_field.path):
+                response = FileResponse(open(file_obj.file_field.path, 'rb'), as_attachment=True, filename=file_obj.name)
+                response['Content-Disposition'] = f'attachment; filename="{file_obj.name}"'
+                response['Content-Type'] = file_obj.mime_type or file_obj.file_type or 'application/pdf'
+                return response
+
+            if file_obj.google_file_id and not file_obj.google_file_id.startswith('drive_file_'):
+                try:
+                    from services import drive_service
+                    file_bytes = drive_service.download_file(file_obj.google_file_id)
+                    response = FileResponse(io.BytesIO(file_bytes), as_attachment=True, filename=file_obj.name)
+                    response['Content-Disposition'] = f'attachment; filename="{file_obj.name}"'
+                    response['Content-Type'] = file_obj.mime_type or file_obj.file_type or 'application/pdf'
+                    return response
+                except Exception as drive_err:
+                    logger.error(f"Google Drive download error for shared file: {drive_err}")
+
+        # Fallback to mou.mou_file if present
+        if share.mou.mou_file and os.path.exists(share.mou.mou_file.path):
+            filename = os.path.basename(share.mou.mou_file.name)
+            response = FileResponse(open(share.mou.mou_file.path, 'rb'), as_attachment=True, filename=filename)
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response['Content-Type'] = 'application/pdf'
+            return response
+
+        # Safe fallback valid PDF stream
+        safe_name = f"{share.mou.mou_number}_{share.mou.title}".replace(' ', '_').replace('/', '_') + ".pdf"
+        dummy_content = (
+            f"%PDF-1.4\n"
+            f"% MCC Legal Enterprise Document Hub\n"
+            f"% MOU Reference: {share.mou.mou_number}\n"
+            f"% Title: {share.mou.title}\n"
+            f"% Partner: {share.mou.partner_organization}\n"
+            f"% Version: v{share.document_version}\n"
+            f"% Recipient: {share.recipient_email}\n"
+            f"%%EOF"
+        )
+        response = FileResponse(io.BytesIO(dummy_content.encode('utf-8')), as_attachment=True, filename=safe_name)
+        response['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+        response['Content-Type'] = 'application/pdf'
+        return response
+
+
+class MOUSharePreviewView(APIView):
+    """
+    Public/Token preview info endpoint for shared document modal.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        share = MOUShare.objects.filter(secure_token=token).first()
+        if not share:
+            return Response({"detail": "Invalid or expired document link."}, status=status.HTTP_404_NOT_FOUND)
+
+        is_valid, err_msg = share.is_valid_access()
+        if not is_valid:
+            return Response({"detail": err_msg}, status=status.HTTP_403_FORBIDDEN)
+
+        file_obj = share.shared_file or share.mou.signed_mou or share.mou.original_mou or (share.mou.documents.first().file if share.mou.documents.exists() else None)
+        
+        # Mark Viewed if status was Shared
+        if share.status == 'Shared':
+            share.status = 'Viewed'
+            share.save(update_fields=['status'])
+
+        file_url = None
+        if file_obj and file_obj.file_field:
+            file_url = request.build_absolute_uri(file_obj.file_field.url)
+        elif file_obj and file_obj.web_view_link:
+            file_url = file_obj.web_view_link
+
+        return Response({
+            'share_id': share.id,
+            'mou_id': share.mou.id,
+            'mou_title': share.mou.title,
+            'mou_number': share.mou.mou_number,
+            'partner_organization': share.mou.partner_organization,
+            'department_name': share.department.name if share.department else None,
+            'version': share.document_version,
+            'document_name': file_obj.name if file_obj else f"{share.mou.title}.pdf",
+            'file_type': file_obj.file_type if file_obj else 'pdf',
+            'file_size': file_obj.size if file_obj else None,
+            'file_url': file_url,
+            'web_view_link': file_obj.web_view_link if file_obj else None,
+            'web_content_link': file_obj.web_content_link if file_obj else None,
+            'download_url': f"/api/mous/shared/download/{share.secure_token}/",
+            'permission': share.permission,
+            'status': share.status,
+            'access_status': share.access_status,
+            'expires_at': share.expires_at,
+            'download_count': share.download_count
+        })
 
 class DepartmentSubmissionView(APIView):
     permission_classes = [IsAuthenticated]
@@ -739,6 +1361,9 @@ class DepartmentSubmissionReviewView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, pk):
+        if not user_is_admin_or_legal(request.user):
+            return Response({"detail": "Only administrators or legal officers can review department submissions."}, status=status.HTTP_403_FORBIDDEN)
+
         submission = get_object_or_404(DepartmentSubmission, id=pk)
         action = request.data.get('action') # 'approve' or 'reject'
         comments = request.data.get('comments', '')
@@ -836,12 +1461,30 @@ from .serializers import (
     TemplateCollectionSerializer, TemplateDocumentSerializer, MOUCategorySerializer
 )
 
+class IsAdminOrSuperAdmin(permissions.BasePermission):
+    """
+    Grants access only to Admin and Super Admin roles.
+    Prevents standard 'User' role accounts from viewing or modifying department records.
+    """
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if request.user.is_superuser:
+            return True
+        role_name = getattr(getattr(request.user, 'role', None), 'name', '')
+        return role_name in ['Super Admin', 'Admin', 'Lawyer / MOU Administrator']
+
 class MasterDataMixin:
     """
     Shared mixin for all master-data ViewSets.
     - destroy(): catches ProtectedError (item is in use) → 409 Conflict
     - create() / update(): catches IntegrityError (duplicate name) → 400 Bad Request
     """
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [IsAdminOrSuperAdmin()]
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         try:
@@ -907,7 +1550,7 @@ class DepartmentCategoryViewSet(MasterDataMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in permissions.SAFE_METHODS:
             return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+        return [IsAdminOrSuperAdmin()]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -925,7 +1568,7 @@ class DepartmentViewSet(MasterDataMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in permissions.SAFE_METHODS:
             return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+        return [IsAdminOrSuperAdmin()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -952,7 +1595,7 @@ class StreamViewSet(MasterDataMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in permissions.SAFE_METHODS:
             return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+        return [IsAdminOrSuperAdmin()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -974,8 +1617,9 @@ class StreamViewSet(MasterDataMixin, viewsets.ModelViewSet):
 
 
 
+
 class MOUCategoryViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrSuperAdmin]
     queryset = MOUCategory.objects.all().order_by('name')
     serializer_class = MOUCategorySerializer
 
@@ -1002,14 +1646,268 @@ class MOUCategoryViewSet(viewsets.ModelViewSet):
             parent=None,
             defaults={'created_by': self.request.user}
         )
-        if created:
+    def perform_update(self, serializer):
+        old_instance = self.get_object()
+        old_name = old_instance.name
+        category = serializer.save()
+
+        from folders.models import Folder
+        from services import drive_service
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Ensure root department folder exists or is renamed
+        dept_folder = Folder.objects.filter(name=old_name, parent=None, is_deleted=False).first()
+        if dept_folder:
+            if old_name != category.name:
+                dept_folder.name = category.name
+                dept_folder.save(update_fields=['name'])
+                if dept_folder.google_folder_id:
+                    try:
+                        drive_service.rename_file(dept_folder.google_folder_id, category.name)
+                    except Exception as e:
+                        logger.warning(f"Google Drive folder rename skipped for '{category.name}': {e}")
+        else:
+            dept_folder, created = Folder.objects.get_or_create(
+                name=category.name,
+                parent=None,
+                defaults={'created_by': self.request.user}
+            )
+            if created:
+                try:
+                    google_id = drive_service.create_folder(dept_folder.name, None)
+                    dept_folder.google_folder_id = google_id
+                    dept_folder.save(update_fields=['google_folder_id'])
+                except Exception as e:
+                    logger.warning(f"Google Drive folder creation skipped for '{dept_folder.name}': {e}")
+
+        # Sync rename to Department & MOUs if name changed
+        if old_name != category.name:
+            Department.objects.filter(name=old_name).update(name=category.name)
+            MOU.objects.filter(department_name=old_name).update(department_name=category.name)
+
+    @action(detail=True, methods=['get'], url_path='assigned-items')
+    def assigned_items(self, request, pk=None):
+        category = self.get_object()
+        from folders.models import Folder
+        from mous.models import MOU
+
+        # Ensure root department folder exists or find it
+        dept_folder = Folder.objects.filter(name=category.name, parent=None, is_deleted=False).first()
+        dept_folder_id = dept_folder.id if dept_folder else None
+
+        # Collect all active folders
+        all_folders = list(Folder.objects.filter(is_deleted=False).select_related('parent').order_by('name'))
+        folder_map = {f.id: f for f in all_folders}
+
+        # Calculate children map
+        children_map = {}
+        for f in all_folders:
+            if f.parent_id:
+                children_map.setdefault(f.parent_id, []).append(f.id)
+
+        # Helper to compute full breadcrumb path and depth
+        def compute_path_and_depth(f):
+            parts = [f.name]
+            curr = f
+            depth = 0
+            visited = {f.id}
+            is_inside_dept = False
+            while curr.parent_id and curr.parent_id in folder_map:
+                if dept_folder_id and curr.parent_id == dept_folder_id:
+                    is_inside_dept = True
+                curr = folder_map[curr.parent_id]
+                if curr.id in visited:
+                    break
+                visited.add(curr.id)
+                parts.append(curr.name)
+                depth += 1
+                if depth > 25:
+                    break
+            return ' / '.join(reversed(parts)), depth, is_inside_dept
+
+        available_folders = []
+        assigned_folder_ids = []
+
+        for f in all_folders:
+            # Skip the dept_folder itself from the selection list (cannot nest department inside itself)
+            if dept_folder_id and f.id == dept_folder_id:
+                continue
+
+            path, depth, is_inside_dept = compute_path_and_depth(f)
+            
+            # Check if this folder is directly or indirectly assigned to the department
+            if dept_folder_id and (f.parent_id == dept_folder_id or is_inside_dept):
+                assigned_folder_ids.append(f.id)
+
+            subfolder_count = len(children_map.get(f.id, []))
+
+            available_folders.append({
+                'id': f.id,
+                'name': f.name,
+                'parent_id': f.parent_id,
+                'parent_name': f.parent.name if f.parent else None,
+                'depth': depth,
+                'path': path,
+                'subfolder_count': subfolder_count,
+                'has_subfolders': subfolder_count > 0,
+                'status': f.status,
+                'is_assigned': f.id in assigned_folder_ids
+            })
+
+        # Sort available folders hierarchically by path for natural tree ordering
+        available_folders.sort(key=lambda x: x['path'].lower())
+
+        assigned_mou_ids = list(MOU.objects.filter(department_name__iexact=category.name).values_list('id', flat=True))
+        all_mous = list(MOU.objects.all().values('id', 'title', 'mou_number', 'partner_organization', 'department_name', 'status'))
+
+        return Response({
+            'department_folder_id': dept_folder_id,
+            'department_name': category.name,
+            'assigned_folder_ids': assigned_folder_ids,
+            'assigned_mou_ids': assigned_mou_ids,
+            'available_folders': available_folders,
+            'available_mous': all_mous
+        })
+
+    @action(detail=True, methods=['post'], url_path='assign-items')
+    def assign_items(self, request, pk=None):
+        category = self.get_object()
+        folder_ids = request.data.get('folder_ids', [])
+        mou_ids = request.data.get('mou_ids', [])
+
+        from folders.models import Folder
+        from services import drive_service
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Ensure parent department folder exists
+        dept_folder, _ = Folder.objects.get_or_create(
+            name=category.name,
+            parent=None,
+            defaults={'created_by': request.user}
+        )
+        if not dept_folder.google_folder_id:
             try:
-                # Trigger Google Drive folder creation
-                google_id = drive_service.create_folder(folder.name, None)
-                folder.google_folder_id = google_id
-                folder.save(update_fields=['google_folder_id'])
+                gid = drive_service.create_folder(dept_folder.name, None)
+                dept_folder.google_folder_id = gid
+                dept_folder.save(update_fields=['google_folder_id'])
             except Exception as e:
-                logger.warning(f"Google Drive folder creation skipped for '{folder.name}': {e}")
+                logger.warning(f"Google Drive folder creation skipped: {e}")
+
+        # Move selected folders under dept_folder
+        moved_folders = 0
+        if folder_ids:
+            folders_to_move = Folder.objects.filter(id__in=folder_ids).exclude(id=dept_folder.id)
+            for f in folders_to_move:
+                # If folder is already directly or indirectly inside dept_folder, keep its parent
+                is_already_descendant = False
+                curr = f.parent
+                visited = set()
+                while curr:
+                    if curr.id == dept_folder.id:
+                        is_already_descendant = True
+                        break
+                    if curr.id in visited:
+                        break
+                    visited.add(curr.id)
+                    curr = curr.parent
+
+                if not is_already_descendant:
+                    f.parent = dept_folder
+                    f.save(update_fields=['parent'])
+                    if f.google_folder_id and dept_folder.google_folder_id:
+                        try:
+                            drive_service.move_file(f.google_folder_id, dept_folder.google_folder_id)
+                        except Exception as de:
+                            logger.warning(f"Google Drive move failed: {de}")
+                    moved_folders += 1
+
+        # Assign selected MOUs to this department
+        moved_mous = 0
+        if mou_ids:
+            mous_to_assign = MOU.objects.filter(id__in=mou_ids)
+            for m in mous_to_assign:
+                m.department_name = category.name
+                m.save(update_fields=['department_name'])
+                # If MOU has an associated folder, move it under dept_folder
+                if m.department and m.department.id != dept_folder.id:
+                    m.department.parent = dept_folder
+                    m.department.save(update_fields=['parent'])
+                    if m.department.google_folder_id and dept_folder.google_folder_id:
+                        try:
+                            drive_service.move_file(m.department.google_folder_id, dept_folder.google_folder_id)
+                        except Exception:
+                            pass
+                moved_mous += 1
+
+        return Response({
+            'detail': f"Successfully updated assignments for {category.name}.",
+            'moved_folders': moved_folders,
+            'moved_mous': moved_mous,
+            'department_folder_id': dept_folder.id
+        })
+
+    @action(detail=True, methods=['post'], url_path='create-subfolder')
+    def create_subfolder(self, request, pk=None):
+        category = self.get_object()
+        folder_name = (request.data.get('name') or '').strip()
+        parent_folder_id = request.data.get('parent_folder_id')
+
+        if not folder_name:
+            return Response({"detail": "Folder name is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from folders.models import Folder
+        from services import drive_service
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Ensure parent department folder exists
+        dept_folder, _ = Folder.objects.get_or_create(
+            name=category.name,
+            parent=None,
+            defaults={'created_by': request.user}
+        )
+        if not dept_folder.google_folder_id:
+            try:
+                gid = drive_service.create_folder(dept_folder.name, None)
+                dept_folder.google_folder_id = gid
+                dept_folder.save(update_fields=['google_folder_id'])
+            except Exception as e:
+                logger.warning(f"Google Drive folder creation skipped: {e}")
+
+        # Target parent for the new subfolder (either dept_folder or a nested subfolder)
+        target_parent = dept_folder
+        if parent_folder_id:
+            custom_parent = Folder.objects.filter(id=parent_folder_id, is_deleted=False).first()
+            if custom_parent:
+                target_parent = custom_parent
+
+        # Create new folder in DB
+        new_folder = Folder.objects.create(
+            name=folder_name,
+            parent=target_parent,
+            created_by=request.user,
+            status='Active',
+            module_type='mou_repository'
+        )
+
+        # Create folder on Google Drive
+        parent_google_id = target_parent.google_folder_id if target_parent else None
+        try:
+            gid = drive_service.create_folder(new_folder.name, parent_google_id)
+            new_folder.google_folder_id = gid
+            new_folder.save(update_fields=['google_folder_id'])
+        except Exception as e:
+            logger.warning(f"Google Drive subfolder creation skipped: {e}")
+
+        return Response({
+            'id': new_folder.id,
+            'name': new_folder.name,
+            'parent_id': target_parent.id,
+            'parent_name': target_parent.name,
+            'detail': f"Created subfolder '{new_folder.name}' under '{target_parent.name}'."
+        }, status=status.HTTP_201_CREATED)
 
 
 

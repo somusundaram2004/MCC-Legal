@@ -155,11 +155,17 @@ class FolderViewSet(viewsets.ModelViewSet):
         if not self.kwargs.get('pk') and getattr(self, 'action', None) not in ['retrieve', 'update', 'partial_update', 'destroy', 'move_module']:
             custom_page_id = self.request.query_params.get('custom_page_id')
             module_type = self.request.query_params.get('module_type')
+            status_param = self.request.query_params.get('status')
+            search_param = self.request.query_params.get('search')
 
             if custom_page_id:
                 base_qs = base_qs.filter(custom_page_id=custom_page_id)
             elif module_type:
                 base_qs = base_qs.filter(module_type=module_type)
+            if status_param:
+                base_qs = base_qs.filter(status__iexact=status_param.strip())
+            if search_param:
+                base_qs = base_qs.filter(name__icontains=search_param.strip())
 
         # Detail actions and pk lookups bypass list accessibility filtering.
         if self.kwargs.get('pk') or getattr(self, 'action', None) in ['retrieve', 'contents', 'update', 'partial_update', 'destroy', 'move_module']:
@@ -180,8 +186,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         has_access = instance.has_access(request.user)
         if not has_access:
             is_custom_page_system_root = (instance.custom_page is not None and str(instance.id) == str(instance.custom_page.root_folder_id))
-            has_child_access = any(child.has_access(request.user) for child in instance.children.all())
-            if not is_custom_page_system_root and not has_child_access:
+            if not is_custom_page_system_root:
                 return Response(
                     {"detail": "You do not have access to this folder."},
                     status=status.HTTP_403_FORBIDDEN
@@ -217,21 +222,12 @@ class FolderViewSet(viewsets.ModelViewSet):
             # Share permission restriction
             is_admin = request.user.role and request.user.role.name in ["Super Admin", "Admin"]
             if not is_admin and parent_folder.created_by != request.user:
-                from folders.models import FolderPermission
-                explicit_perm = FolderPermission.objects.filter(user=request.user, folder=parent_folder).first()
-                if explicit_perm:
-                    if not explicit_perm.can_upload:
-                        return Response(
-                            {"detail": "You only have read/view access and cannot create subfolders here."},
-                            status=status.HTTP_403_FORBIDDEN
-                        )
-                else:
-                    share_perm = get_mou_share_permission(request.user, parent_folder)
-                    if share_perm in ['View Only', 'Upload Only']:
-                        return Response(
-                            {"detail": "You only have read/upload access and cannot create subfolders here."},
-                            status=status.HTTP_403_FORBIDDEN
-                        )
+                parent_level = parent_folder.get_user_permission_level(request.user)
+                if parent_level in [None, 'view']:
+                    return Response(
+                        {"detail": "You only have read/view access and cannot create subfolders here."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
 
         try:
             with transaction.atomic():
@@ -666,7 +662,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         })
 
 
-    def sync_drive_directory(self, parent_google_id, parent_folder_obj, user):
+    def sync_drive_directory(self, parent_google_id, parent_folder_obj, user, force_sync=False, **kwargs):
         """
         Fetches live items from Google Drive under parent_google_id.
         Creates missing Folder and File database models.
@@ -675,6 +671,7 @@ class FolderViewSet(viewsets.ModelViewSet):
             return
         
         from files.models import File
+        from django.db.models import Q
         try:
             # Fetch live list from Google Drive
             live_items = drive_service.list_folder_contents(parent_google_id)
@@ -704,7 +701,6 @@ class FolderViewSet(viewsets.ModelViewSet):
                 
                 if mime_type == 'application/vnd.google-apps.folder':
                     # Folder synchronization - SKIP if soft-deleted in DB
-                    from django.db.models import Q
                     if Folder.objects.filter(
                         Q(google_folder_id=item_id) | Q(name=item_name, parent=parent_folder_obj),
                         is_deleted=True
@@ -797,13 +793,11 @@ class FolderViewSet(viewsets.ModelViewSet):
         """
         folder = self.get_object()
         
-        # Access check: allow access if user has direct access, or if this is a custom page system root folder,
-        # or if user has access to any child folder inside
+        # Access check: allow access if user has direct/inherited access, or if this is a custom page system root folder
         has_access = folder.has_access(request.user)
         if not has_access:
             is_custom_page_system_root = (folder.custom_page is not None and str(folder.id) == str(folder.custom_page.root_folder_id))
-            has_child_access = any(child.has_access(request.user) for child in folder.children.filter(is_deleted=False))
-            if not is_custom_page_system_root and not has_child_access:
+            if not is_custom_page_system_root:
                 return Response(
                     {"detail": "You do not have access to this folder."},
                     status=status.HTTP_403_FORBIDDEN
@@ -832,7 +826,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         # Files in folder (exclude soft-deleted files)
         files = folder.files.filter(is_deleted=False).order_by('name')
         
-        subfolders_data = FolderSerializer(subfolders, many=True).data
+        subfolders_data = FolderSerializer(subfolders, many=True, context={'request': request}).data
         files_data = FileSerializer(files, many=True, context={'request': request}).data
 
         return Response({
@@ -1007,12 +1001,38 @@ class FolderViewSet(viewsets.ModelViewSet):
         is_admin = user.role and user.role.name in ["Super Admin", "Admin"]
         is_creator = folder.created_by == user
         if not (is_admin or is_creator):
-            return Response(
-                {"detail": "You do not have permission to view access rules for this folder."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        permissions = FolderPermission.objects.filter(folder=folder)
-        return Response(FolderPermissionSerializer(permissions, many=True).data)
+            level = folder.get_user_permission_level(user)
+            if level != 'manage':
+                return Response(
+                    {"detail": "You do not have permission to view access rules for this folder."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        # Direct permissions on this specific folder
+        direct_perms = FolderPermission.objects.filter(folder=folder).select_related('user')
+        direct_data = FolderPermissionSerializer(direct_perms, many=True).data
+        for item in direct_data:
+            item['is_inherited'] = False
+            item['inherited_from'] = None
+            item['inherited_from_id'] = None
+
+        # Inherited permissions from ancestor folders
+        inherited_data = []
+        direct_user_ids = {p.user_id for p in direct_perms}
+        seen_user_ids = set(direct_user_ids)
+        ancestors = folder.get_ancestors()
+        for anc in reversed(ancestors):
+            anc_perms = FolderPermission.objects.filter(folder=anc, is_granted=True).select_related('user')
+            for ap in anc_perms:
+                if ap.user_id not in seen_user_ids:
+                    s_data = FolderPermissionSerializer(ap).data
+                    s_data['is_inherited'] = True
+                    s_data['inherited_from'] = anc.name
+                    s_data['inherited_from_id'] = anc.id
+                    inherited_data.append(s_data)
+                    seen_user_ids.add(ap.user_id)
+
+        return Response(direct_data + inherited_data)
 
     @action(detail=True, methods=['post'], url_path='revoke-access')
     def revoke_access(self, request, pk=None):
@@ -1021,16 +1041,25 @@ class FolderViewSet(viewsets.ModelViewSet):
         is_admin = user.role and user.role.name in ["Super Admin", "Admin"]
         is_creator = folder.created_by == user
         if not (is_admin or is_creator):
-            return Response(
-                {"detail": "You do not have permission to manage access for this folder."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            level = folder.get_user_permission_level(user)
+            if level != 'manage':
+                return Response(
+                    {"detail": "You do not have permission to manage access for this folder."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         user_id = request.data.get('user_id')
         
         if not user_id:
             return Response({"user_id": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
             
         target_user = get_object_or_404(User, id=user_id)
+
+        # Prevent self-elevation/self-tampering
+        if not is_admin and target_user == user:
+            return Response(
+                {"detail": "You cannot modify your own permissions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Delete the explicit access rule
         deleted_count, _ = FolderPermission.objects.filter(user=target_user, folder=folder).delete()
@@ -1060,10 +1089,12 @@ class FolderViewSet(viewsets.ModelViewSet):
         is_admin = user.role and user.role.name in ["Super Admin", "Admin"]
         is_creator = folder.created_by == user
         if not (is_admin or is_creator):
-            return Response(
-                {"detail": "You do not have permission to manage access for this folder."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            level = folder.get_user_permission_level(user)
+            if level != 'manage':
+                return Response(
+                    {"detail": "You do not have permission to manage access for this folder."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         user_id = request.data.get('user_id')
         is_granted = request.data.get('is_granted', True)
         
@@ -1071,18 +1102,35 @@ class FolderViewSet(viewsets.ModelViewSet):
             return Response({"user_id": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
             
         target_user = get_object_or_404(User, id=user_id)
-        
-        # Create or update access rule with granular permissions
-        can_read = request.data.get('can_read', True)
-        can_download = request.data.get('can_download', True)
-        can_upload = request.data.get('can_upload', False)
-        can_delete_own_uploads = request.data.get('can_delete_own_uploads', False)
+
+        # Prevent self-elevation: users cannot grant themselves permissions or elevate their own access
+        if not is_admin and target_user == user:
+            return Response(
+                {"detail": "You cannot modify your own permissions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Support permission_level ('view', 'upload', 'edit', 'manage')
+        permission_level = request.data.get('permission_level')
+        if not permission_level:
+            can_upload_val = request.data.get('can_upload', False)
+            permission_level = 'edit' if can_upload_val else 'view'
+        else:
+            permission_level = str(permission_level).lower()
+            if permission_level not in ['view', 'upload', 'edit', 'manage']:
+                permission_level = 'view'
+
+        can_read = True
+        can_download = True
+        can_upload = permission_level in ['upload', 'edit', 'manage']
+        can_delete_own_uploads = permission_level in ['edit', 'manage']
         
         folder_perm, created = FolderPermission.objects.update_or_create(
             user=target_user,
             folder=folder,
             defaults={
                 'is_granted': is_granted,
+                'permission_level': permission_level,
                 'can_read': can_read,
                 'can_download': can_download,
                 'can_upload': can_upload,
@@ -1093,7 +1141,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         action_type = "granted" if is_granted else "revoked"
         log_activity(
             request.user, 
-            f"Explicitly {action_type} access to folder '{folder.name}' for user {target_user.email}", 
+            f"Explicitly {action_type} access ({permission_level}) to folder '{folder.name}' for user {target_user.email}", 
             "folders", 
             request
         )
@@ -1101,8 +1149,8 @@ class FolderViewSet(viewsets.ModelViewSet):
         create_notification(
             target_user, 
             "Folder Access Update", 
-            f"You have been {action_type} access to folder '{folder.name}'.",
-            metadata={'action': 'folder_share', 'folder_id': folder.id, 'folder_name': folder.name, 'share_type': action_type}
+            f"You have been {action_type} {permission_level} access to folder '{folder.name}'.",
+            metadata={'action': 'folder_share', 'folder_id': folder.id, 'folder_name': folder.name, 'share_type': action_type, 'permission_level': permission_level}
         )
         
         return Response({
@@ -1222,9 +1270,12 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         files = request.FILES.getlist('files')
         relative_paths = request.POST.getlist('relative_paths')
+        folder_status = request.data.get('folder_status', 'auto')
 
         if not files or not relative_paths or len(files) != len(relative_paths):
             return Response({'detail': 'Invalid import payload. Files and relative_paths count must match.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .classification_import import resolve_imported_folder_status
 
         imported_folders_created = 0
         imported_files_created = 0
@@ -1238,16 +1289,21 @@ class FolderViewSet(viewsets.ModelViewSet):
                     parts = clean_path.split('/')
                     
                     filename = parts[-1]
+                    if filename.startswith('~$') or filename.upper().endswith('.TMP'):
+                        continue
                     dir_parts = parts[:-1]
 
                     current_parent = parent_folder
 
                     path_key = ""
-                    for part in dir_parts:
+                    for idx, part in enumerate(dir_parts):
                         path_key = f"{path_key}/{part}" if path_key else part
                         if path_key in folder_cache:
                             current_parent = folder_cache[path_key]
                         else:
+                            resolved_status = resolve_imported_folder_status(
+                                dir_parts[: idx + 1], folder_status, current_parent
+                            )
                             parent_drive_id = current_parent.google_folder_id if (current_parent and current_parent.google_folder_id) else None
                             folder, created = Folder.objects.get_or_create(
                                 name=part,
@@ -1255,7 +1311,7 @@ class FolderViewSet(viewsets.ModelViewSet):
                                 custom_page=current_parent.custom_page if current_parent else None,
                                 module_type=current_parent.module_type if current_parent else 'mou_repository',
                                 is_deleted=False,
-                                defaults={'created_by': user, 'status': 'Active'}
+                                defaults={'created_by': user, 'status': resolved_status}
                             )
                             if created or not folder.google_folder_id:
                                 try:

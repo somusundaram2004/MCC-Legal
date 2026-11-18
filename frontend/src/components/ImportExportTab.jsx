@@ -28,6 +28,7 @@ import api from '../services/api';
 import { useThemeMode } from '../context/ThemeContext';
 import { showCustomToast } from '../utils/customToast';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
+import { FOLDER_STATUS_OPTIONS } from '../utils/folderStatus';
 
 /* ─── Helper: Format Bytes ───────────────────────────────── */
 const formatBytes = (bytes, decimals = 2) => {
@@ -164,6 +165,7 @@ const ImportExportTab = () => {
   const folderInputRef = React.useRef(null);
   const [duplicateFileStrategy, setDuplicateFileStrategy] = useState('create_copy');
   const [duplicateFolderStrategy, setDuplicateFolderStrategy] = useState('merge');
+  const [importFolderStatus, setImportFolderStatus] = useState('auto');
 
   // ── Google Drive Browser Modal ──
   const [driveBrowserOpen, setDriveBrowserOpen] = useState(false);
@@ -529,6 +531,7 @@ const ImportExportTab = () => {
           module_id: destinationModuleId,
           duplicate_file_strategy: duplicateFileStrategy,
           duplicate_folder_strategy: duplicateFolderStrategy,
+          folder_status: importFolderStatus,
           parent_folder_id: targetFolderId || undefined
         };
 
@@ -560,6 +563,7 @@ const ImportExportTab = () => {
       formData.append('module_id', destinationModuleId);
       formData.append('duplicate_file_strategy', duplicateFileStrategy);
       formData.append('duplicate_folder_strategy', duplicateFolderStrategy);
+      formData.append('folder_status', importFolderStatus);
 
       if (targetFolderId) {
         formData.append('parent_folder_id', targetFolderId);
@@ -875,6 +879,25 @@ const ImportExportTab = () => {
                       <MenuItem value="merge">Merge Contents</MenuItem>
                       <MenuItem value="create_new">Create New Folder</MenuItem>
                       <MenuItem value="skip">Skip Folder</MenuItem>
+                    </Select>
+                  </Grid>
+                  <Grid xs={12}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: isDark ? '#94A3B8' : '#64748B', display: 'block', mb: 0.5 }}>
+                      Folder Color / Status:
+                    </Typography>
+                    <Select
+                      size="small"
+                      fullWidth
+                      value={importFolderStatus}
+                      onChange={(e) => setImportFolderStatus(e.target.value)}
+                      sx={{ borderRadius: '10px', fontSize: '0.8rem', fontWeight: 600 }}
+                    >
+                      <MenuItem value="auto">Auto-detect from folder name/path (Ongoing 🟢 / Expired 🔴 / Others 🟡)</MenuItem>
+                      {FOLDER_STATUS_OPTIONS.map((opt) => (
+                        <MenuItem key={`imp-status-${opt.value}`} value={opt.value}>
+                          {opt.dot} {opt.label}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </Grid>
                 </Grid>

@@ -1,13 +1,34 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import api from '../services/api';
+import api, { isTokenExpired } from '../services/api';
+import LoadingScreen from '../components/LoadingScreen';
 
 const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Synchronously initialize cached user to avoid rendering empty screen on load
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('user');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // If a cached user already exists, loading is immediately false so UI renders without delay
+  const [loading, setLoading] = useState(() => {
+    try {
+      const cached = localStorage.getItem('user');
+      if (cached) return false;
+      const accessToken = localStorage.getItem('access_token');
+      const refreshToken = localStorage.getItem('refresh_token');
+      return Boolean(accessToken || refreshToken);
+    } catch {
+      return false;
+    }
+  });
 
   // Function to load the currently authenticated user details
   const fetchCurrentUser = useCallback(async () => {
@@ -28,20 +49,18 @@ export const AuthProvider = ({ children }) => {
   // Restore user session from tokens on startup and validate with backend
   useEffect(() => {
     const accessToken = localStorage.getItem('access_token');
-    const cachedUser = localStorage.getItem('user');
+    const refreshToken = localStorage.getItem('refresh_token');
 
-    if (accessToken) {
-      if (cachedUser) {
-        try {
-          setUser(JSON.parse(cachedUser));
-        } catch {
-          setUser(null);
-        }
-      }
-      // Always validate token and refresh active permissions from the backend
+    const hasValidAccess = accessToken && !isTokenExpired(accessToken, 5);
+    const hasValidRefresh = refreshToken && !isTokenExpired(refreshToken, 5);
+
+    if (hasValidAccess || hasValidRefresh) {
+      // Validate token (api.js proactively refreshes if access expired) and refresh permissions
       fetchCurrentUser();
     } else {
       setUser(null);
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
       setLoading(false);
     }
@@ -121,7 +140,11 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {loading ? (
+        <LoadingScreen loading={true} message="Authenticating session..." />
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 };

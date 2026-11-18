@@ -165,7 +165,7 @@ const MOUCreate = () => {
             </Typography>
 
             <Grid container spacing={2.5}>
-              <Grid xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   required
@@ -176,7 +176,7 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   required
@@ -187,10 +187,11 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid xs={12} sm={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>Stream</InputLabel>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth required sx={{ minWidth: 200 }}>
+                  <InputLabel id="stream-select-label">Stream</InputLabel>
                   <Select
+                    labelId="stream-select-label"
                     value={deptCategory}
                     label="Stream"
                     onChange={handleCategoryChange}
@@ -202,7 +203,7 @@ const MOUCreate = () => {
                 </FormControl>
               </Grid>
 
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <Autocomplete
                   disabled={!deptCategory}
                   options={filteredFormDepts}
@@ -231,13 +232,15 @@ const MOUCreate = () => {
                     />
                   )}
                   fullWidth
+                  sx={{ minWidth: 200 }}
                 />
               </Grid>
 
-              <Grid xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <FormControl fullWidth>
-                  <InputLabel>MOU Dynamic Template</InputLabel>
+                  <InputLabel id="template-select-label">MOU Dynamic Template</InputLabel>
                   <Select
+                    labelId="template-select-label"
                     value={mouTypeId}
                     label="MOU Dynamic Template"
                     onChange={(e) => handleTemplateChange(e.target.value)}
@@ -264,7 +267,7 @@ const MOUCreate = () => {
 
             <Grid container spacing={2.5}>
               {(selectedTemplate?.fields_schema || []).map((f) => (
-                <Grid xs={12} sm={6} key={f.name}>
+                <Grid size={{ xs: 12, sm: 6 }} key={f.name}>
                   <TextField
                     fullWidth
                     label={f.label}
@@ -275,7 +278,7 @@ const MOUCreate = () => {
                 </Grid>
               ))}
 
-              <Grid xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   multiline
@@ -297,10 +300,11 @@ const MOUCreate = () => {
             </Typography>
 
             <Grid container spacing={2.5}>
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Duration</InputLabel>
+                  <InputLabel id="duration-select-label">Duration</InputLabel>
                   <Select
+                    labelId="duration-select-label"
                     value={durationMonths}
                     label="Duration"
                     onChange={(e) => setDurationMonths(e.target.value)}
@@ -313,7 +317,7 @@ const MOUCreate = () => {
                 </FormControl>
               </Grid>
 
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
                   label="College Coordinator Name"
@@ -322,7 +326,7 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
                   label="College Coordinator Email"
@@ -331,7 +335,7 @@ const MOUCreate = () => {
                 />
               </Grid>
 
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
                   label="Partner Contact Person Name"

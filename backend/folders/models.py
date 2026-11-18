@@ -30,6 +30,8 @@ class Folder(models.Model):
             ('Pending Review', 'Pending Review'),
             ('Expired', 'Expired'),
             ('Archived', 'Archived'),
+            ('Ongoing', 'Ongoing'),
+            ('Others', 'Others'),
         ],
         default='Active',
         db_index=True
@@ -92,7 +94,6 @@ class Folder(models.Model):
 
         current = self
 
-
         while current is not None:
             # Creator of folder or ancestor folder always has full access
             if current.created_by == user:
@@ -110,6 +111,47 @@ class Folder(models.Model):
 
         # Default fallback for authenticated users (restrictive default for standard users)
         return False
+
+    def get_user_permission_level(self, user):
+        """
+        Resolves the effective permission level ('view', 'upload', 'edit', 'manage', or None)
+        for user on this folder, traversing ancestral hierarchy.
+        Inheritance rules:
+        - Access granted to parent folder is inherited by nested folders.
+        - Direct subfolder grants do not elevate parent/sibling folders.
+        - Revoking an inherited grant removes derived access while preserving independent direct grants.
+        """
+        if not user or not user.is_authenticated:
+            return None
+
+        if user.role and user.role.name in ["Super Admin", "Admin"]:
+            return 'manage'
+
+        current = self
+        while current is not None:
+            # Creator of folder or ancestor folder always has full manage access
+            if current.created_by == user:
+                return 'manage'
+
+            perm = FolderPermission.objects.filter(user=user, folder=current).first()
+            if perm is not None:
+                if not perm.is_granted:
+                    return None
+                return getattr(perm, 'permission_level', 'edit' if perm.can_upload else 'view')
+            current = current.parent
+
+        # Check MOU shares fallback
+        share_perm = get_mou_share_permission(user, self)
+        if share_perm:
+            mapping = {
+                'View Only': 'view',
+                'Upload Only': 'upload',
+                'Edit': 'edit',
+                'Full Access': 'manage'
+            }
+            return mapping.get(share_perm, 'view')
+
+        return None
 
 def choose_higher_permission(p1, p2):
     levels = {
@@ -163,6 +205,13 @@ def get_mou_share_permission(user, folder):
 
 
 class FolderPermission(models.Model):
+    PERMISSION_LEVELS = [
+        ('view', 'View'),
+        ('upload', 'Upload'),
+        ('edit', 'Edit'),
+        ('manage', 'Manage'),
+    ]
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -174,6 +223,7 @@ class FolderPermission(models.Model):
         related_name='folder_permissions'
     )
     is_granted = models.BooleanField(default=True) # True = Granted, False = Revoked
+    permission_level = models.CharField(max_length=20, choices=PERMISSION_LEVELS, default='view')
     can_read = models.BooleanField(default=True)
     can_download = models.BooleanField(default=True)
     can_upload = models.BooleanField(default=False)
@@ -182,8 +232,32 @@ class FolderPermission(models.Model):
     class Meta:
         unique_together = ('user', 'folder')
 
+    def save(self, *args, **kwargs):
+        lvl = (self.permission_level or 'view').lower()
+        if lvl == 'view':
+            self.can_read = True
+            self.can_download = True
+            self.can_upload = False
+            self.can_delete_own_uploads = False
+        elif lvl == 'upload':
+            self.can_read = True
+            self.can_download = True
+            self.can_upload = True
+            self.can_delete_own_uploads = False
+        elif lvl == 'edit':
+            self.can_read = True
+            self.can_download = True
+            self.can_upload = True
+            self.can_delete_own_uploads = True
+        elif lvl == 'manage':
+            self.can_read = True
+            self.can_download = True
+            self.can_upload = True
+            self.can_delete_own_uploads = True
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        status = "Granted" if self.is_granted else "Revoked"
+        status = f"Granted ({self.permission_level})" if self.is_granted else "Revoked"
         return f"{self.user.email} - {self.folder.name} ({status})"
 
 
@@ -242,4 +316,3 @@ class RecycleBinSetting(models.Model):
         if not setting:
             setting = cls.objects.create(retention_period='30_days', auto_delete_enabled=True)
         return setting
-

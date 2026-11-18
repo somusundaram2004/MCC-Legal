@@ -3,6 +3,8 @@ from django.conf import settings
 from folders.models import Folder
 from files.models import File
 from datetime import timedelta, date
+import secrets
+from django.utils import timezone
 
 class MOUTemplate(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -168,10 +170,17 @@ class MOUShare(models.Model):
     STATUS_CHOICES = [
         ('Shared', 'Shared'),
         ('Viewed', 'Viewed'),
+        ('Downloaded', 'Downloaded'),
         ('Pending Upload', 'Pending Upload'),
         ('Signed MOU Uploaded', 'Signed MOU Uploaded'),
         ('Verified by Legal Cell', 'Verified by Legal Cell'),
         ('Completed', 'Completed'),
+    ]
+
+    ACCESS_STATUS_CHOICES = [
+        ('Active', 'Active'),
+        ('Revoked', 'Revoked'),
+        ('Expired', 'Expired'),
     ]
 
     mou = models.ForeignKey(MOU, on_delete=models.CASCADE, related_name='shares')
@@ -182,8 +191,93 @@ class MOUShare(models.Model):
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Shared')
     shared_at = models.DateTimeField(auto_now_add=True)
 
+    # Recipient and Document Reference Details
+    recipient_email = models.EmailField(blank=True, null=True, db_index=True)
+    shared_file = models.ForeignKey(File, on_delete=models.SET_NULL, null=True, blank=True, related_name='mou_shares')
+    document_version = models.IntegerField(default=1)
+
+    # Secure Download Link / Access Token
+    secure_token = models.CharField(max_length=128, unique=True, db_index=True, blank=True)
+    access_status = models.CharField(max_length=50, choices=ACCESS_STATUS_CHOICES, default='Active')
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    # Download Tracking
+    download_count = models.IntegerField(default=0)
+    first_download_date = models.DateTimeField(null=True, blank=True)
+    last_download_date = models.DateTimeField(null=True, blank=True)
+
+    # Email & Template Content
+    email_template = models.CharField(max_length=100, default='standard', blank=True, null=True)
+    email_subject = models.CharField(max_length=255, blank=True, null=True)
+    custom_message = models.TextField(blank=True, null=True)
+
+    # History & Audit
+    sharing_history = models.JSONField(default=list, blank=True)
+
     class Meta:
         unique_together = ('mou', 'department', 'user')
+
+    def save(self, *args, **kwargs):
+        if not self.secure_token:
+            self.secure_token = secrets.token_urlsafe(32)
+        if not self.shared_file and self.mou:
+            self.shared_file = self.mou.signed_mou or self.mou.original_mou or (self.mou.documents.first().file if self.mou.documents.exists() else None)
+        if self.shared_file and hasattr(self.shared_file, 'version_number'):
+            self.document_version = self.shared_file.version_number
+        elif self.mou and hasattr(self.mou, 'version_number'):
+            self.document_version = self.mou.version_number
+        super().save(*args, **kwargs)
+
+    def is_valid_access(self):
+        if self.access_status == 'Revoked':
+            return False, "This sharing access has been revoked by the administrator."
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False, "This document share link has expired."
+        return True, "Valid"
+
+    def record_download(self, recipient_user=None, ip_address=None, user_agent=None):
+        now = timezone.now()
+        self.download_count += 1
+        if not self.first_download_date:
+            self.first_download_date = now
+        self.last_download_date = now
+        if self.status in ['Shared', 'Viewed']:
+            self.status = 'Downloaded'
+        self.save(update_fields=['download_count', 'first_download_date', 'last_download_date', 'status'])
+
+        MOUShareDownloadLog.objects.create(
+            share=self,
+            mou=self.mou,
+            file=self.shared_file,
+            recipient_user=recipient_user or self.user,
+            recipient_email=self.recipient_email or (self.user.email if self.user else ''),
+            document_version=self.document_version,
+            downloaded_at=now,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+    def __str__(self):
+        target = self.department.name if self.department else (self.recipient_email or (self.user.email if self.user else 'Unknown'))
+        return f"{self.mou.mou_number} shared with {target} ({self.permission})"
+
+class MOUShareDownloadLog(models.Model):
+    share = models.ForeignKey(MOUShare, on_delete=models.CASCADE, related_name='download_logs')
+    mou = models.ForeignKey(MOU, on_delete=models.CASCADE, related_name='share_download_logs')
+    file = models.ForeignKey(File, on_delete=models.SET_NULL, null=True, blank=True, related_name='mou_share_download_logs')
+    recipient_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    recipient_email = models.EmailField(blank=True, null=True)
+    document_version = models.IntegerField(default=1)
+    downloaded_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-downloaded_at']
+
+    def __str__(self):
+        return f"Download of {self.mou.mou_number} v{self.document_version} by {self.recipient_email} at {self.downloaded_at}"
 
 class DepartmentSubmission(models.Model):
     STATUS_CHOICES = [

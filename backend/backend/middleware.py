@@ -109,12 +109,19 @@ def check_mou_expiries():
                             metadata=meta
                         )
 
+import time
+
+_last_expiry_run_time = 0
+
 class CustomTimeMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
+        global _last_expiry_run_time
         custom_time_str = request.headers.get('X-Custom-Time') or request.META.get('HTTP_X_CUSTOM_TIME')
+        is_custom_time = bool(custom_time_str)
+
         if custom_time_str:
             parsed_dt = parse_datetime(custom_time_str)
             if parsed_dt:
@@ -123,11 +130,32 @@ class CustomTimeMiddleware:
                 set_simulated_time(parsed_dt)
         
         # Check expiries and send notifications
-        try:
-            check_mou_expiries()
-        except Exception as e:
-            # Prevent failures in check_mou_expiries from breaking the app
-            print(f"Error checking MOU expiries: {e}")
+        # Only run if custom time is provided, or at most once every 60 seconds for live time
+        now_ts = time.time()
+        should_run_expiry = is_custom_time or (now_ts - _last_expiry_run_time > 60)
+
+        if should_run_expiry:
+            _last_expiry_run_time = now_ts
+            try:
+                check_mou_expiries()
+            except Exception as e:
+                # Prevent failures in check_mou_expiries from breaking the app
+                print(f"Error checking MOU expiries: {e}")
+
+            if is_custom_time:
+                try:
+                    from files.expiry_service import check_file_expiries
+                    check_file_expiries()
+                except Exception as e:
+                    print(f"Error checking file expiries: {e}")
+            else:
+                def run_bg_file_expiries():
+                    try:
+                        from files.expiry_service import check_file_expiries
+                        check_file_expiries()
+                    except Exception as e:
+                        pass
+                threading.Thread(target=run_bg_file_expiries, daemon=True).start()
 
         try:
             response = self.get_response(request)

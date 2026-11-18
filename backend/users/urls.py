@@ -4,7 +4,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     UserViewSet, CustomTokenObtainPairView, GoogleLoginView, GoogleLoginClientIdView,
     ForgotPasswordView, ResetPasswordView, 
-    SMTPSettingViewSet, GoogleDriveSettingViewSet, CustomDynamicPageViewSet
+    SMTPSettingViewSet, GoogleDriveSettingViewSet, CustomDynamicPageViewSet,
+    EmailNotificationSettingView
 )
 
 router = DefaultRouter()
@@ -22,6 +23,9 @@ urlpatterns = [
     path('auth/forgot-password/', ForgotPasswordView.as_view(), name='forgot_password'),
     path('auth/reset-password/', ResetPasswordView.as_view(), name='reset_password'),
     
+    # Notification and Redirection Settings
+    path('email-notification-settings/', EmailNotificationSettingView.as_view(), name='email-notification-settings'),
+
     # Invitation routes
     path('invitation/', UserViewSet.as_view({'get': 'get_invitation'}), name='get-invitation-query'),
     path('invitation/<uuid:pk>/', UserViewSet.as_view({'delete': 'delete_invitation'}), name='delete-invitation'),

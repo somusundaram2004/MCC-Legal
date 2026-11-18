@@ -16,6 +16,10 @@ const showCustomToastFn = (type, message) => {
     showCustomToastFn.approved(message);
   } else if (type === 'error') {
     showCustomToastFn.error(message);
+  } else if (type === 'warning') {
+    showCustomToastFn.warning(message);
+  } else if (type === 'info') {
+    showCustomToastFn.info(message);
   } else {
     toast(message);
   }
@@ -276,6 +280,112 @@ showCustomToastFn.error = (msg) => {
         </Typography>
         <Typography variant="body2" sx={{ color: '#334155', fontSize: '0.85rem', fontWeight: 600 }}>
           {msg || 'An error occurred. Please try again.'}
+        </Typography>
+      </Box>
+      <IconButton
+        size="small"
+        onClick={() => toast.dismiss(t.id)}
+        sx={{ color: '#94a3b8', p: 0.5, '&:hover': { color: '#475569' } }}
+      >
+        <CloseIcon fontSize="small" />
+      </IconButton>
+    </Box>
+  ), { duration: 4000 });
+};
+
+// 5b. Warning / Caution Toast
+showCustomToastFn.warning = (msg = 'Attention Required') => {
+  toast.custom((t) => (
+    <Box
+      className={t.visible ? 'animate-toast-in' : 'animate-toast-out'}
+      sx={{
+        maxWidth: 440,
+        width: '100%',
+        bgcolor: 'rgba(255, 255, 255, 0.98)',
+        backdropFilter: 'blur(18px)',
+        border: '1.5px solid rgba(245, 158, 11, 0.4)',
+        borderRadius: '18px',
+        p: 2,
+        boxShadow: '0 20px 50px rgba(245, 158, 11, 0.2), 0 4px 12px rgba(0,0,0,0.06)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.8,
+      }}
+    >
+      <Box
+        sx={{
+          width: 44,
+          height: 44,
+          borderRadius: '12px',
+          bgcolor: 'rgba(245, 158, 11, 0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '1.35rem',
+          flexShrink: 0
+        }}
+      >
+        ⚠️
+      </Box>
+      <Box sx={{ flexGrow: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#d97706', fontSize: '0.95rem', mb: 0.2 }}>
+          Attention Required
+        </Typography>
+        <Typography variant="body2" sx={{ color: '#334155', fontSize: '0.85rem', fontWeight: 600 }}>
+          {msg}
+        </Typography>
+      </Box>
+      <IconButton
+        size="small"
+        onClick={() => toast.dismiss(t.id)}
+        sx={{ color: '#94a3b8', p: 0.5, '&:hover': { color: '#475569' } }}
+      >
+        <CloseIcon fontSize="small" />
+      </IconButton>
+    </Box>
+  ), { duration: 5000 });
+};
+
+// 5c. Info Toast
+showCustomToastFn.info = (msg = 'Information') => {
+  toast.custom((t) => (
+    <Box
+      className={t.visible ? 'animate-toast-in' : 'animate-toast-out'}
+      sx={{
+        maxWidth: 440,
+        width: '100%',
+        bgcolor: 'rgba(255, 255, 255, 0.98)',
+        backdropFilter: 'blur(18px)',
+        border: '1.5px solid rgba(59, 130, 246, 0.4)',
+        borderRadius: '18px',
+        p: 2,
+        boxShadow: '0 20px 50px rgba(59, 130, 246, 0.2), 0 4px 12px rgba(0,0,0,0.06)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.8,
+      }}
+    >
+      <Box
+        sx={{
+          width: 44,
+          height: 44,
+          borderRadius: '12px',
+          bgcolor: 'rgba(59, 130, 246, 0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '1.35rem',
+          flexShrink: 0
+        }}
+      >
+        ℹ️
+      </Box>
+      <Box sx={{ flexGrow: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#2563eb', fontSize: '0.95rem', mb: 0.2 }}>
+          Notice
+        </Typography>
+        <Typography variant="body2" sx={{ color: '#334155', fontSize: '0.85rem', fontWeight: 600 }}>
+          {msg}
         </Typography>
       </Box>
       <IconButton

@@ -157,7 +157,7 @@ class DashboardStatsView(APIView):
 
         standalone_active_folders = folders_qs.filter(
             parent__isnull=False,  # Exclude root/system module directories
-            status__in=['Active', 'Signed', 'Renewed'],
+            status__in=['Active', 'Signed', 'Renewed', 'Ongoing'],
             expiry_date__isnull=False
         ).exclude(id__in=linked_mou_folder_ids).filter(
             Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
@@ -183,7 +183,7 @@ class DashboardStatsView(APIView):
         ).count()
         expiring_folder_count = folders_qs.filter(
             parent__isnull=False,
-            status__in=['Active', 'Signed', 'Renewed'],
+            status__in=['Active', 'Signed', 'Renewed', 'Ongoing'],
             expiry_date__gte=today,
             expiry_date__lte=today + datetime.timedelta(days=30)
         ).exclude(id__in=linked_mou_folder_ids).count()
@@ -327,12 +327,17 @@ class GlobalSearchView(APIView):
             folders = [f for f in all_folders if f.has_access(user)]
 
         # Search files user has access to (excluding soft-deleted files)
+        file_query = (
+            Q(name__icontains=query) | 
+            Q(department__icontains=query) | 
+            Q(title__icontains=query)
+        )
         if user.role and user.role.name == "Super Admin":
-            files = File.objects.filter(name__icontains=query, is_deleted=False)
+            files = File.objects.filter(file_query, is_deleted=False)
         else:
             all_folders = Folder.objects.filter(is_deleted=False)
             accessible_ids = [f.id for f in all_folders if f.has_access(user)]
-            files = File.objects.filter(folder_id__in=accessible_ids, name__icontains=query, is_deleted=False)
+            files = File.objects.filter(Q(folder_id__in=accessible_ids) & file_query, is_deleted=False)
 
         # Search users (Admins only)
         users = []
@@ -344,7 +349,7 @@ class GlobalSearchView(APIView):
             )
 
         return Response({
-            "folders": FolderSerializer(folders[:20], many=True).data,
-            "files": FileSerializer(files[:20], many=True, context={'request': request}).data,
+            "folders": FolderSerializer(folders[:100], many=True).data,
+            "files": FileSerializer(files[:200], many=True, context={'request': request}).data,
             "users": CustomUserSerializer(users[:20], many=True).data if is_admin else []
         })

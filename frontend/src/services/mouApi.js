@@ -72,6 +72,11 @@ export const shareMOU = async (id, data) => {
   return res.data;
 };
 
+export const shareFileDirect = async (data) => {
+  const res = await api.post('/api/mous/share-file/', data);
+  return res.data;
+};
+
 export const revokeMOUShare = async (shareId) => {
   const res = await api.delete(`/api/mous/shares/${shareId}/`);
   return res.data;
@@ -101,6 +106,42 @@ export const reviewDepartmentSubmission = async (submissionId, actionOrObj, comm
 export const getMOUSharedDashboard = async () => {
   const res = await api.get('/api/mous/shared-dashboard/');
   return res.data;
+};
+
+export const getSharedFiles = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const res = await api.get(`/api/mous/shared-files/${query ? `?${query}` : ''}`);
+  return res.data;
+};
+
+export const getShareTemplates = async () => {
+  const res = await api.get('/api/mous/share-templates/');
+  return res.data;
+};
+
+export const revokeShareAccess = async (shareId) => {
+  const res = await api.post(`/api/mous/shares/${shareId}/revoke/`);
+  return res.data;
+};
+
+export const resendShareEmail = async (shareId, data = {}) => {
+  const res = await api.post(`/api/mous/shares/${shareId}/resend/`, data);
+  return res.data;
+};
+
+export const getShareTracking = async (shareId) => {
+  const res = await api.get(`/api/mous/shares/${shareId}/tracking/`);
+  return res.data;
+};
+
+export const getSharePreview = async (token) => {
+  const res = await api.get(`/api/mous/shared/preview/${token}/`);
+  return res.data;
+};
+
+export const downloadSharedFileBlob = async (token) => {
+  const res = await api.get(`/api/mous/shared/download/${token}/`, { responseType: 'blob' });
+  return res;
 };
 
 export const getMOURenewals = async (id) => {

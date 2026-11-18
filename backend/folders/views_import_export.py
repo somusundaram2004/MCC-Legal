@@ -17,11 +17,14 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
 
 from folders.models import Folder
+from folders.classification_import import resolve_imported_folder_status
 from files.models import File
 from users.models import CustomDynamicPage
 from services import drive_service
+from .views_recycle_bin import IsAdminOrSuperAdmin
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +68,7 @@ class ImportExportTreeView(APIView):
     """
     Returns the hierarchy tree of modules, folders, and files for Export selection & Import destination choosing.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrSuperAdmin]
 
     def get(self, request):
         user = request.user
@@ -304,7 +307,7 @@ class ExportPreviewView(APIView):
     """
     Returns item metadata preview before Export download.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrSuperAdmin]
 
     def post(self, request):
         target_type = request.data.get('target_type')  # 'root', 'module', 'folder', 'file'
@@ -402,7 +405,7 @@ class ExportDownloadView(APIView):
     """
     Downloads selected file directly or generates a ZIP archive package fetched from Google Drive.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrSuperAdmin]
 
     def post(self, request):
         target_type = request.data.get('target_type')
@@ -519,7 +522,7 @@ class ExportToDriveView(APIView):
     Exports a local database item (Root, Module, Folder, or File) directly to Google Drive.
     Creates Google Drive folder structure and uploads/copies files to destination_drive_folder_id (defaults to My Drive 'root' or 'app_root').
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrSuperAdmin]
 
     def post(self, request):
         target_type = request.data.get('target_type')
@@ -610,7 +613,7 @@ class GoogleDriveBrowseView(APIView):
     """
     Lists immediate subfolders and files inside a Google Drive folder for browsing.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrSuperAdmin]
 
     def get(self, request):
         folder_id = request.query_params.get('folder_id')
@@ -631,7 +634,7 @@ class ImportPreviewView(APIView):
     """
     Parses uploaded File, Folder tree, ZIP archive, or Google Drive folder(s) and returns preview structure before importing.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrSuperAdmin]
 
     def post(self, request):
         source_type = request.data.get('source_type')
@@ -773,7 +776,7 @@ class ImportExecuteView(APIView):
     Executes import into selected destination module/folder, uploading to Google Drive & saving DB records.
     Supports Local Files, Local Folders, ZIP Archives, and Google Drive Folders.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrSuperAdmin]
 
     def post(self, request):
         source_type = request.data.get('source_type')
@@ -784,6 +787,7 @@ class ImportExecuteView(APIView):
         parent_folder_id = request.data.get('parent_folder_id') or request.data.get('parent_id') or request.data.get('target_folder_id')
         duplicate_file_strategy = request.data.get('duplicate_file_strategy', 'create_copy')  # 'skip', 'replace', 'create_copy'
         duplicate_folder_strategy = request.data.get('duplicate_folder_strategy', 'merge')   # 'merge', 'create_new', 'skip'
+        folder_status = request.data.get('folder_status', 'auto')
 
         if not module_id:
             return Response({'detail': 'Destination module_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -965,39 +969,55 @@ class ImportExecuteView(APIView):
 
                         # Process all files directly referencing their Google Drive IDs & web links
                         for fi_info in scan_res.get('file_list', []):
-                            f_name = fi_info['name']
-                            f_path = fi_info['path']
-                            source_f_id = fi_info['id']
+                            try:
+                                f_name = fi_info.get('name', 'Drive File')
+                                f_path = fi_info.get('path', f_name)
+                                source_f_id = fi_info.get('id')
+                                if not source_f_id:
+                                    continue
 
-                            dir_path = posixpath.dirname(f_path)
-                            target_f, target_d = folder_map.get(dir_path, (top_folder, top_drive_id))
+                                dir_path = posixpath.dirname(f_path)
+                                target_f, target_d = folder_map.get(dir_path, (top_folder, top_drive_id))
 
-                            clean_file_name = sanitize_filename(f_name)
-                            f_size = fi_info.get('size', 0)
+                                clean_file_name = sanitize_filename(f_name)
+                                raw_size = fi_info.get('size')
+                                f_size = int(raw_size) if raw_size is not None else 0
+                                mime_t = fi_info.get('mimeType', '')
 
-                            file_obj, f_created = File.objects.get_or_create(
-                                google_file_id=source_f_id,
-                                defaults={
-                                    'name': clean_file_name,
-                                    'folder': target_f,
-                                    'size': f_size,
-                                    'file_size': f_size,
-                                    'file_type': os.path.splitext(clean_file_name)[1].lstrip('.').upper() or 'FILE',
-                                    'mime_type': fi_info.get('mimeType', ''),
-                                    'uploaded_by': user,
-                                    'web_view_link': fi_info.get('webViewLink'),
-                                    'web_content_link': fi_info.get('webContentLink'),
-                                    'import_source': 'google_drive',
-                                    'source_google_file_id': source_f_id
-                                }
-                            )
-                            if not f_created:
-                                file_obj.folder = target_f
-                                file_obj.name = clean_file_name
-                                file_obj.is_deleted = False
-                                file_obj.save(update_fields=['folder', 'name', 'is_deleted'])
+                                # Append standard extension for Google Docs/Sheets if missing
+                                if 'document' in mime_t and not clean_file_name.lower().endswith(('.docx', '.doc')):
+                                    clean_file_name = f"{clean_file_name}.docx"
+                                elif 'spreadsheet' in mime_t and not clean_file_name.lower().endswith(('.xlsx', '.xls')):
+                                    clean_file_name = f"{clean_file_name}.xlsx"
 
-                            successful_files.append(clean_file_name)
+                                ext = os.path.splitext(clean_file_name)[1].lstrip('.').upper() or 'FILE'
+
+                                file_obj, f_created = File.objects.get_or_create(
+                                    google_file_id=source_f_id,
+                                    defaults={
+                                        'name': clean_file_name,
+                                        'folder': target_f,
+                                        'size': f_size,
+                                        'file_size': f_size,
+                                        'file_type': ext,
+                                        'mime_type': mime_t,
+                                        'uploaded_by': user,
+                                        'web_view_link': fi_info.get('webViewLink'),
+                                        'web_content_link': fi_info.get('webContentLink'),
+                                        'import_source': 'google_drive',
+                                        'source_google_file_id': source_f_id
+                                    }
+                                )
+                                if not f_created:
+                                    file_obj.folder = target_f
+                                    file_obj.name = clean_file_name
+                                    file_obj.is_deleted = False
+                                    file_obj.save(update_fields=['folder', 'name', 'is_deleted'])
+
+                                successful_files.append(clean_file_name)
+                            except Exception as file_err:
+                                logger.warning(f"Error processing Drive file '{fi_info.get('name')}': {file_err}")
+                                failed_files.append({'name': fi_info.get('name', 'Unknown'), 'reason': str(file_err)})
                     else:
                         # Single Drive File Import
                         clean_file_name = sanitize_filename(item_target.get('name', 'Drive File'))
@@ -1085,19 +1105,24 @@ class ImportExecuteView(APIView):
                     parts = clean_path.split('/')
                     
                     filename = sanitize_filename(parts[-1])
+                    if filename.startswith('~$') or filename.upper().endswith('.TMP'):
+                        continue
                     dir_parts = parts[:-1]
 
                     current_parent_folder = base_parent_folder
                     current_drive_parent = destination_drive_parent_id
 
                     path_key = ""
-                    for part in dir_parts:
+                    for idx, part in enumerate(dir_parts):
                         clean_dir_name = sanitize_filename(part)
                         path_key = f"{path_key}/{clean_dir_name}" if path_key else clean_dir_name
 
                         if path_key in folder_map:
                             current_parent_folder, current_drive_parent = folder_map[path_key]
                         else:
+                            resolved_status = resolve_imported_folder_status(
+                                dir_parts[: idx + 1], folder_status, current_parent_folder
+                            )
                             existing_folder = Folder.objects.filter(
                                 name=clean_dir_name,
                                 parent=current_parent_folder,
@@ -1126,14 +1151,15 @@ class ImportExecuteView(APIView):
                                     google_folder_id=target_drive_id,
                                     module_type=target_module_type,
                                     custom_page=target_custom_page,
-                                    created_by=user
+                                    created_by=user,
+                                    status=resolved_status
                                 )
 
                             folder_map[path_key] = (target_folder, target_drive_id)
                             current_parent_folder = target_folder
                             current_drive_parent = target_drive_id
 
-                    # Save File & Sync to Google Drive
+                    # Save File & Sync to Google Drive (keep local file_field if Drive fallback is triggered)
                     try:
                         f_content = f_obj.read()
                         drive_result = drive_service.upload_file(
@@ -1141,8 +1167,10 @@ class ImportExecuteView(APIView):
                             filename=filename,
                             mime_type=f_obj.content_type,
                             parent_id=current_drive_parent
-                        )
-                        File.objects.create(
+                        ) or {}
+                        drive_id = drive_result.get('id')
+                        needs_local = not drive_id or str(drive_id).startswith('drive_file_')
+                        new_file = File(
                             name=filename,
                             size=len(f_content),
                             file_size=len(f_content),
@@ -1150,10 +1178,13 @@ class ImportExecuteView(APIView):
                             mime_type=drive_result.get('mimeType', f_obj.content_type),
                             folder=current_parent_folder,
                             uploaded_by=user,
-                            google_file_id=drive_result.get('id'),
+                            google_file_id=drive_id,
                             web_view_link=drive_result.get('webViewLink'),
                             web_content_link=drive_result.get('webContentLink')
                         )
+                        if needs_local:
+                            new_file.file_field.save(filename, ContentFile(f_content), save=False)
+                        new_file.save()
                         successful_files.append(filename)
                     except Exception as file_err:
                         logger.error(f"Error importing directory file '{filename}': {file_err}")
@@ -1220,13 +1251,18 @@ class ImportExecuteView(APIView):
                                     final_name = f"{clean_dir_name} ({datetime.now().strftime('%Y%m%d_%H%M%S')})"
 
                                 target_drive_id = drive_service.create_folder(final_name, current_drive_parent)
+                                zip_parts = rel_dir_path.replace('\\', '/').split('/')
+                                resolved_zip_status = resolve_imported_folder_status(
+                                    zip_parts, folder_status, current_parent_folder
+                                )
                                 target_folder = Folder.objects.create(
                                     name=final_name,
                                     parent=current_parent_folder,
                                     google_folder_id=target_drive_id,
                                     module_type=target_module_type,
                                     custom_page=target_custom_page,
-                                    created_by=user
+                                    created_by=user,
+                                    status=resolved_zip_status
                                 )
 
                             folder_map[rel_dir_path] = (target_folder, target_drive_id)
@@ -1297,10 +1333,13 @@ class ImportExecuteView(APIView):
                                     existing_file.file_size = len(f_content)
                                     existing_file.web_view_link = drive_result.get('webViewLink')
                                     existing_file.web_content_link = drive_result.get('webContentLink')
+                                    if not existing_file.google_file_id or str(existing_file.google_file_id).startswith('drive_file_'):
+                                        existing_file.file_field.save(final_file_name, ContentFile(f_content), save=False)
                                     existing_file.save()
                                     successful_files.append(final_file_name)
                                 else:
-                                    File.objects.create(
+                                    drive_id = drive_result.get('id')
+                                    new_file = File(
                                         name=final_file_name,
                                         size=len(f_content),
                                         file_size=len(f_content),
@@ -1308,10 +1347,13 @@ class ImportExecuteView(APIView):
                                         mime_type=drive_result.get('mimeType', ''),
                                         folder=file_parent_folder,
                                         uploaded_by=user,
-                                        google_file_id=drive_result.get('id'),
+                                        google_file_id=drive_id,
                                         web_view_link=drive_result.get('webViewLink'),
                                         web_content_link=drive_result.get('webContentLink')
                                     )
+                                    if not drive_id or str(drive_id).startswith('drive_file_'):
+                                        new_file.file_field.save(final_file_name, ContentFile(f_content), save=False)
+                                    new_file.save()
                                     successful_files.append(final_file_name)
 
                             except Exception as file_err:
@@ -1330,9 +1372,10 @@ class ImportExecuteView(APIView):
                             filename=clean_f_name,
                             mime_type=uploaded_file.content_type,
                             parent_id=target_folder.google_folder_id if target_folder else destination_drive_parent_id
-                        )
+                        ) or {}
 
-                        File.objects.create(
+                        drive_id = drive_result.get('id')
+                        new_file = File(
                             name=clean_f_name,
                             size=len(f_content),
                             file_size=len(f_content),
@@ -1340,10 +1383,13 @@ class ImportExecuteView(APIView):
                             mime_type=drive_result.get('mimeType', uploaded_file.content_type),
                             folder=target_folder,
                             uploaded_by=user,
-                            google_file_id=drive_result.get('id'),
+                            google_file_id=drive_id,
                             web_view_link=drive_result.get('webViewLink'),
                             web_content_link=drive_result.get('webContentLink')
                         )
+                        if not drive_id or str(drive_id).startswith('drive_file_'):
+                            new_file.file_field.save(clean_f_name, ContentFile(f_content), save=False)
+                        new_file.save()
                         successful_files.append(clean_f_name)
 
         except Exception as e:

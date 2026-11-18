@@ -46,10 +46,17 @@ backend/*/*/__pycache__/
 
 # Django Local Database & Cache
 *.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 db.sqlite3
 backend/db.sqlite3
+backend/db.sqlite3-shm
+backend/db.sqlite3-wal
 .cache/
 *.log
+
+# Raw Datasets & Imports
+folders to add/
 
 # ------------------------------------------------------------------------------
 # 3. Node.js & Frontend Build Artifacts

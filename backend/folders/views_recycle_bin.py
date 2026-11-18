@@ -20,12 +20,11 @@ class IsAdminOrSuperAdmin(permissions.BasePermission):
     Permission class that grants access to Admin and Super Admin users.
     """
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and request.user.role
-            and request.user.role.name in ["Super Admin", "Admin"]
-        )
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if getattr(request.user, 'is_superuser', False):
+            return True
+        return bool(request.user.role and request.user.role.name in ["Super Admin", "Admin"])
 
 
 def calculate_retention_cutoff(retention_period):

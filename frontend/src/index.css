@@ -402,10 +402,17 @@ select:-webkit-autofill:active {
 }
 
 /* ── Mobile & Touch Responsiveness ──────────────────────────── */
+.MuiTableContainer-root {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100% !important;
+}
+
 @media (max-width: 768px) {
   .MuiTableContainer-root {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
+    max-width: 100% !important;
   }
   .MuiDialog-paper {
     margin: 12px !important;
@@ -417,7 +424,7 @@ select:-webkit-autofill:active {
     display: flex !important;
   }
   .MuiButton-root {
-    min-height: 42px;
+    min-height: 40px;
   }
   .responsive-padding {
     padding-left: 12px !important;
@@ -425,15 +432,33 @@ select:-webkit-autofill:active {
   }
 }
 
+@media (max-width: 600px) {
+  .MuiDialogActions-root {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  .MuiDialogActions-root > button {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  .MuiCardContent-root {
+    padding: 16px !important;
+  }
+  .MuiBreadcrumbs-ol {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+  }
+}
+
 @media (max-width: 480px) {
   h4.MuiTypography-h4, .MuiTypography-h4 {
-    font-size: 1.5rem !important;
+    font-size: 1.4rem !important;
   }
   h5.MuiTypography-h5, .MuiTypography-h5 {
-    font-size: 1.25rem !important;
+    font-size: 1.2rem !important;
   }
   h6.MuiTypography-h6, .MuiTypography-h6 {
-    font-size: 1.05rem !important;
+    font-size: 1.0rem !important;
   }
   .mobile-stack {
     flex-direction: column !important;

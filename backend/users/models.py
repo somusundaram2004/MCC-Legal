@@ -303,3 +303,73 @@ class CustomDynamicPage(models.Model):
         return f"{self.title} ({self.slug}) - {status}"
 
 
+class EmailNotificationSetting(models.Model):
+    REDIRECTION_CHOICES = (
+        ('mou_detail', 'Direct MOU Page (/mou/{id})'),
+        ('shared_files', 'Shared Files Repository (/shared)'),
+        ('login_redirect', 'Login with Redirect (/login?next=/mou/{id})'),
+        ('custom', 'Custom Route Pattern'),
+    )
+
+    portal_base_url = models.CharField(
+        max_length=500,
+        default='http://localhost:5173',
+        help_text="Base URL for outgoing email links. Set this to your network IP (e.g. http://10.88.62.66:5173) or production domain (e.g. https://legal.mccmrfip.in) so recipients on other devices can access the portal."
+    )
+    redirection_target = models.CharField(
+        max_length=50,
+        choices=REDIRECTION_CHOICES,
+        default='mou_detail',
+        help_text="Where the email action button redirects the recipient."
+    )
+    custom_redirect_path = models.CharField(
+        max_length=500,
+        default='/mou/{mou_id}',
+        blank=True,
+        help_text="Custom path pattern (supports {mou_id}, {token}, {recipient_email})"
+    )
+    mou_button_label = models.CharField(
+        max_length=100,
+        default='MOVE TO MOU',
+        help_text="Label for the primary portal navigation button in the email"
+    )
+    download_button_label = models.CharField(
+        max_length=100,
+        default='DOWNLOAD MOU',
+        help_text="Label for the direct document download button in the email"
+    )
+    default_subject = models.CharField(
+        max_length=500,
+        default='Shared MOU: {mou_title} ({mou_number})',
+        help_text="Default subject line template for sharing notifications"
+    )
+    default_body = models.TextField(
+        blank=True,
+        null=True,
+        default="Dear Colleague / Partner,\n\nYou have been granted official access to the Memorandum of Understanding: {mou_title} ({mou_number}) between Madras Christian College (MCC) and {partner_organization}.\n\nThis document is accessible in your MCC Legal Document portal. You can download the agreement directly to your device or open the portal to inspect complete institutional records.\n\nRegards,\n{sender_name}\nMCC Legal Cell"
+    )
+    footer_notice = models.TextField(
+        blank=True,
+        null=True,
+        default="This document is automatically preserved in your Shared Files repository. Downloading the file will not remove it from your portal view or alter ownership."
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Email Notification Setting"
+        verbose_name_plural = "Email Notification Settings"
+
+    def __str__(self):
+        return f"Email Redirection & Content Config ({self.portal_base_url})"
+
+    @classmethod
+    def get_setting(cls):
+        inst = cls.objects.first()
+        if not inst:
+            from django.conf import settings
+            default_base = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+            inst = cls.objects.create(portal_base_url=default_base)
+        return inst
+
+
+

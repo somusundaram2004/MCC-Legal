@@ -16,6 +16,7 @@ import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 
 import api from '../services/api';
 import EmptyState from '../components/EmptyState';
+import showCustomToastFn from '../utils/customToast';
 import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 
 const NotificationsPage = () => {
@@ -91,9 +92,51 @@ const NotificationsPage = () => {
     }
   };
 
+  const handleNotificationClick = async (n) => {
+    if (!n.is_read) {
+      handleMarkAsRead(n.id);
+    }
+    const meta = n.metadata || {};
+    if (meta.file_id) {
+      try {
+        const res = await api.get(`/api/files/${meta.file_id}/`);
+        if (res.data) {
+          const folderId = res.data.folder || meta.folder_id;
+          if (folderId) {
+            navigate(`/folders?folder=${folderId}&file=${meta.file_id}`);
+          } else {
+            navigate(`/folders?file=${meta.file_id}`);
+          }
+        }
+      } catch (err) {
+        if (err.response?.status === 403) {
+          showCustomToastFn('error', 'You do not have permission to access this document.');
+        } else if (err.response?.status === 404) {
+          showCustomToastFn('error', 'The requested document could not be found.');
+        } else {
+          showCustomToastFn('error', 'Unable to access document.');
+        }
+      }
+    } else if (meta.folder_id) {
+      try {
+        await api.get(`/api/folders/${meta.folder_id}/`);
+        navigate(`/folders?folder=${meta.folder_id}`);
+      } catch (err) {
+        if (err.response?.status === 403) {
+          showCustomToastFn('error', 'You do not have permission to access this folder.');
+        } else {
+          showCustomToastFn('error', 'Unable to access folder.');
+        }
+      }
+    } else if (meta.mou_id) {
+      navigate(`/mous/${meta.mou_id}`);
+    }
+  };
+
   const filteredNotifications = notifications.filter(n => {
     if (tab === 'unread') return !n.is_read;
     if (tab === 'approvals') return n.title.toLowerCase().includes('approval') || n.title.toLowerCase().includes('verify');
+    if (tab === 'expiries') return n.metadata?.type === 'file_expiry_reminder' || n.title.toLowerCase().includes('expir');
     return true;
   });
 
@@ -142,6 +185,7 @@ const NotificationsPage = () => {
           <Tab label={`All Notifications (${notifications.length})`} value="all" sx={{ fontWeight: 700 }} />
           <Tab label={`Unread (${notifications.filter(n => !n.is_read).length})`} value="unread" sx={{ fontWeight: 700 }} />
           <Tab label="Approvals & Verification" value="approvals" sx={{ fontWeight: 700 }} />
+          <Tab label={`File Expiries (${notifications.filter(n => n.metadata?.type === 'file_expiry_reminder' || n.title.toLowerCase().includes('expir')).length})`} value="expiries" sx={{ fontWeight: 700 }} />
         </Tabs>
       </Box>
 
@@ -164,20 +208,22 @@ const NotificationsPage = () => {
                 <React.Fragment key={n.id}>
                   {idx > 0 && <Divider />}
                   <ListItem
+                    onClick={() => handleNotificationClick(n)}
                     sx={{
                       p: 2.5,
                       bgcolor: n.is_read ? 'transparent' : 'rgba(var(--indigo-rgb), 0.04)',
                       transition: 'background-color 0.2s ease',
+                      cursor: 'pointer',
                       '&:hover': { bgcolor: 'action.hover' }
                     }}
                     secondaryAction={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {!n.is_read && (
-                          <Button size="small" onClick={() => handleMarkAsRead(n.id)} sx={{ fontWeight: 700 }}>
+                          <Button size="small" onClick={(e) => { e.stopPropagation(); handleMarkAsRead(n.id); }} sx={{ fontWeight: 700 }}>
                             Mark Read
                           </Button>
                         )}
-                        <IconButton size="small" onClick={() => handleDeleteNotification(n.id)} sx={{ color: 'error.main' }}>
+                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteNotification(n.id); }} sx={{ color: 'error.main' }}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Box>

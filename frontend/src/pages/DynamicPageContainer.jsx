@@ -32,6 +32,7 @@ import FilePreviewModal from '../components/FilePreviewModal';
 import { useAuth } from '../context/AuthContext';
 import { useAutoRefresh, REFRESH_CATEGORIES } from '../context/AutoRefreshContext';
 import FolderExplorer from './FolderExplorer';
+import { getDynamicFolderColor, getDynamicFolderLabel } from '../utils/folderStatus';
 
 const getModuleIcon = (iconName) => {
   switch (iconName) {
@@ -362,26 +363,30 @@ const DynamicPageContainer = () => {
         </Paper>
       ) : viewMode === 'grid' ? (
         <Grid container spacing={2.5}>
-          {paginatedItems.map((item) => (
+          {paginatedItems.map((item) => {
+            const itemColor = getDynamicFolderColor(item);
+            const itemLabel = getDynamicFolderLabel(item);
+            return (
             <Grid xs={12} sm={6} md={4} key={item.id}>
               <Card
                 sx={{
                   p: 2.5, borderRadius: '16px', border: '1px solid', borderColor: 'divider',
+                  borderLeft: `4px solid ${itemColor}`,
                   cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'none',
-                  '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.main', boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }
+                  '&:hover': { transform: 'translateY(-2px)', borderColor: itemColor, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }} onClick={() => navigate(`/explorer?folder=${item.id}`)}>
-                    <Avatar sx={{ bgcolor: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', width: 44, height: 44, borderRadius: '12px' }}>
+                    <Avatar sx={{ bgcolor: `${itemColor}1F`, color: itemColor, width: 44, height: 44, borderRadius: '12px' }}>
                       <FolderIcon />
                     </Avatar>
                     <Box sx={{ overflow: 'hidden' }}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {item.name}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {item.status || 'Active Repository'}
+                      <Typography variant="caption" sx={{ color: itemColor, fontWeight: 700 }}>
+                        {itemLabel}
                       </Typography>
                     </Box>
                   </Box>
@@ -408,7 +413,8 @@ const DynamicPageContainer = () => {
                 </Box>
               </Card>
             </Grid>
-          ))}
+            );
+          })}
         </Grid>
       ) : (
         <TableContainer component={Paper} sx={{ borderRadius: '16px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
@@ -422,23 +428,33 @@ const DynamicPageContainer = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {paginatedItems.map((item) => (
+              {paginatedItems.map((item) => {
+                const itemColor = getDynamicFolderColor(item);
+                const itemLabel = getDynamicFolderLabel(item);
+                return (
                 <TableRow key={item.id} hover onClick={() => navigate(`/explorer?folder=${item.id}`)} sx={{ cursor: 'pointer' }}>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <FolderIcon color="primary" fontSize="small" />
+                      <FolderIcon sx={{ color: itemColor }} fontSize="small" />
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>{item.name}</Typography>
                     </Box>
                   </TableCell>
                   <TableCell>{item.department_name || 'All Staff'}</TableCell>
-                  <TableCell><Chip label={item.status || 'Active'} size="small" sx={{ fontSize: '0.65rem', fontWeight: 800 }} /></TableCell>
+                  <TableCell>
+                    <Chip
+                      label={itemLabel}
+                      size="small"
+                      sx={{ fontSize: '0.65rem', fontWeight: 800, color: itemColor, bgcolor: `${itemColor}1A`, border: '1px solid', borderColor: `${itemColor}35` }}
+                    />
+                  </TableCell>
                   <TableCell align="right">
                     <Button size="small" variant="outlined" onClick={(e) => { e.stopPropagation(); navigate(`/explorer?folder=${item.id}`); }}>
                       Open
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>

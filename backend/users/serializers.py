@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from roles.models import Role
 from permissions.models import Permission
-from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting, CustomDynamicPage
+from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting, CustomDynamicPage, EmailNotificationSetting
 import re
 import logging
 
@@ -287,5 +287,24 @@ class CustomDynamicPageSerializer(serializers.ModelSerializer):
                     instance.save(update_fields=['root_folder_id', 'root_folder_name'])
             except Exception as e:
                 logger.warning(f"Failed to auto-create repository folder for module '{instance.title}': {e}")
+
+
+class EmailNotificationSettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailNotificationSetting
+        fields = [
+            'id',
+            'portal_base_url',
+            'redirection_target',
+            'custom_redirect_path',
+            'mou_button_label',
+            'download_button_label',
+            'default_subject',
+            'default_body',
+            'footer_notice',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_at']
+
 
 

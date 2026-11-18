@@ -216,8 +216,10 @@ const Register = () => {
         company_name: companyName
       });
       
-      // Redirect to login page using full page transition
-      window.location.href = '/login?registered=true';
+      // Redirect to login page preserving destination if present
+      const nextParam = new URLSearchParams(window.location.search).get('next');
+      const loginUrl = nextParam ? `/login?registered=true&next=${encodeURIComponent(nextParam)}` : '/login?registered=true';
+      window.location.href = loginUrl;
     } catch (err) {
       setFormError(err.response?.data?.detail || 'Failed to complete registration. Please try again.');
     } finally {

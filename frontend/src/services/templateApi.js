@@ -67,6 +67,11 @@ export const sendTemplateDocumentEmail = (id, data) => api.post(`/api/mous/docum
 
 export const getMOUCategories = () => api.get('/api/mous/categories/').then(res => res.data);
 export const createMOUCategory = (data) => api.post('/api/mous/categories/', data).then(res => res.data);
+export const updateMOUCategory = (id, data) => api.patch(`/api/mous/categories/${id}/`, data).then(res => res.data);
 export const deleteMOUCategory = (id) => api.delete(`/api/mous/categories/${id}/`).then(res => res.data);
+export const getDepartmentAssignedItems = (id) => api.get(`/api/mous/categories/${id}/assigned-items/`).then(res => res.data);
+export const assignDepartmentItems = (id, data) => api.post(`/api/mous/categories/${id}/assign-items/`, data).then(res => res.data);
+export const createDepartmentSubfolder = (id, data) => api.post(`/api/mous/categories/${id}/create-subfolder/`, data).then(res => res.data);
+
 
 

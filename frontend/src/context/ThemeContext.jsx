@@ -281,8 +281,9 @@ export const ThemeModeProvider = ({ children }) => {
         MuiTableHead: {
           styleOverrides: {
             root: {
+              backgroundColor: isDark ? '#1e293b' : '#f8fafc',
               '& .MuiTableCell-root': {
-                background: isDark ? '#14172200' : '#F8FAFC00',
+                backgroundColor: isDark ? '#1e293b' : '#f8fafc',
                 fontFamily: font,
                 fontWeight: 700,
                 fontSize: '0.72rem',

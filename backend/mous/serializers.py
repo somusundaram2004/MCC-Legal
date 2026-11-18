@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    MOUTemplate, MOU, MOUDocument, MOURenewal,
+    MOUTemplate, MOU, MOUDocument, MOURenewal, MOUShare, MOUShareDownloadLog,
     TemplateCategory, OrganizationType, CollaborationType, DocumentType, Tag,
     DepartmentCategory, Department, TemplateCollection, TemplateDocument, MOUCategory, Stream
 )
@@ -49,15 +49,35 @@ class MOUSerializer(serializers.ModelSerializer):
         return obj.days_remaining()
 
     def get_shares_list(self, obj):
+        from django.utils import timezone
+        now = timezone.now()
         return [{
             'id': s.id,
             'department_id': s.department_id,
             'department_name': s.department.name if s.department else None,
+            'user_id': s.user_id,
+            'user_name': s.user.name if s.user else None,
             'user_email': s.user.email if s.user else None,
+            'recipient_email': s.recipient_email or (s.user.email if s.user else None),
+            'target_display': s.department.name if s.department else (s.recipient_email or (s.user.email if s.user else 'Unknown')),
+            'shared_file_id': s.shared_file_id,
+            'document_name': s.shared_file.name if s.shared_file else f"{s.mou.title}.pdf",
+            'document_version': s.document_version,
             'permission': s.permission,
             'status': s.status,
-            'shared_at': s.shared_at
-        } for s in obj.shares.all()]
+            'download_status': 'Downloaded' if s.download_count > 0 else 'Not Downloaded',
+            'download_count': s.download_count,
+            'first_download_date': s.first_download_date,
+            'last_download_date': s.last_download_date,
+            'access_status': 'Revoked' if s.access_status == 'Revoked' else ('Expired' if s.expires_at and s.expires_at < now else 'Active'),
+            'expires_at': s.expires_at,
+            'secure_token': s.secure_token,
+            'shared_by': s.shared_by.name if s.shared_by else None,
+            'shared_by_email': s.shared_by.email if s.shared_by else None,
+            'shared_at': s.shared_at,
+            'email_template': s.email_template,
+            'sharing_history': s.sharing_history
+        } for s in obj.shares.all().order_by('-shared_at')]
 
     def get_user_share_details(self, obj):
         request = self.context.get('request')
@@ -221,6 +241,91 @@ class StreamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Stream
         fields = '__all__'
+
+
+class MOUShareDownloadLogSerializer(serializers.ModelSerializer):
+    recipient_user_name = serializers.CharField(source='recipient_user.name', read_only=True)
+    recipient_user_email = serializers.CharField(source='recipient_user.email', read_only=True)
+
+    class Meta:
+        model = MOUShareDownloadLog
+        fields = '__all__'
+
+
+class MOUShareSerializer(serializers.ModelSerializer):
+    mou_id = serializers.IntegerField(source='mou.id', read_only=True)
+    mou_title = serializers.CharField(source='mou.title', read_only=True)
+    mou_number = serializers.CharField(source='mou.mou_number', read_only=True)
+    partner_organization = serializers.CharField(source='mou.partner_organization', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    shared_by_name = serializers.CharField(source='shared_by.name', read_only=True)
+    shared_by_email = serializers.CharField(source='shared_by.email', read_only=True)
+    user_name = serializers.CharField(source='user.name', read_only=True)
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    target_email = serializers.SerializerMethodField()
+    document_name = serializers.SerializerMethodField()
+    file_type = serializers.SerializerMethodField()
+    file_size = serializers.SerializerMethodField()
+    file_url = serializers.SerializerMethodField()
+    web_view_link = serializers.SerializerMethodField()
+    download_url = serializers.SerializerMethodField()
+    shared_date = serializers.DateTimeField(source='shared_at', read_only=True)
+    download_date = serializers.DateTimeField(source='last_download_date', read_only=True)
+    download_status = serializers.SerializerMethodField()
+    computed_access_status = serializers.SerializerMethodField()
+    download_logs = MOUShareDownloadLogSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = MOUShare
+        fields = '__all__'
+
+    def get_target_email(self, obj):
+        return obj.recipient_email or (obj.user.email if obj.user else None)
+
+    def get_document_name(self, obj):
+        if obj.shared_file:
+            return obj.shared_file.name
+        return f"{obj.mou.title}.pdf"
+
+    def get_file_type(self, obj):
+        if obj.shared_file:
+            return obj.shared_file.file_type
+        return 'pdf'
+
+    def get_file_size(self, obj):
+        if obj.shared_file:
+            return obj.shared_file.size
+        return None
+
+    def get_file_url(self, obj):
+        request = self.context.get('request')
+        f = obj.shared_file or obj.mou.signed_mou or obj.mou.original_mou or (obj.mou.documents.first().file if obj.mou.documents.exists() else None)
+        if f and f.file_field:
+            if request:
+                return request.build_absolute_uri(f.file_field.url)
+            return f.file_field.url
+        return None
+
+    def get_web_view_link(self, obj):
+        f = obj.shared_file or obj.mou.signed_mou or obj.mou.original_mou or (obj.mou.documents.first().file if obj.mou.documents.exists() else None)
+        if f and f.web_view_link:
+            return f.web_view_link
+        return None
+
+    def get_download_url(self, obj):
+        return f"/api/mous/shared/download/{obj.secure_token}/"
+
+    def get_download_status(self, obj):
+        return 'Downloaded' if obj.download_count > 0 else 'Not Downloaded'
+
+    def get_computed_access_status(self, obj):
+        if obj.access_status == 'Revoked':
+            return 'Revoked'
+        from django.utils import timezone
+        if obj.expires_at and timezone.now() > obj.expires_at:
+            return 'Expired'
+        return 'Active'
+
 
 
 

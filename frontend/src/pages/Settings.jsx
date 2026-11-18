@@ -35,6 +35,9 @@ import MailIcon from '@mui/icons-material/Mail';
 import SendIcon from '@mui/icons-material/Send';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import LinkIcon from '@mui/icons-material/Link';
+import SaveIcon from '@mui/icons-material/Save';
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
@@ -672,6 +675,51 @@ const EmailSettingsTab = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [authRequired, setAuthRequired] = useState(true);
 
+  // Email Notification & Redirection settings state
+  const [emailNotifConfig, setEmailNotifConfig] = useState({
+    portal_base_url: 'http://localhost:5173',
+    redirection_target: 'mou_detail',
+    custom_redirect_path: '/mou/{mou_id}',
+    mou_button_label: 'MOVE TO MOU',
+    download_button_label: 'DOWNLOAD MOU',
+    default_subject: 'Shared MOU: {mou_title} ({mou_number})',
+    default_body: 'Dear Partner,\n\nYou have been granted official access to the institutional agreement detailed below via the MCC Legal Enterprise Document Hub.\n\nPlease review the attached specifications and use the action buttons below to download the executed document or navigate directly to the agreement details in the MCC Legal portal.',
+    footer_notice: 'This document is automatically preserved in your Shared Files repository. Downloading the file will not remove it from your portal view or alter ownership.'
+  });
+  const [savingNotifConfig, setSavingNotifConfig] = useState(false);
+  const [notifConfigSuccess, setNotifConfigSuccess] = useState(null);
+  const [notifConfigError, setNotifConfigError] = useState(null);
+
+  const fetchEmailNotifSettings = useCallback(async () => {
+    try {
+      const res = await api.get('/api/users/email-notification-settings/');
+      if (res.data) {
+        setEmailNotifConfig(prev => ({ ...prev, ...res.data }));
+      }
+    } catch (err) {
+      console.warn('Failed to load email notification settings:', err);
+    }
+  }, []);
+
+  const handleSaveNotifConfig = async () => {
+    setSavingNotifConfig(true);
+    setNotifConfigError(null);
+    setNotifConfigSuccess(null);
+    try {
+      const res = await api.put('/api/users/email-notification-settings/', emailNotifConfig);
+      setEmailNotifConfig(prev => ({ ...prev, ...res.data }));
+      setNotifConfigSuccess('Email redirection links and template contents saved successfully!');
+      showCustomToast.success('Email settings updated successfully!');
+      setTimeout(() => setNotifConfigSuccess(null), 5000);
+    } catch (err) {
+      const errMsg = err?.response?.data?.detail || 'Failed to update email notification settings.';
+      setNotifConfigError(errMsg);
+      showCustomToast.error(errMsg);
+    } finally {
+      setSavingNotifConfig(false);
+    }
+  };
+
   const handleProviderChange = (e) => {
     const pName = e.target.value;
     setSelectedProvider(pName);
@@ -699,7 +747,8 @@ const EmailSettingsTab = () => {
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    fetchEmailNotifSettings();
+  }, [fetchSettings, fetchEmailNotifSettings]);
 
   const handleOpenAdd = () => {
     setEditingId(null);
@@ -1127,6 +1176,201 @@ const EmailSettingsTab = () => {
         </DialogActions>
       </Dialog>
 
+      {/* ── Email Redirection Links & Template Contents Card ── */}
+      <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', p: { xs: 2.5, md: 3.5 }, mt: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Avatar sx={{ bgcolor: 'primary.main', width: 42, height: 42, boxShadow: '0 4px 12px rgba(37,99,235,0.25)' }}>
+              <LinkIcon sx={{ color: '#fff' }} />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.3px' }}>
+                Email Redirection Links & Share Template Configuration
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Configure the portal base domain, button redirection targets, and email template contents sent to external partners and institutions.
+              </Typography>
+            </Box>
+          </Box>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={savingNotifConfig ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
+            onClick={handleSaveNotifConfig}
+            disabled={savingNotifConfig}
+            sx={{ borderRadius: '10px', px: 3, fontWeight: 700 }}
+          >
+            {savingNotifConfig ? 'Saving...' : 'Save Email Link Settings'}
+          </Button>
+        </Box>
+
+        {notifConfigSuccess && (
+          <Alert severity="success" sx={{ mb: 3, borderRadius: '12px' }}>
+            {notifConfigSuccess}
+          </Alert>
+        )}
+        {notifConfigError && (
+          <Alert severity="error" sx={{ mb: 3, borderRadius: '12px' }}>
+            {notifConfigError}
+          </Alert>
+        )}
+
+        <Grid container spacing={3}>
+          {/* Base Portal Domain */}
+          <Grid xs={12}>
+            <Box sx={{ p: 2.5, borderRadius: '14px', bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <LinkIcon fontSize="small" color="primary" /> Public Portal Base URL (Domain)
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                External devices opening email buttons will navigate to this base domain. Setting your public domain or network IP prevents links from opening other computers' localhost.
+              </Typography>
+              <TextField
+                fullWidth
+                size="small"
+                value={emailNotifConfig.portal_base_url || ''}
+                onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, portal_base_url: e.target.value })}
+                placeholder="https://legal.mccmrfip.in or http://10.88.62.66:5173"
+                helperText="Example: https://legal.mccmrfip.in (Production) or http://10.88.62.66:5173 (LAN Access)"
+                sx={{ mb: 1.5 }}
+              />
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mr: 0.5 }}>
+                  Quick Fill:
+                </Typography>
+                <Chip
+                  size="small"
+                  label="Localhost (5173)"
+                  onClick={() => setEmailNotifConfig({ ...emailNotifConfig, portal_base_url: 'http://localhost:5173' })}
+                  variant={emailNotifConfig.portal_base_url === 'http://localhost:5173' ? 'filled' : 'outlined'}
+                  color="primary"
+                  sx={{ cursor: 'pointer', fontWeight: 600 }}
+                />
+                <Chip
+                  size="small"
+                  label="LAN Network IP (10.88.62.66:5173)"
+                  onClick={() => setEmailNotifConfig({ ...emailNotifConfig, portal_base_url: 'http://10.88.62.66:5173' })}
+                  variant={emailNotifConfig.portal_base_url === 'http://10.88.62.66:5173' ? 'filled' : 'outlined'}
+                  color="primary"
+                  sx={{ cursor: 'pointer', fontWeight: 600 }}
+                />
+                <Chip
+                  size="small"
+                  label="Official Domain (legal.mccmrfip.in)"
+                  onClick={() => setEmailNotifConfig({ ...emailNotifConfig, portal_base_url: 'https://legal.mccmrfip.in' })}
+                  variant={emailNotifConfig.portal_base_url === 'https://legal.mccmrfip.in' ? 'filled' : 'outlined'}
+                  color="primary"
+                  sx={{ cursor: 'pointer', fontWeight: 600 }}
+                />
+                <Chip
+                  size="small"
+                  label={`Current Browser Origin (${window.location.origin})`}
+                  onClick={() => setEmailNotifConfig({ ...emailNotifConfig, portal_base_url: window.location.origin })}
+                  variant="outlined"
+                  sx={{ cursor: 'pointer', fontWeight: 600 }}
+                />
+              </Box>
+            </Box>
+          </Grid>
+
+          {/* Redirection Target & Custom Route */}
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="redirection-target-label">Email Button Redirection Target</InputLabel>
+              <Select
+                labelId="redirection-target-label"
+                value={emailNotifConfig.redirection_target || 'mou_detail'}
+                label="Email Button Redirection Target"
+                onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, redirection_target: e.target.value })}
+              >
+                <MenuItem value="mou_detail">Direct MOU Page (/mou/{'{id}'}) — Recommended</MenuItem>
+                <MenuItem value="shared_files">Shared Files Repository (/shared)</MenuItem>
+                <MenuItem value="login_redirect">Login with Return Redirect (/login?next=/mou/{'{id}'})</MenuItem>
+                <MenuItem value="custom">Custom Route Pattern</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid xs={12} md={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Custom Redirection Path Pattern"
+              disabled={emailNotifConfig.redirection_target !== 'custom'}
+              value={emailNotifConfig.custom_redirect_path || ''}
+              onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, custom_redirect_path: e.target.value })}
+              placeholder="/mou/{mou_id} or /shared"
+              helperText="Use placeholders: {mou_id}, {id}"
+            />
+          </Grid>
+
+          {/* Button Labels */}
+          <Grid xs={12} md={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Primary Navigation Button Label"
+              value={emailNotifConfig.mou_button_label || ''}
+              onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, mou_button_label: e.target.value })}
+              placeholder="MOVE TO MOU"
+              helperText="Default: MOVE TO MOU (navigates recipient to the agreement)"
+            />
+          </Grid>
+
+          <Grid xs={12} md={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Direct Download Button Label"
+              value={emailNotifConfig.download_button_label || ''}
+              onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, download_button_label: e.target.value })}
+              placeholder="DOWNLOAD MOU"
+              helperText="Default: DOWNLOAD MOU (downloads document directly)"
+            />
+          </Grid>
+
+          {/* Default Email Subject */}
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Default Email Subject Template"
+              value={emailNotifConfig.default_subject || ''}
+              onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, default_subject: e.target.value })}
+              placeholder="Shared MOU: {mou_title} ({mou_number})"
+              helperText="Available placeholders: {mou_title}, {mou_number}, {partner_organization}, {sender_name}"
+            />
+          </Grid>
+
+          {/* Default Email Message Body */}
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Default Email Message Body Template"
+              value={emailNotifConfig.default_body || ''}
+              onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, default_body: e.target.value })}
+              placeholder="Enter institutional invitation notice..."
+              helperText="Placeholders will be dynamically replaced when sharing agreements."
+            />
+          </Grid>
+
+          {/* Footer Notice */}
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Email Footer Notice (Shared Files Information)"
+              value={emailNotifConfig.footer_notice || ''}
+              onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, footer_notice: e.target.value })}
+              placeholder="This document is automatically preserved in your Shared Files repository..."
+              helperText="Displayed inside the informational callout at the bottom of the email."
+            />
+          </Grid>
+        </Grid>
+      </Card>
+
       {/* SMTP Setup Guidelines Card */}
       <Card sx={{ borderRadius: '20px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', bgcolor: 'action.hover', p: 4, mt: 4 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: 'text.primary' }}>
@@ -1419,6 +1663,19 @@ const Settings = () => {
     '&.Mui-selected': { color: 'primary.main' }
   };
 
+  const isSuperAdmin = user?.role?.name === 'Super Admin';
+
+  if (!isSuperAdmin) {
+    return (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>Access Denied</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Site Settings are restricted to Super Administrators only.
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ flexGrow: 1, maxWidth: 1100, mx: 'auto' }} className="animate-fade-slide-up">
       {/* Header */}
@@ -1455,16 +1712,16 @@ const Settings = () => {
             <Tab icon={<NotificationsActiveIcon fontSize="small" />} iconPosition="start" label="Notifications" sx={tabSx} />
             <Tab icon={<StorageIcon fontSize="small" />} iconPosition="start" label="Storage" sx={tabSx} />
             <Tab icon={<KeyboardIcon fontSize="small" />} iconPosition="start" label="Keyboard Shortcuts" sx={tabSx} />
-            {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+            {isSuperAdmin && (
               <Tab icon={<MailIcon fontSize="small" />} iconPosition="start" label="Email Settings" sx={tabSx} />
             )}
-            {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+            {isSuperAdmin && (
               <Tab icon={<StorageIcon fontSize="small" />} iconPosition="start" label="Google Drive" sx={tabSx} />
             )}
-            {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+            {isSuperAdmin && (
               <Tab icon={<SecurityIcon fontSize="small" />} iconPosition="start" label="Module Permissions" sx={tabSx} />
             )}
-            {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+            {isSuperAdmin && (
               <Tab icon={<SystemUpdateAltIcon fontSize="small" />} iconPosition="start" label="Import & Export" sx={tabSx} />
             )}
           </Tabs>
@@ -1633,22 +1890,22 @@ const Settings = () => {
            <TabPanel value={activeTab} index={4}>
              <KeyboardShortcutsTab />
            </TabPanel>
-          {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+          {isSuperAdmin && (
             <TabPanel value={activeTab} index={5}>
               <EmailSettingsTab />
             </TabPanel>
           )}
-          {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+          {isSuperAdmin && (
             <TabPanel value={activeTab} index={6}>
               <GoogleDriveSettingsTab />
             </TabPanel>
           )}
-          {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+          {isSuperAdmin && (
             <TabPanel value={activeTab} index={7}>
               <ModulePermissionsMatrix />
             </TabPanel>
           )}
-          {['Super Admin', 'Admin'].includes(user?.role?.name) && (
+          {isSuperAdmin && (
             <TabPanel value={activeTab} index={8}>
               <ImportExportTab />
             </TabPanel>

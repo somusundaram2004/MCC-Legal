@@ -9,6 +9,15 @@ const BreadcrumbNav = ({ path = [], onFolderClick, rootLabel = "Root" }) => {
     <Breadcrumbs 
       separator={<NavigateNextIcon fontSize="small" />} 
       aria-label="breadcrumb"
+      maxItems={4}
+      itemsBeforeCollapse={1}
+      itemsAfterCollapse={2}
+      sx={{
+        '& .MuiBreadcrumbs-ol': {
+          flexWrap: { xs: 'nowrap', sm: 'wrap' },
+          whiteSpace: 'nowrap',
+        }
+      }}
     >
       <Link
         underline="hover"

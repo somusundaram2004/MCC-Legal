@@ -13,7 +13,7 @@ from permissions.models import Permission
 from permissions.custom_permissions import HasDynamicPermission
 from activity_logs.utils import log_activity
 from notifications.utils import create_notification, notify_admins
-from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting, PasswordResetOTP
+from .models import UserPermission, UserInvitation, SMTPSetting, GoogleDriveSetting, PasswordResetOTP, EmailNotificationSetting
 from .serializers import (
     CustomUserSerializer, 
     CustomUserCreateSerializer, 
@@ -21,7 +21,8 @@ from .serializers import (
     UserInvitationSerializer,
     UserRegistrationSerializer,
     SMTPSettingSerializer,
-    GoogleDriveSettingSerializer
+    GoogleDriveSettingSerializer,
+    EmailNotificationSettingSerializer
 )
 from .invitation_services import InvitationService, TokenService
 from services.email_service import send_invitation_email, send_password_reset_otp_email
@@ -31,6 +32,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+def associate_pending_shares(user):
+    """
+    Finds all pending MOUShare records where recipient_email matches user.email
+    and associates them with user.
+    """
+    if not user or not getattr(user, 'email', None):
+        return
+    try:
+        from mous.models import MOUShare
+        updated_count = MOUShare.objects.filter(
+            recipient_email__iexact=user.email,
+            user__isnull=True
+        ).update(user=user)
+        if updated_count > 0:
+            logger.info(f"Associated {updated_count} pending MOUShare records to user {user.email}")
+    except Exception as e:
+        logger.warning(f"Failed to associate pending shares for {user.email}: {e}")
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -58,6 +77,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Update last login
         self.user.last_login = timezone.now()
         self.user.save(update_fields=['last_login'])
+
+        # Automatically associate any pending MOU shares for this email
+        associate_pending_shares(self.user)
         
         return data
 
@@ -365,6 +387,7 @@ class GoogleLoginView(APIView):
         refresh = RefreshToken.for_user(user)
         user.last_login = timezone.now()
         user.save(update_fields=['last_login'])
+        associate_pending_shares(user)
         log_activity(user, "User logged in successfully via Google Sign-In", "authentication", request)
 
         return Response({
@@ -866,6 +889,9 @@ class UserViewSet(viewsets.ModelViewSet):
                     status='Active'
                 )
                 
+                # Automatically associate pending MOU shares
+                associate_pending_shares(user)
+
                 # Mark invitation as used
                 invitation.is_used = True
                 invitation.accepted_at = now
@@ -893,11 +919,13 @@ class IsSuperAdmin(permissions.BasePermission):
     Permission class that only grants access to Super Admin users.
     """
     def has_permission(self, request, view):
-        return (
+        return bool(
             request.user 
             and request.user.is_authenticated 
-            and request.user.role 
-            and request.user.role.name == "Super Admin"
+            and (
+                request.user.is_superuser
+                or (request.user.role and request.user.role.name == "Super Admin")
+            )
         )
 
 
@@ -979,7 +1007,7 @@ class SMTPSettingViewSet(viewsets.ModelViewSet):
 
 class GoogleDriveSettingViewSet(viewsets.ModelViewSet):
     serializer_class = GoogleDriveSettingSerializer
-    permission_classes = [IsAdminOrSuperAdmin]
+    permission_classes = [IsSuperAdmin]
     queryset = GoogleDriveSetting.objects.all().order_by('-created_at')
 
     def perform_create(self, serializer):
@@ -1287,6 +1315,24 @@ class CustomDynamicPageViewSet(viewsets.ModelViewSet):
 
         log_activity(request.user, f"Unpublished module '{page.title}' and moved repository data to Recycle Bin", "users", request)
         return Response({"detail": f"Module '{page.title}' unpublished and repository data moved to Recycle Bin."}, status=status.HTTP_200_OK)
+
+
+class EmailNotificationSettingView(APIView):
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        setting = EmailNotificationSetting.get_setting()
+        serializer = EmailNotificationSettingSerializer(setting)
+        return Response(serializer.data)
+
+    def put(self, request):
+        setting = EmailNotificationSetting.get_setting()
+        serializer = EmailNotificationSettingSerializer(setting, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_activity(request.user, "Updated email notification & redirect settings", "settings", request)
+        return Response(serializer.data)
+
 
 
 

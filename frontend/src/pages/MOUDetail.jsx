@@ -24,10 +24,14 @@ import ShareIcon from '@mui/icons-material/Share';
 import DeleteIcon from '@mui/icons-material/Delete';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import AnalyticsIcon from '@mui/icons-material/Analytics';
+import SendIcon from '@mui/icons-material/Send';
+import BlockIcon from '@mui/icons-material/Block';
 
 import { 
   getMOU, approveRejectMOU, renewMOU, 
   getMOUShares, shareMOU, revokeMOUShare,
+  resendShareEmail, revokeShareAccess,
   reviewDepartmentSubmission
 } from '../services/mouApi';
 import { useAuth } from '../context/AuthContext';
@@ -35,6 +39,8 @@ import api from '../services/api';
 import StatusPill from '../components/StatusPill';
 import { showCustomToast } from '../utils/customToast';
 import LottieAnimation from '../components/LottieAnimation';
+import MOUShareModal from '../components/MOUShareModal';
+import DownloadTrackingModal from '../components/DownloadTrackingModal';
 
 const TIMELINE_STEPS = [
   { key: 'Folder Created', label: 'Folder Created', desc: 'MOU Organization Folder created' },
@@ -57,6 +63,7 @@ const MOUDetail = () => {
   // Sharing State
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [activeShares, setActiveShares] = useState([]);
+  const [trackingModalShareId, setTrackingModalShareId] = useState(null);
   const [selectedDepts, setSelectedDepts] = useState([]);
   const [sharePermission, setSharePermission] = useState('View Only');
   const [sharing, setSharing] = useState(false);
@@ -295,7 +302,7 @@ const MOUDetail = () => {
                   onClick={() => setShareDialogOpen(true)}
                   sx={{ borderRadius: '12px', fontWeight: 700, background: 'linear-gradient(135deg, var(--indigo) 0%, var(--violet) 100%)' }}
                 >
-                  Share Folder
+                  Share MOU Document
                 </Button>
 
                 {(mou.status === 'Active' || mou.status === 'Expired') && (
@@ -530,139 +537,163 @@ const MOUDetail = () => {
         </Grid>
       </Grid>
 
-      {/* ── Share Modal ── */}
-      <Dialog 
-        open={shareDialogOpen} 
-        onClose={() => setShareDialogOpen(false)} 
-        maxWidth="md" 
-        fullWidth
-        slotProps={{ paper: { sx: { borderRadius: '24px', p: 1 } } }}
-      >
-        <DialogTitle sx={{ fontWeight: 800 }}>Share Folder Permissions</DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={3.5}>
-            {/* Left: select departments and permission */}
-            <Grid xs={12} md={5}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5 }}>
-                Share with Department
+      {/* ── Active Shares & Recipient Download Management ── */}
+      <Card sx={{ mt: 3, p: 3, borderRadius: '20px', border: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <ShareIcon sx={{ color: 'primary.main' }} />
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                Active Sharing &amp; Recipient Download Management ({activeShares.length})
               </Typography>
-
-              <FormControl fullWidth sx={{ mb: 2.5 }} required>
-                <InputLabel>Stream</InputLabel>
-                <Select
-                  value={shareCategory}
-                  label="Stream"
-                  onChange={handleShareCategoryChange}
-                >
-                  {masterStreams.map((s) => (
-                    <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <Autocomplete
-                disabled={!shareCategory}
-                options={filteredShareDepts}
-                getOptionLabel={(option) => {
-                  if (typeof option === 'string') return option;
-                  const catObj = deptCategories.find(c => c.id === shareCategory);
-                  let name = option.name;
-                  if (catObj && catObj.name === 'Aided' && name.endsWith(' (Aided)')) {
-                    return name.slice(0, -8);
-                  }
-                  if (catObj && catObj.name === 'Self-Financed (SFS)' && name.endsWith(' (SFS)')) {
-                    return name.slice(0, -6);
-                  }
-                  return name;
-                }}
-                value={filteredShareDepts.find(d => d.name === shareDept) || null}
-                onChange={(event, newValue) => {
-                  setShareDept(newValue ? newValue.name : '');
-                }}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    required
-                    label="Department"
-                    placeholder="Select Department"
-                  />
-                )}
-                sx={{ mb: 2.5 }}
-                fullWidth
-              />
-
-              <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel>Permission Rights</InputLabel>
-                <Select
-                  value={sharePermission}
-                  label="Permission Rights"
-                  onChange={(e) => setSharePermission(e.target.value)}
-                >
-                  <MenuItem value="View Only">View Only (Read Documents)</MenuItem>
-                  <MenuItem value="Upload Only">Upload Only (Submit Scanned MOU)</MenuItem>
-                  <MenuItem value="Edit">Edit (Rename/Modify Files)</MenuItem>
-                  <MenuItem value="Full Access">Full Access (All Operations)</MenuItem>
-                </Select>
-              </FormControl>
-
-              <Button 
-                variant="contained" 
-                fullWidth
-                onClick={handleShareSubmit}
-                disabled={sharing || !shareDept}
-                sx={{ borderRadius: '10px', fontWeight: 700 }}
-              >
-                {sharing ? 'Sharing...' : 'Add Share Rules'}
-              </Button>
-            </Grid>
-
-            {/* Right: show active shares list */}
-            <Grid xs={12} md={7}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5 }}>
-                Active Share Rules ({activeShares.length})
+              <Typography variant="caption" color="text.secondary">
+                Track whether recipients downloaded the agreement, inspect tracking logs, or resend notification emails
               </Typography>
+            </Box>
+          </Box>
+          {isAdmin && (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<ShareIcon />}
+              onClick={() => setShareDialogOpen(true)}
+              sx={{ borderRadius: '10px', fontWeight: 700, textTransform: 'none' }}
+            >
+              Share MOU Document
+            </Button>
+          )}
+        </Box>
 
-              {activeShares.length === 0 ? (
-                <Alert severity="info" sx={{ borderRadius: '12px' }}>This folder is not currently shared.</Alert>
-              ) : (
-                <TableContainer component={Paper} sx={{ borderRadius: '14px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
-                  <Table size="small">
-                    <TableHead sx={{ bgcolor: 'action.hover' }}>
-                      <TableRow>
-                        <TableCell sx={{ fontWeight: 700 }}>Department</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }}>Rights</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }} align="right">Action</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {activeShares.map((s) => (
-                        <TableRow key={s.id}>
-                          <TableCell sx={{ fontWeight: 600 }}>{s.department_name}</TableCell>
-                          <TableCell>
-                            <Chip label={s.permission} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
-                          </TableCell>
-                          <TableCell>
-                            <Chip label={s.status} size="small" color={s.status === 'Completed' ? 'success' : 'default'} sx={{ fontWeight: 700 }} />
-                          </TableCell>
-                          <TableCell align="right">
-                            <IconButton color="error" size="small" onClick={() => confirmRevokeShare(s.id)}>
+        {activeShares.length === 0 ? (
+          <Alert severity="info" sx={{ borderRadius: '14px' }}>
+            This MOU has not been shared with any recipients yet. Use the "Share MOU Document" button above to share it via email.
+          </Alert>
+        ) : (
+          <TableContainer component={Paper} sx={{ borderRadius: '16px', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
+            <Table size="small">
+              <TableHead sx={{ bgcolor: 'action.hover' }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 800 }}>Recipient / Department</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }}>Rights</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }}>Shared Date</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }}>Download Status</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }}>Last Download Date</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }}>Access Status</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }} align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {activeShares.map((s) => {
+                  const isDownloaded = s.download_count > 0 || s.status === 'Downloaded';
+                  const targetLabel = s.recipient_email || s.department_name || (s.user_name || 'Recipient');
+                  return (
+                    <TableRow key={s.id} hover>
+                      <TableCell sx={{ fontWeight: 700, color: '#0F172A' }}>
+                        {targetLabel}
+                        {s.user_name && s.recipient_email && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {s.user_name}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={s.permission || 'View Only'} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{s.shared_at ? new Date(s.shared_at).toLocaleDateString() : '—'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={isDownloaded ? `Downloaded (${s.download_count || 1})` : 'Not Downloaded'}
+                          size="small"
+                          color={isDownloaded ? 'success' : 'default'}
+                          sx={{
+                            fontWeight: 800,
+                            ...(isDownloaded
+                              ? { bgcolor: 'rgba(22, 163, 74, 0.12)', color: '#16A34A' }
+                              : { bgcolor: 'rgba(100, 116, 139, 0.12)', color: '#64748B' })
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {s.last_download_date ? new Date(s.last_download_date).toLocaleDateString() : '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={s.computed_access_status || s.access_status || 'Active'}
+                          size="small"
+                          color={(s.computed_access_status || s.access_status) === 'Active' ? 'success' : (s.computed_access_status || s.access_status) === 'Revoked' ? 'error' : 'warning'}
+                          sx={{ fontWeight: 700 }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Box sx={{ display: 'inline-flex', gap: 0.5 }}>
+                          <Tooltip title="View Download Tracking & Logs">
+                            <IconButton
+                              size="small"
+                              onClick={() => setTrackingModalShareId(s.id)}
+                              sx={{ color: '#0EA5E9' }}
+                            >
+                              <AnalyticsIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          {s.recipient_email && (
+                            <Tooltip title="Resend Sharing Email">
+                              <IconButton
+                                size="small"
+                                onClick={async () => {
+                                  try {
+                                    await resendShareEmail(s.id);
+                                    showCustomToast.success(`Email resent to ${s.recipient_email}`);
+                                  } catch {
+                                    showCustomToast.error('Failed to resend email');
+                                  }
+                                }}
+                                sx={{ color: '#6366F1' }}
+                              >
+                                <SendIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          <Tooltip title="Revoke Access">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => confirmRevokeShare(s.id)}
+                            >
                               <DeleteIcon fontSize="small" />
                             </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShareDialogOpen(false)} sx={{ fontWeight: 700 }}>Close</Button>
-        </DialogActions>
-      </Dialog>
+                          </Tooltip>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Card>
+
+      {/* ── MOU Share Modal (Full Email & Department Sharing with Predefined Templates) ── */}
+      <MOUShareModal
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        mou={mou}
+        onShareSuccess={async () => {
+          const shares = await getMOUShares(id);
+          setActiveShares(shares);
+        }}
+      />
+
+      {/* ── Recipient Download Tracking Modal ── */}
+      <DownloadTrackingModal
+        open={Boolean(trackingModalShareId)}
+        onClose={() => setTrackingModalShareId(null)}
+        shareId={trackingModalShareId}
+      />
 
       {/* ── Compliance Verification Review Remarks Dialog ── */}
       <Dialog 

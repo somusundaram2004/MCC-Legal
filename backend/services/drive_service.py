@@ -761,11 +761,24 @@ def upload_file(file_content, filename, mime_type, parent_id=None):
 def download_file(file_id):
     """
     Downloads file content from Google Drive by ID.
+    If the file is a Google Workspace Document (Docs, Sheets, Slides), exports it to a standard format.
     Returns raw bytes.
     """
     try:
         service = authenticate()
-        request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
+        meta = service.files().get(fileId=file_id, fields='id, mimeType', supportsAllDrives=True).execute()
+        mime_type = meta.get('mimeType', '')
+
+        if mime_type.startswith('application/vnd.google-apps.'):
+            export_mime = 'application/pdf'
+            if 'document' in mime_type:
+                export_mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            elif 'spreadsheet' in mime_type:
+                export_mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            request = service.files().export_media(fileId=file_id, mimeType=export_mime)
+        else:
+            request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
+
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
         done = False
@@ -876,18 +889,27 @@ def get_metadata(file_id):
 
 def list_folder_contents(folder_id):
     """
-    Lists the immediate files/folders inside a folder on Google Drive.
+    Lists all immediate files/folders inside a folder on Google Drive with full pagination.
     """
     try:
         service = authenticate()
         query = f"'{folder_id}' in parents and trashed = false"
-        results = service.files().list(
-            q=query, 
-            fields="files(id, name, mimeType, size, webViewLink, webContentLink)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        return results.get('files', [])
+        all_items = []
+        page_token = None
+        while True:
+            results = service.files().list(
+                q=query, 
+                fields="nextPageToken, files(id, name, mimeType, size, webViewLink, webContentLink)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=1000,
+                pageToken=page_token
+            ).execute()
+            all_items.extend(results.get('files', []))
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
+        return all_items
     except Exception as e:
         logger.error(f"Failed to list contents for folder '{folder_id}': {e}")
         raise
@@ -1000,37 +1022,44 @@ def scan_google_drive_folder_tree(source_drive_folder_id):
     
     def walk_drive_folder(current_folder_id, current_rel_path):
         query = f"'{current_folder_id}' in parents and trashed = false"
-        try:
-            results = service.files().list(
-                q=query,
-                fields="files(id, name, mimeType, size, webViewLink, webContentLink)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-                pageSize=500
-            ).execute()
-        except Exception as scan_err:
-            logger.warning(f"Error scanning folder '{current_folder_id}': {scan_err}")
-            return
+        page_token = None
+        while True:
+            try:
+                results = service.files().list(
+                    q=query,
+                    fields="nextPageToken, files(id, name, mimeType, size, webViewLink, webContentLink)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=1000,
+                    pageToken=page_token
+                ).execute()
+            except Exception as scan_err:
+                logger.warning(f"Error scanning folder '{current_folder_id}': {scan_err}")
+                break
 
-        for item in results.get('files', []):
-            item_name = item.get('name', 'unnamed')
-            item_rel_path = f"{current_rel_path}/{item_name}" if current_rel_path else item_name
-            is_dir = (item.get('mimeType') == 'application/vnd.google-apps.folder')
+            for item in results.get('files', []):
+                item_name = item.get('name', 'unnamed')
+                item_rel_path = f"{current_rel_path}/{item_name}" if current_rel_path else item_name
+                is_dir = (item.get('mimeType') == 'application/vnd.google-apps.folder')
 
-            if is_dir:
-                folders_dict[item_rel_path] = item.get('id')
-                walk_drive_folder(item.get('id'), item_rel_path)
-            else:
-                f_size = int(item.get('size', 0)) if item.get('size') else 0
-                file_list.append({
-                    'id': item.get('id'),
-                    'name': item_name,
-                    'path': item_rel_path,
-                    'size': f_size,
-                    'mimeType': item.get('mimeType', ''),
-                    'webViewLink': item.get('webViewLink'),
-                    'webContentLink': item.get('webContentLink')
-                })
+                if is_dir:
+                    folders_dict[item_rel_path] = item.get('id')
+                    walk_drive_folder(item.get('id'), item_rel_path)
+                else:
+                    f_size = int(item.get('size', 0)) if item.get('size') else 0
+                    file_list.append({
+                        'id': item.get('id'),
+                        'name': item_name,
+                        'path': item_rel_path,
+                        'size': f_size,
+                        'mimeType': item.get('mimeType', ''),
+                        'webViewLink': item.get('webViewLink'),
+                        'webContentLink': item.get('webContentLink')
+                    })
+            
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
 
     walk_drive_folder(source_drive_folder_id, root_name)
 

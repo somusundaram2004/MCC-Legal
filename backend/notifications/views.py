@@ -14,7 +14,14 @@ class NotificationViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user or not user.is_authenticated:
             return Notification.objects.none()
-        return Notification.objects.filter(user=user).order_by('-created_at')
+        qs = Notification.objects.filter(user=user).order_by('-created_at')
+        limit = self.request.query_params.get('limit')
+        if limit:
+            try:
+                qs = qs[:int(limit)]
+            except (ValueError, TypeError):
+                pass
+        return qs
 
     @action(detail=True, methods=['post'], url_path='mark-read')
     def mark_read(self, request, pk=None):

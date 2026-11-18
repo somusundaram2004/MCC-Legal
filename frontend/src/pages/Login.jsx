@@ -137,20 +137,26 @@ const Login = () => {
   };
 
   const queryParams = new URLSearchParams(location.search);
+  const nextDestination = queryParams.get('next') || '/';
   const isRegistered = queryParams.get('registered') === 'true';
   const successMessage = isRegistered
     ? 'Registration completed successfully! You can now sign in with your password.'
     : location.state?.successMessage;
 
-  // Redirect if already logged in and reset form inputs on load
+  // Redirect if already logged in and pre-populate email if provided in URL
   React.useEffect(() => {
+    const emailParam = queryParams.get('email');
     if (user) {
-      navigate('/');
+      navigate(nextDestination, { replace: true });
     } else {
-      setEmail('');
+      if (emailParam) {
+        setEmail(emailParam);
+      } else {
+        setEmail('');
+      }
       setPassword('');
     }
-  }, [user, navigate]);
+  }, [user, navigate, nextDestination]);
 
   const passwordRef = useRef(null);
   const [emailError, setEmailError] = useState('');
@@ -192,7 +198,7 @@ const Login = () => {
       const loggedUser = await login(email, password);
       showCustomToast.success(loggedUser?.name || 'User');
       await new Promise((resolve) => setTimeout(resolve, 800));
-      navigate('/', { state: { successMessage: `Logged in successfully! Welcome back, ${loggedUser.name || 'user'}.` } });
+      navigate(nextDestination, { state: { successMessage: `Logged in successfully! Welcome back, ${loggedUser.name || 'user'}.` } });
     } catch (err) {
       console.error("Login failed error object:", err);
       
@@ -228,7 +234,7 @@ const Login = () => {
       const loggedUser = await googleLogin(credentialResponse.credential);
       showCustomToast.success(loggedUser?.name || 'User');
       await new Promise((resolve) => setTimeout(resolve, 800));
-      navigate('/', { state: { successMessage: `Logged in via Google! Welcome back, ${loggedUser.name || 'user'}.` } });
+      navigate(nextDestination, { state: { successMessage: `Logged in via Google! Welcome back, ${loggedUser.name || 'user'}.` } });
     } catch (err) {
       console.error("Google login failed:", err);
       if (!err.response || err.code === 'ERR_NETWORK') {
@@ -248,7 +254,7 @@ const Login = () => {
       const loggedUser = await googleLogin({ access_token: tokenResponse.access_token });
       showCustomToast.success(loggedUser?.name || 'User');
       await new Promise((resolve) => setTimeout(resolve, 800));
-      navigate('/', { state: { successMessage: `Logged in via Google! Welcome back, ${loggedUser.name || 'user'}.` } });
+      navigate(nextDestination, { state: { successMessage: `Logged in via Google! Welcome back, ${loggedUser.name || 'user'}.` } });
     } catch (err) {
       console.error("Google login failed:", err);
       if (!err.response || err.code === 'ERR_NETWORK') {

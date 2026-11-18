@@ -48,6 +48,14 @@ import { useAutoRefresh, triggerGlobalAutoRefresh, REFRESH_CATEGORIES } from '..
 import BreadcrumbNav from '../components/BreadcrumbNav';
 import FilePreviewModal from '../components/FilePreviewModal';
 import GoogleDrivePickerModal from '../components/GoogleDrivePickerModal';
+import MOUShareModal from '../components/MOUShareModal';
+import { 
+  getFolderStatusColor, 
+  getDynamicFolderColor, 
+  getDynamicFolderLabel, 
+  FOLDER_STATUS_LEGEND, 
+  FOLDER_STATUS_OPTIONS 
+} from '../utils/folderStatus';
 
 const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const { user, hasPermission } = useAuth();
@@ -58,78 +66,6 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
 
 
   const searchParamQuery = searchParams.get('search') || '';
-
-  const getFolderStatusColor = (status) => {
-    switch (status) {
-      case 'Active':
-        return '#8B5CF6';
-      case 'Signed':
-        return '#10B981';
-      case 'Pending Review':
-        return '#F59E0B';
-      case 'Expired':
-        return '#EF4444';
-      case 'Archived':
-        return '#475569';
-      default:
-        return '#8B5CF6';
-    }
-  };
-
-  const getDynamicFolderColor = (folder) => {
-    if (folder.status === 'Archived') {
-      return '#475569';
-    }
-    if (folder.expiry_date) {
-      const expiry = new Date(folder.expiry_date);
-      const today = new Date();
-      expiry.setHours(0,0,0,0);
-      today.setHours(0,0,0,0);
-      const diffTime = expiry - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDays <= 30) {
-        return '#EF4444';
-      }
-      // If more than 30 days away, override stale Expired status
-      if (folder.status === 'Expired') {
-        return '#8B5CF6'; // Active (Purple)
-      }
-    }
-    if (folder.status === 'Signed') {
-      return '#10B981';
-    }
-    if (folder.is_viewed === false) {
-      return '#F59E0B';
-    }
-    return getFolderStatusColor(folder.status);
-  };
-
-  const getDynamicFolderLabel = (folder) => {
-    if (folder.status === 'Archived') {
-      return 'Archived';
-    }
-    if (folder.expiry_date) {
-      const expiry = new Date(folder.expiry_date);
-      const today = new Date();
-      expiry.setHours(0,0,0,0);
-      today.setHours(0,0,0,0);
-      const diffTime = expiry - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDays <= 0) return 'Expired';
-      if (diffDays <= 30) return 'Expiring Soon';
-      // If more than 30 days away, override stale Expired status
-      if (folder.status === 'Expired') {
-        return 'Active';
-      }
-    }
-    if (folder.status === 'Signed') {
-      return 'Signed';
-    }
-    if (folder.is_viewed === false) {
-      return 'Unread';
-    }
-    return folder.status || 'Active';
-  };
 
   const getOrderedSubfolders = (subfolders) => {
     if (!subfolders) return [];
@@ -157,6 +93,14 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+
+  const [shareFileModalOpen, setShareFileModalOpen] = useState(false);
+  const [fileToShare, setFileToShare] = useState(null);
+
+  const triggerShareFile = (fileItem) => {
+    setFileToShare(fileItem);
+    setShareFileModalOpen(true);
+  };
 
   const [selectedFolderIds, setSelectedFolderIds] = useState([]);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
@@ -615,11 +559,11 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
 
   // Navigate folder helper
   const handleFolderClick = (folderId) => {
-    if (searchParamQuery) {
-      // Clear search query on folder click
+    if (folderId === null || (rootFolderId && parseInt(folderId) === parseInt(rootFolderId))) {
       setSearchParams({});
+    } else {
+      setSearchParams({ folder: folderId });
     }
-    setCurrentFolderId(folderId);
   };
 
   // Menu Handlers
@@ -1024,29 +968,68 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
   return (
     <Box sx={{ flexGrow: 1 }} className="animate-fade-in">
       {/* Breadcrumbs Row wrapped in a modern card */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 1.5 }}>
         {!searchParamQuery ? (
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            bgcolor: (theme) => theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff', 
-            py: 1, 
-            px: 2, 
-            borderRadius: '24px',
-            border: (theme) => `1px solid ${theme.palette.divider}`,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-          }}>
-            <FolderIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
-            <BreadcrumbNav 
-              path={getBreadcrumbPath()} 
-              onFolderClick={handleFolderClick} 
-              rootLabel={getRootLabel()}
-            />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', maxWidth: '100%' }}>
+            {currentFolder && (!rootFolderId || parseInt(currentFolder.id) !== parseInt(rootFolderId)) && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ArrowBackIcon />}
+                onClick={() => handleFolderClick(currentFolder.parent_id || null)}
+                sx={{ 
+                  borderRadius: '20px', 
+                  textTransform: 'none', 
+                  fontWeight: 700, 
+                  fontSize: '0.8rem',
+                  color: 'text.primary',
+                  borderColor: 'divider',
+                  bgcolor: (theme) => theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  px: 1.5,
+                  py: 0.5,
+                  flexShrink: 0,
+                  '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.main' }
+                }}
+              >
+                Back
+              </Button>
+            )}
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              bgcolor: (theme) => theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff', 
+              py: 0.8, 
+              px: 2, 
+              borderRadius: '24px',
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+              maxWidth: '100%',
+              overflowX: 'auto',
+            }}>
+              <FolderIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20, flexShrink: 0 }} />
+              <BreadcrumbNav 
+                path={getBreadcrumbPath()} 
+                onFolderClick={handleFolderClick} 
+                rootLabel={getRootLabel()}
+              />
+            </Box>
           </Box>
         ) : (
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Search Results for "{searchParamQuery}"
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ArrowBackIcon />}
+              onClick={() => handleFolderClick(null)}
+              sx={{ borderRadius: '20px', textTransform: 'none', fontWeight: 700 }}
+            >
+              Back to Explorer
+            </Button>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Search Results for "{searchParamQuery}"
+            </Typography>
+          </Box>
         )}
       </Box>
 
@@ -1202,14 +1185,14 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
 
       {/* Action Buttons Row */}
       {!isFilteredView && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.5, mb: 3, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', justifyContent: { xs: 'stretch', sm: 'flex-end' }, gap: 1.5, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
           {selectedFolderIds.length > 0 && (
             <Button
               variant="contained"
               color="error"
               startIcon={<DeleteIcon />}
               onClick={() => setBulkDeleteDialogOpen(true)}
-              sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, mr: 'auto' }}
+              sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, mr: { xs: 0, sm: 'auto' }, flex: { xs: '1 1 100%', sm: 'initial' } }}
             >
               Delete Selected ({selectedFolderIds.length})
             </Button>
@@ -1220,7 +1203,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               color="primary"
               startIcon={<ShareIcon />}
               onClick={() => triggerAccess(currentFolder)}
-              sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
+              sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, flex: { xs: '1 1 calc(50% - 12px)', sm: 'initial' } }}
             >
               Share Folder
             </Button>
@@ -1230,7 +1213,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               variant="outlined"
               startIcon={<CreateNewFolderIcon />}
               onClick={() => setFolderDialogOpen(true)}
-              sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
+              sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, flex: { xs: '1 1 calc(50% - 12px)', sm: 'initial' } }}
             >
               New Folder
             </Button>
@@ -1259,7 +1242,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                 color="secondary"
                 startIcon={<FolderIcon />}
                 onClick={handleTriggerFolderImportInput}
-                sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
+                sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, flex: { xs: '1 1 calc(50% - 12px)', sm: 'initial' } }}
               >
                 Import Folder
               </Button>
@@ -1271,6 +1254,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                   borderRadius: '10px',
                   textTransform: 'none',
                   fontWeight: 800,
+                  flex: { xs: '1 1 calc(50% - 12px)', sm: 'initial' },
                   background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
                   color: '#FFF'
                 }}
@@ -1284,7 +1268,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               variant="contained"
               startIcon={<UploadFileIcon />}
               onClick={() => setFileDialogOpen(true)}
-              sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700 }}
+              sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, flex: { xs: '1 1 100%', sm: 'initial' } }}
             >
               Upload File
             </Button>
@@ -1300,8 +1284,8 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
       ) : (
         <>
           {isFilteredView ? (
-            <TableContainer component={Paper} sx={{ borderRadius: '16px', overflow: 'hidden', boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
-              <Table size="small">
+            <TableContainer component={Paper} sx={{ borderRadius: '16px', overflowX: 'auto', boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
+              <Table size="small" sx={{ minWidth: 800 }}>
                 <TableHead sx={{ bgcolor: 'action.hover' }}>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 800 }}>MOU Number</TableCell>
@@ -1370,13 +1354,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                       <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         Folder Status Key:
                       </Typography>
-                      {[
-                        { label: 'Active', color: '#8B5CF6' },
-                        { label: 'Signed', color: '#10B981' },
-                        { label: 'Pending Review', color: '#F59E0B' },
-                        { label: 'Expired', color: '#EF4444' },
-                        { label: 'Archived', color: '#475569' }
-                      ].map((item) => (
+                      {FOLDER_STATUS_LEGEND.map((item) => (
                         <Box key={item.label} sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
                           <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: item.color }} />
                           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: '0.72rem' }}>
@@ -1400,6 +1378,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                           <Grid xs={12} sm={6} md={4} lg={2.4} key={`folder-grid-${folder.id}`}>
                             <Card 
                               className="card-lift"
+                              onClick={() => handleFolderClick(folder.id)}
                               sx={{ 
                                 cursor: 'pointer',
                                 height: '100%',
@@ -1486,12 +1465,12 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                     </Grid>
                   ) : (
                     // List view folders
-                    <TableContainer component={Paper} sx={{ borderRadius: '16px', overflow: 'hidden', boxShadow: 'none', border: (theme) => `1px solid ${theme.palette.divider}` }}>
-                      <Table size="small">
+                    <TableContainer component={Paper} sx={{ borderRadius: '16px', overflowX: 'auto', boxShadow: 'none', border: (theme) => `1px solid ${theme.palette.divider}` }}>
+                      <Table size="small" sx={{ width: '100%', minWidth: 780, tableLayout: 'auto' }}>
                         <TableHead sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#1e293b' : '#f8fafc' }}>
                           <TableRow>
                             {!isFilteredView && (
-                              <TableCell padding="checkbox" sx={{ py: 1.5, pl: 2 }}>
+                              <TableCell padding="checkbox" sx={{ py: 1.25, pl: 2, pr: 0.5, width: 44, minWidth: 44 }}>
                                 <Checkbox
                                   indeterminate={selectedFolderIds.length > 0 && selectedFolderIds.length < folderData.subfolders.length}
                                   checked={folderData.subfolders.length > 0 && selectedFolderIds.length === folderData.subfolders.length}
@@ -1500,12 +1479,16 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                                 />
                               </TableCell>
                             )}
-                            <TableCell sx={{ fontWeight: 700, py: 1.5 }}>Folder Name</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Creator / Owner</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Last Modified</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Contents / Details</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700, pr: 2 }}>Actions</TableCell>
+                            <TableCell sx={{ fontWeight: 700, py: 1.25, px: 1.5, minWidth: 150 }}>Folder Name</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Department</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Creator / Owner</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Expiry Date</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Status</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Last Modified</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Contents</TableCell>
+                            <TableCell align="center" sx={{ fontWeight: 700, width: 72, minWidth: 72, py: 1.25, px: 1 }}>
+                              Actions
+                            </TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -1513,11 +1496,12 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                             <TableRow 
                               key={`folder-row-${folder.id}`} 
                               hover 
+                              onClick={() => handleFolderClick(folder.id)}
                               onDoubleClick={() => handleFolderClick(folder.id)}
                               style={{ cursor: 'pointer' }}
                             >
                               {!isFilteredView && (
-                                <TableCell padding="checkbox" sx={{ pl: 2 }} onClick={(e) => e.stopPropagation()}>
+                                <TableCell padding="checkbox" sx={{ pl: 2, pr: 0.5, py: 1, width: 44, minWidth: 44 }} onClick={(e) => e.stopPropagation()}>
                                   <Checkbox
                                     checked={selectedFolderIds.includes(folder.id)}
                                     onChange={() => handleToggleSelectFolder(folder.id)}
@@ -1525,11 +1509,20 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                                   />
                                 </TableCell>
                               )}
-                              <TableCell sx={{ py: 1.5 }}>
+                              <TableCell sx={{ py: 1, px: 1.5, minWidth: 150 }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                  <FolderIcon sx={{ color: getDynamicFolderColor(folder), fontSize: 24 }} />
-                                  <Box>
-                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{folder.name}</Typography>
+                                  <FolderIcon sx={{ color: getDynamicFolderColor(folder), fontSize: 24, flexShrink: 0 }} />
+                                  <Box sx={{ minWidth: 0 }}>
+                                    <Typography 
+                                      variant="body2" 
+                                      sx={{ 
+                                        fontWeight: 600, 
+                                        wordBreak: 'break-word',
+                                        '&:hover': { color: 'primary.main', textDecoration: 'underline' }
+                                      }}
+                                    >
+                                      {folder.name}
+                                    </Typography>
                                     {folder.summary && (
                                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontStyle: 'italic', fontSize: '0.72rem' }}>
                                         {folder.summary}
@@ -1538,9 +1531,20 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                                   </Box>
                                 </Box>
                               </TableCell>
-                              <TableCell>{folder.created_by?.name || 'System'}</TableCell>
-                              <TableCell>{new Date(folder.updated_at).toLocaleDateString()}</TableCell>
-                              <TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.secondary' }}>
+                                  {folder.department_name || folder.department || 'MOU Repository'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>{folder.created_by?.name || 'System'}</TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>
+                                <Typography variant="body2" color="text.secondary">
+                                  {folder.expiry_date || folder.effective_expiry_date 
+                                    ? new Date(folder.expiry_date || folder.effective_expiry_date).toLocaleDateString() 
+                                    : 'No Expiry'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>
                                 <Chip 
                                   label={getDynamicFolderLabel(folder)} 
                                   size="small" 
@@ -1557,12 +1561,17 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                                   }} 
                                 />
                               </TableCell>
-                              <TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>{new Date(folder.updated_at).toLocaleDateString()}</TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
                                   {folder.file_count} files • {folder.subfolder_count} folders
                                 </Typography>
                               </TableCell>
-                              <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                              <TableCell 
+                                align="center" 
+                                onClick={(e) => e.stopPropagation()}
+                                sx={{ width: 72, minWidth: 72, py: 1, px: 1 }}
+                              >
                                 <IconButton size="small" onClick={(e) => handleMenuOpen(e, folder, 'folder')}>
                                   <MoreVertIcon fontSize="small" />
                                 </IconButton>
@@ -1683,16 +1692,21 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                     </Grid>
                   ) : (
                     // List view files
-                    <TableContainer component={Paper} sx={{ borderRadius: '16px', overflow: 'hidden', boxShadow: 'none', border: (theme) => `1px solid ${theme.palette.divider}` }}>
-                      <Table size="small">
+                    <TableContainer component={Paper} sx={{ borderRadius: '16px', overflowX: 'auto', boxShadow: 'none', border: (theme) => `1px solid ${theme.palette.divider}` }}>
+                      <Table size="small" sx={{ width: '100%', minWidth: 780, tableLayout: 'auto' }}>
                         <TableHead sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#1e293b' : '#f8fafc' }}>
                           <TableRow>
-                            <TableCell sx={{ fontWeight: 700, py: 1.5 }}>File Name</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Uploaded By</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Last Modified</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>File Size</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Version</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700, pr: 2 }}>Actions</TableCell>
+                            <TableCell sx={{ fontWeight: 700, py: 1.25, px: 1.5, minWidth: 160 }}>File Name</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Department</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Uploaded By</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Expiry Date</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Status</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Last Modified</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>File Size</TableCell>
+                            <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', py: 1.25, px: 1.5 }}>Version</TableCell>
+                            <TableCell align="center" sx={{ fontWeight: 700, width: 72, minWidth: 72, py: 1.25, px: 1 }}>
+                              Actions
+                            </TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -1716,17 +1730,34 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                                 }}
                                 style={{ cursor: 'pointer' }}
                               >
-                                <TableCell sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.5 }}>
-                                  <InsertDriveFileIcon sx={{ color: getFileIconColor(file.file_type), fontSize: 24 }} />
-                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{file.name}</Typography>
+                                <TableCell sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1, px: 1.5, minWidth: 160 }}>
+                                  <InsertDriveFileIcon sx={{ color: getFileIconColor(file.file_type), fontSize: 24, flexShrink: 0 }} />
+                                  <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>{file.name}</Typography>
                                 </TableCell>
-                                <TableCell>{file.uploaded_by?.name || 'System'}</TableCell>
-                                <TableCell>{new Date(file.updated_at).toLocaleDateString()}</TableCell>
-                                <TableCell>{file.size_formatted}</TableCell>
-                                <TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {file.department_name || file.department || 'MOU Repository'}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>{file.uploaded_by?.name || 'System'}</TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {file.expiry_date ? new Date(file.expiry_date).toLocaleDateString() : 'No Expiry'}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>
+                                  <StatusPill status={file.expiry_status || 'noexpirydate'} />
+                                </TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>{new Date(file.updated_at).toLocaleDateString()}</TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>{file.size_formatted}</TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', py: 1, px: 1.5 }}>
                                   <Chip label={`v${file.version_number}`} size="small" sx={{ height: 20, fontWeight: 600 }} />
                                 </TableCell>
-                                <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                                <TableCell 
+                                  align="center" 
+                                  onClick={(e) => e.stopPropagation()}
+                                  sx={{ width: 72, minWidth: 72, py: 1, px: 1 }}
+                                >
                                   <IconButton size="small" onClick={(e) => handleMenuOpen(e, file, 'file')}>
                                     <MoreVertIcon fontSize="small" />
                                   </IconButton>
@@ -1750,10 +1781,10 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
 
       {/* Dialogs */}
       {/* Create Folder Dialog */}
-      <Dialog open={folderDialogOpen} onClose={() => setFolderDialogOpen(false)}>
+      <Dialog open={folderDialogOpen} onClose={() => setFolderDialogOpen(false)} fullWidth maxWidth="xs">
         <form onSubmit={handleCreateFolderSubmit}>
           <DialogTitle>Create New Folder</DialogTitle>
-          <DialogContent sx={{ minWidth: 350 }}>
+          <DialogContent sx={{ minWidth: { xs: 'auto', sm: 350 } }}>
             <TextField
               autoFocus
               margin="dense"
@@ -1796,11 +1827,14 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                 label="Folder Status"
                 onChange={(e) => setFolderStatus(e.target.value)}
               >
-                <MenuItem value="Active">🟣 Active</MenuItem>
-                <MenuItem value="Signed">🟢 Signed</MenuItem>
-                <MenuItem value="Pending Review">🟡 Pending Review</MenuItem>
-                <MenuItem value="Expired">🔴 Expired</MenuItem>
-                <MenuItem value="Archived">⚫ Archived</MenuItem>
+                {FOLDER_STATUS_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: opt.color }} />
+                      <span>{opt.label}</span>
+                    </Box>
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </DialogContent>
@@ -1812,10 +1846,10 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
       </Dialog>
 
       {/* Upload File Dialog */}
-      <Dialog open={fileDialogOpen} onClose={() => setFileDialogOpen(false)}>
+      <Dialog open={fileDialogOpen} onClose={() => setFileDialogOpen(false)} fullWidth maxWidth="xs">
         <form onSubmit={handleFileUploadSubmit}>
           <DialogTitle>Upload File</DialogTitle>
-          <DialogContent sx={{ minWidth: 320, py: 2 }}>
+          <DialogContent sx={{ minWidth: { xs: 'auto', sm: 320 }, py: 2 }}>
             <Button
               variant="outlined"
               component="label"
@@ -1842,7 +1876,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
             {isSignedUpload && (
               <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Grid container spacing={1.5}>
-                  <Grid item xs={12} sm={6}>
+                  <Grid xs={12} sm={6}>
                     <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 0.5, display: 'block' }}>
                       Signed Date *
                     </Typography>
@@ -1855,7 +1889,7 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                       required
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid xs={12} sm={6}>
                     <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 0.5, display: 'block' }}>
                       Expiry Date *
                     </Typography>
@@ -1892,10 +1926,10 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
       </Dialog>
 
       {/* Rename Dialog */}
-      <Dialog open={renameDialogOpen} onClose={() => { setRenameDialogOpen(false); setActiveItem(null); }}>
+      <Dialog open={renameDialogOpen} onClose={() => { setRenameDialogOpen(false); setActiveItem(null); }} fullWidth maxWidth="xs">
         <form onSubmit={handleRenameSubmit}>
           <DialogTitle>Rename {activeItem?.type === 'folder' ? 'Folder' : 'File'}</DialogTitle>
-          <DialogContent sx={{ minWidth: 320 }}>
+          <DialogContent sx={{ minWidth: { xs: 'auto', sm: 320 } }}>
             <TextField
               autoFocus
               margin="dense"
@@ -1916,11 +1950,14 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                   label="Folder Status"
                   onChange={(e) => setRenameStatus(e.target.value)}
                 >
-                  <MenuItem value="Active">🟣 Active</MenuItem>
-                  <MenuItem value="Signed">🟢 Signed</MenuItem>
-                  <MenuItem value="Pending Review">🟡 Pending Review</MenuItem>
-                  <MenuItem value="Expired">🔴 Expired</MenuItem>
-                  <MenuItem value="Archived">⚫ Archived</MenuItem>
+                  {FOLDER_STATUS_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: opt.color }} />
+                        <span>{opt.label}</span>
+                      </Box>
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             )}
@@ -2567,6 +2604,11 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
       >
         {activeItem?.type === 'folder' ? (
           <>
+            <MenuItem onClick={() => { handleFolderClick(activeItem.data.id); handleMenuClose(); }}>
+              <ListItemIcon><FolderIcon fontSize="small" sx={{ color: 'primary.main' }} /></ListItemIcon>
+              Open Folder
+            </MenuItem>
+            <Divider />
             {hasPermission('rename_folder') && (
               <MenuItem onClick={() => { triggerRename(activeItem.data, 'folder'); handleMenuClose(); }}>
                 <ListItemIcon><DriveFileRenameOutlineIcon fontSize="small" /></ListItemIcon>
@@ -2618,6 +2660,10 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
                 Download File
               </MenuItem>
             )}
+            <MenuItem onClick={() => { triggerShareFile(activeItem.data); handleMenuClose(); }}>
+              <ListItemIcon><ShareIcon fontSize="small" sx={{ color: '#2563EB' }} /></ListItemIcon>
+              Share File
+            </MenuItem>
             {hasPermission('replace_files') && (
               <MenuItem onClick={() => { triggerRename(activeItem.data, 'file'); handleMenuClose(); }}>
                 <ListItemIcon><DriveFileRenameOutlineIcon fontSize="small" /></ListItemIcon>
@@ -2650,6 +2696,23 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
         title="Select Folder from Google Drive to Import"
         actionLabel="Import Folder into Repository"
       />
+
+      {/* Share File Modal */}
+      {shareFileModalOpen && (
+        <MOUShareModal
+          open={shareFileModalOpen}
+          onClose={() => {
+            setShareFileModalOpen(false);
+            setFileToShare(null);
+          }}
+          file={fileToShare}
+          onShareSuccess={() => {
+            setSuccess(`File "${fileToShare?.name}" shared successfully.`);
+            setShareFileModalOpen(false);
+            setFileToShare(null);
+          }}
+        />
+      )}
     </Box>
 
   );

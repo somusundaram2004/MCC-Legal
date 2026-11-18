@@ -94,7 +94,7 @@ const Layout = ({ children }) => {
     const token = localStorage.getItem('access_token');
     if (!token || !user) return;
     try {
-      const res = await api.get('/api/notifications/');
+      const res = await api.get('/api/notifications/?limit=30');
       if (Array.isArray(res.data)) {
         setNotifications(res.data);
         const unread = res.data.filter(n => !n.is_read).length;
@@ -288,7 +288,7 @@ const Layout = ({ children }) => {
 
   const menuItems = [
     { text: 'Dashboard',       icon: <DashboardIcon />,          path: '/',           permission: 'view_dashboard', iconColor: 'var(--indigo)' },
-    { text: 'Shared With Me',  icon: <ShareIcon />,              path: '/shared',     permission: 'view_dashboard', iconColor: '#3B82F6' },
+    { text: 'Shared Files',    icon: <ShareIcon />,              path: '/shared',     permission: 'view_dashboard', iconColor: '#3B82F6' },
     { text: 'Departments',     icon: <BusinessIcon />,           path: '/departments', permission: 'view_dashboard', iconColor: '#14B8A6' },
     { text: 'Notifications',   icon: <NotificationsIcon />,      path: '/notifications', permission: 'view_notifications', iconColor: '#F43F5E' },
     { text: 'Templates',       icon: <ExtensionIcon />,          path: '/templates',  permission: 'manage_users',   iconColor: '#F59E0B' },
@@ -698,14 +698,14 @@ const Layout = ({ children }) => {
             : 'rgba(255,255,255,0.92)',
         }}
       >
-        <Toolbar sx={{ justifyContent: 'space-between', gap: 2, minHeight: 64 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Toolbar sx={{ justifyContent: 'space-between', gap: { xs: 0.5, sm: 1.5 }, minHeight: { xs: 56, sm: 64 }, px: { xs: 1, sm: 2 } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
             <IconButton
               color="inherit"
               aria-label="open drawer"
               edge="start"
               onClick={handleDrawerToggle}
-              sx={{ mr: 2, display: { md: 'none' }, color: 'text.primary' }}
+              sx={{ mr: { xs: 0.5, sm: 1.5 }, display: { md: 'none' }, color: 'text.primary', p: 1 }}
             >
               <MenuIcon />
             </IconButton>
@@ -713,19 +713,19 @@ const Layout = ({ children }) => {
             {/* Topbar Search Input - triggers command palette */}
             <TextField
               size="small"
-              placeholder="Search or type a command... (Ctrl + K)"
+              placeholder="Search... (Ctrl + K)"
               value={searchQuery}
               onClick={() => setCmdOpen(true)}
               readOnly
               sx={{ 
-                width: { xs: 150, sm: 320 },
+                width: { xs: 120, sm: 200, md: 320 },
                 cursor: 'pointer',
                 '& .MuiOutlinedInput-root': {
                   borderRadius: '24px',
                   cursor: 'pointer',
                   bgcolor: (theme) => theme.palette.mode === 'dark' ? '#1e293b' : '#ffffff',
                 },
-                '& input': { cursor: 'pointer' }
+                '& input': { cursor: 'pointer', fontSize: { xs: '0.8rem', sm: '0.875rem' } }
               }}
               slotProps={{
                 input: {
@@ -746,17 +746,34 @@ const Layout = ({ children }) => {
             />
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {/* ── Date & Time Display ────────────────── */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1 } }}>
+            {/* ── Mobile Compact Date & Time Button ── */}
+            <Tooltip title={isCustom ? 'Simulated time (click to edit)' : 'Live time (click to override)'}>
+              <IconButton 
+                onClick={handleClockOpen}
+                sx={{
+                  display: { xs: 'inline-flex', md: 'none' },
+                  border: '1px solid',
+                  borderColor: isCustom ? '#f59e0b' : 'divider',
+                  p: 0.8,
+                  color: isCustom ? '#d97706' : 'text.primary',
+                  bgcolor: isCustom ? 'rgba(245,158,11,0.08)' : 'transparent',
+                }}
+              >
+                <HistoryIcon sx={{ fontSize: '1.15rem', color: isCustom ? '#f59e0b' : '#10B981' }} />
+              </IconButton>
+            </Tooltip>
+
+            {/* ── Desktop Date & Time Display ────────────────── */}
             <Box
               onClick={handleClockOpen}
               sx={{
-                display: 'flex', alignItems: 'center', gap: 0, cursor: 'pointer',
+                display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 0, cursor: 'pointer',
                 border: '1px solid',
                 borderColor: isCustom ? '#f59e0b' : 'divider',
                 borderRadius: '12px',
                 overflow: 'hidden',
-                mr: 1,
+                mr: 0.5,
                 transition: 'border-color 0.2s, box-shadow 0.2s',
                 '&:hover': { boxShadow: '0 2px 10px rgba(0,0,0,0.08)', borderColor: isCustom ? '#f59e0b' : 'primary.light' },
               }}
@@ -828,6 +845,7 @@ const Layout = ({ children }) => {
               <IconButton 
                 onClick={() => navigate('/system-map')} 
                 sx={{ 
+                  display: { xs: 'none', sm: 'inline-flex' },
                   color: 'primary.main', 
                   border: '1px solid', 
                   borderColor: 'rgba(79, 70, 229, 0.25)', 

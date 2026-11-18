@@ -316,7 +316,7 @@ const SuperAdminDashboard = ({ stats, user, navigate, setPreviewFile, info }) =>
               </Button>
             </Box>
 
-            <TableContainer component={Paper} sx={{ borderRadius: '16px', boxShadow: 'none', border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+            <TableContainer component={Paper} sx={{ borderRadius: '16px', boxShadow: 'none', border: '1px solid', borderColor: 'divider', overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#F8FAFC' }}>
@@ -717,7 +717,7 @@ const UserDashboard = ({ stats, user, navigate, setPreviewFile }) => {
               </Button>
             </Box>
 
-            <TableContainer component={Paper} sx={{ borderRadius: '16px', boxShadow: 'none', border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+            <TableContainer component={Paper} sx={{ borderRadius: '16px', boxShadow: 'none', border: '1px solid', borderColor: 'divider', overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#F8FAFC' }}>
