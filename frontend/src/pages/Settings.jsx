@@ -677,13 +677,16 @@ const EmailSettingsTab = () => {
 
   // Email Notification & Redirection settings state
   const [emailNotifConfig, setEmailNotifConfig] = useState({
-    portal_base_url: 'http://localhost:5173',
-    redirection_target: 'mou_detail',
-    custom_redirect_path: '/mou/{mou_id}',
-    mou_button_label: 'MOVE TO MOU',
+    portal_base_url: 'https://legal.mccmrfip.in',
+    download_link_type: 'direct_api',
+    custom_download_path: '/api/mous/shared/download/{token}/',
+    redirection_target: 'shared_files',
+    custom_redirect_path: '/shared',
+    always_require_login_redirect: true,
+    mou_button_label: 'OPEN MOU PORTAL',
     download_button_label: 'DOWNLOAD MOU',
     default_subject: 'Shared MOU: {mou_title} ({mou_number})',
-    default_body: 'Dear Partner,\n\nYou have been granted official access to the institutional agreement detailed below via the MCC Legal Enterprise Document Hub.\n\nPlease review the attached specifications and use the action buttons below to download the executed document or navigate directly to the agreement details in the MCC Legal portal.',
+    default_body: 'Dear Colleague / Partner,\n\nYou have been granted official access to the Memorandum of Understanding: {mou_title} ({mou_number}) between Madras Christian College (MCC) and {partner_organization}.\n\nThis document is accessible in your MCC Legal Document portal under Shared Files. You can download the agreement directly to your device or open the portal to inspect complete institutional records.',
     footer_notice: 'This document is automatically preserved in your Shared Files repository. Downloading the file will not remove it from your portal view or alter ownership.'
   });
   const [savingNotifConfig, setSavingNotifConfig] = useState(false);
@@ -1273,19 +1276,49 @@ const EmailSettingsTab = () => {
             </Box>
           </Grid>
 
+          {/* Download Button Link Mode */}
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="download-link-type-label">Download Button Link Mode</InputLabel>
+              <Select
+                labelId="download-link-type-label"
+                value={emailNotifConfig.download_link_type || 'direct_api'}
+                label="Download Button Link Mode"
+                onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, download_link_type: e.target.value })}
+              >
+                <MenuItem value="direct_api">Direct File Download (/api/mous/shared/download/{'{token}'}/) — Recommended &amp; Instant</MenuItem>
+                <MenuItem value="portal_page">Portal Download Page (/shared/download/{'{token}'})</MenuItem>
+                <MenuItem value="custom">Custom Download URL Pattern</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid xs={12} md={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Custom Download Path Pattern"
+              disabled={emailNotifConfig.download_link_type !== 'custom'}
+              value={emailNotifConfig.custom_download_path || ''}
+              onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, custom_download_path: e.target.value })}
+              placeholder="/api/mous/shared/download/{token}/"
+              helperText="Available placeholders: {token}, {mou_id}"
+            />
+          </Grid>
+
           {/* Redirection Target & Custom Route */}
           <Grid xs={12} md={6}>
             <FormControl fullWidth size="small">
-              <InputLabel id="redirection-target-label">Email Button Redirection Target</InputLabel>
+              <InputLabel id="redirection-target-label">Portal Button Redirection Target</InputLabel>
               <Select
                 labelId="redirection-target-label"
-                value={emailNotifConfig.redirection_target || 'mou_detail'}
-                label="Email Button Redirection Target"
+                value={emailNotifConfig.redirection_target || 'shared_files'}
+                label="Portal Button Redirection Target"
                 onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, redirection_target: e.target.value })}
               >
-                <MenuItem value="mou_detail">Direct MOU Page (/mou/{'{id}'}) — Recommended</MenuItem>
-                <MenuItem value="shared_files">Shared Files Repository (/shared)</MenuItem>
-                <MenuItem value="login_redirect">Login with Return Redirect (/login?next=/mou/{'{id}'})</MenuItem>
+                <MenuItem value="shared_files">Shared Files Repository (/shared) — Recommended</MenuItem>
+                <MenuItem value="mou_detail">Direct MOU Page (/mou/{'{id}'})</MenuItem>
+                <MenuItem value="login_redirect">Login with Return Redirect (/login?next=/shared)</MenuItem>
                 <MenuItem value="custom">Custom Route Pattern</MenuItem>
               </Select>
             </FormControl>
@@ -1299,9 +1332,27 @@ const EmailSettingsTab = () => {
               disabled={emailNotifConfig.redirection_target !== 'custom'}
               value={emailNotifConfig.custom_redirect_path || ''}
               onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, custom_redirect_path: e.target.value })}
-              placeholder="/mou/{mou_id} or /shared"
-              helperText="Use placeholders: {mou_id}, {id}"
+              placeholder="/shared or /mou/{mou_id}"
+              helperText="Available placeholders: {mou_id}, {id}"
             />
+          </Grid>
+
+          {/* Always Require Login Redirect */}
+          <Grid xs={12}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, borderRadius: '10px', bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  Authenticate Unregistered or Logged-Out Recipients
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Routes recipients through login/registration with their email pre-filled and preserves the document destination. Prevents blank screens or permission errors.
+                </Typography>
+              </Box>
+              <Switch
+                checked={emailNotifConfig.always_require_login_redirect !== false}
+                onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, always_require_login_redirect: e.target.checked })}
+              />
+            </Box>
           </Grid>
 
           {/* Button Labels */}
@@ -1312,8 +1363,8 @@ const EmailSettingsTab = () => {
               label="Primary Navigation Button Label"
               value={emailNotifConfig.mou_button_label || ''}
               onChange={(e) => setEmailNotifConfig({ ...emailNotifConfig, mou_button_label: e.target.value })}
-              placeholder="MOVE TO MOU"
-              helperText="Default: MOVE TO MOU (navigates recipient to the agreement)"
+              placeholder="OPEN MOU PORTAL"
+              helperText="Default: OPEN MOU PORTAL (navigates recipient to the portal)"
             />
           </Grid>
 
@@ -1327,6 +1378,35 @@ const EmailSettingsTab = () => {
               placeholder="DOWNLOAD MOU"
               helperText="Default: DOWNLOAD MOU (downloads document directly)"
             />
+          </Grid>
+
+          {/* Live Dynamic URL Preview */}
+          <Grid xs={12}>
+            <Box sx={{ p: 2, borderRadius: '12px', bgcolor: (theme) => theme.palette.mode === 'dark' ? '#0f172a' : '#f8fafc', border: '1.5px dashed', borderColor: 'primary.main' }}>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: 'primary.main', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 1 }}>
+                Live Email Button Preview &amp; Target URLs:
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 1.5 }}>
+                <Chip 
+                  label={`Button 1: ${emailNotifConfig.download_button_label || 'DOWNLOAD MOU'}`} 
+                  color="success" 
+                  sx={{ fontWeight: 800 }} 
+                />
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', display: 'flex', alignItems: 'center' }}>
+                  &rarr; {(emailNotifConfig.portal_base_url || 'https://legal.mccmrfip.in').replace(/\/$/, '')}{emailNotifConfig.download_link_type === 'portal_page' ? '/shared/download/<token>' : '/api/mous/shared/download/<token>/'}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Chip 
+                  label={`Button 2: ${emailNotifConfig.mou_button_label || 'OPEN MOU PORTAL'}`} 
+                  color="primary" 
+                  sx={{ fontWeight: 800 }} 
+                />
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', display: 'flex', alignItems: 'center' }}>
+                  &rarr; {(emailNotifConfig.portal_base_url || 'https://legal.mccmrfip.in').replace(/\/$/, '')}{emailNotifConfig.always_require_login_redirect ? `/login?email=user@example.com&next=${emailNotifConfig.redirection_target === 'mou_detail' ? '/mou/1' : '/shared'}` : (emailNotifConfig.redirection_target === 'mou_detail' ? '/mou/1' : '/shared')}
+                </Typography>
+              </Box>
+            </Box>
           </Grid>
 
           {/* Default Email Subject */}

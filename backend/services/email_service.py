@@ -381,61 +381,40 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
         formatted_paragraphs = "".join([f'<p style="margin: 0 0 16px 0; line-height: 1.6; font-size: 15px; color: #334155;">{line.strip()}</p>' for line in raw_body.split('\n') if line.strip()])
 
         # Determine base frontend URL:
-        # 1. If admin explicitly configured a non-localhost Portal Base URL in Settings, use it.
-        # 2. If the active web request is on a live domain/IP, prefer that live origin over default localhost.
-        # 3. Fallback to configured portal_base_url or settings.FRONTEND_URL.
-        frontend_url = None
-
-        request_origin = None
-        if request:
-            origin = request.META.get('HTTP_ORIGIN')
-            if origin:
-                request_origin = origin.rstrip('/')
-            else:
-                referer = request.META.get('HTTP_REFERER')
-                if referer:
-                    from urllib.parse import urlparse
-                    parsed = urlparse(referer)
-                    if parsed.scheme and parsed.netloc:
-                        request_origin = f"{parsed.scheme}://{parsed.netloc}"
-                elif hasattr(request, 'get_host'):
-                    scheme = 'https' if (hasattr(request, 'is_secure') and request.is_secure()) else 'http'
-                    request_origin = f"{scheme}://{request.get_host()}"
-
+        # Highest priority: Super Admin configured Portal Base URL in Settings
         configured_base = email_config.portal_base_url.strip().rstrip('/') if (email_config and email_config.portal_base_url) else None
-        is_configured_localhost = configured_base and ('localhost' in configured_base or '127.0.0.1' in configured_base)
-        is_request_live = request_origin and ('localhost' not in request_origin and '127.0.0.1' not in request_origin)
-
-        if configured_base and not is_configured_localhost:
-            # Admin explicitly set a public live domain or network IP in Settings
-            frontend_url = configured_base
-        elif is_request_live:
-            # Active request is live in production / LAN, use it so emails work across all devices!
-            frontend_url = request_origin
-            # Auto-sync to settings if it was still default localhost
-            if email_config and is_configured_localhost:
-                try:
-                    email_config.portal_base_url = request_origin
-                    email_config.save(update_fields=['portal_base_url'])
-                except Exception as sync_err:
-                    logger.debug(f"Note on auto-syncing live portal base URL: {sync_err}")
-        elif configured_base:
+        
+        if configured_base:
             frontend_url = configured_base
         elif request_origin:
             frontend_url = request_origin
         else:
-            configured = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+            configured = getattr(settings, 'FRONTEND_URL', 'https://legal.mccmrfip.in').rstrip('/')
             frontend_url = configured
 
         token = share.secure_token
-        download_url = f"{frontend_url}/shared/download/{token}"
+
+        # Resolve download URL dynamically based on Super Admin setting:
+        download_type = getattr(email_config, 'download_link_type', 'direct_api')
+        if download_type == 'portal_page':
+            download_url = f"{frontend_url}/shared/download/{token}"
+        elif download_type == 'custom' and getattr(email_config, 'custom_download_path', None):
+            cpath = email_config.custom_download_path.replace('{token}', token).replace('{mou_id}', str(mou.id))
+            if not cpath.startswith('/'):
+                cpath = '/' + cpath
+            download_url = f"{frontend_url}{cpath}"
+        else:
+            # direct_api: Direct secure stream download to recipient device Downloads folder (instant, zero blank-page risk)
+            download_url = f"{frontend_url}/api/mous/shared/download/{token}/"
 
         # Resolve destination path based on Super Admin email redirection configuration
-        redirection_target = (email_config.redirection_target if email_config else None) or 'mou_detail'
+        redirection_target = (email_config.redirection_target if email_config else None) or 'shared_files'
         if redirection_target == 'shared_files':
             target_path = '/shared'
+        elif redirection_target == 'mou_detail':
+            target_path = f"/mou/{mou.id}"
         elif redirection_target == 'login_redirect':
-            target_path = f"/login?email={recipient_email}&next=/mou/{mou.id}"
+            target_path = f"/login?email={recipient_email}&next=/shared"
         elif redirection_target == 'custom' and email_config and email_config.custom_redirect_path:
             custom_path = email_config.custom_redirect_path
             for k, v in replacements.items():
@@ -443,18 +422,20 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
             custom_path = custom_path.replace('{mou_id}', str(mou.id)).replace('{id}', str(mou.id))
             target_path = custom_path
         else:
-            target_path = f"/mou/{mou.id}"
+            target_path = '/shared'
 
         if not target_path.startswith('/'):
             target_path = '/' + target_path
 
         # Determine button labels and notices
         download_btn_text = (email_config.download_button_label if email_config else None) or "DOWNLOAD MOU"
-        mou_btn_text = (email_config.mou_button_label if email_config else None) or "MOVE TO MOU"
+        mou_btn_text = (email_config.mou_button_label if email_config else None) or "OPEN MOU PORTAL"
         footer_notice_text = (email_config.footer_notice if email_config else None) or (
             "This document is automatically preserved in your Shared Files repository. "
             "Downloading the file will not remove it from your portal view or alter ownership."
         )
+
+        always_login = getattr(email_config, 'always_require_login_redirect', True)
 
         # Determine URLs and account credentials if auto-registered
         from django.contrib.auth import get_user_model
@@ -502,7 +483,7 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
             )
 
         if has_account:
-            if temp_password:
+            if temp_password or always_login:
                 mou_url = f"{frontend_url}/login?email={recipient_email}&next={target_path}"
             else:
                 mou_url = f"{frontend_url}{target_path}"

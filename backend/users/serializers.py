@@ -295,8 +295,11 @@ class EmailNotificationSettingSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'portal_base_url',
+            'download_link_type',
+            'custom_download_path',
             'redirection_target',
             'custom_redirect_path',
+            'always_require_login_redirect',
             'mou_button_label',
             'download_button_label',
             'default_subject',

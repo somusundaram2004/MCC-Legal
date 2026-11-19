@@ -45320,5 +45320,23 @@
     "deleted_at": null,
     "deleted_by": null
   }
+},
+{
+  "model": "users.emailnotificationsetting",
+  "pk": 1,
+  "fields": {
+    "portal_base_url": "http://testserver",
+    "download_link_type": "direct_api",
+    "custom_download_path": "/api/mous/shared/download/{token}/",
+    "redirection_target": "mou_detail",
+    "custom_redirect_path": "/mou/{mou_id}",
+    "always_require_login_redirect": true,
+    "mou_button_label": "MOVE TO MOU",
+    "download_button_label": "DOWNLOAD MOU",
+    "default_subject": "Shared MOU: {mou_title} ({mou_number})",
+    "default_body": "Dear Colleague / Partner,\n\nYou have been granted official access to the Memorandum of Understanding: {mou_title} ({mou_number}) between Madras Christian College (MCC) and {partner_organization}.\n\nThis document is accessible in your MCC Legal Document portal. You can download the agreement directly to your device or open the portal to inspect complete institutional records.\n\nRegards,\n{sender_name}\nMCC Legal Cell",
+    "footer_notice": "This document is automatically preserved in your Shared Files repository. Downloading the file will not remove it from your portal view or alter ownership.",
+    "updated_at": "2026-11-18T06:26:57.904Z"
+  }
 }
 ]

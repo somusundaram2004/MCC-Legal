@@ -305,32 +305,54 @@ class CustomDynamicPage(models.Model):
 
 class EmailNotificationSetting(models.Model):
     REDIRECTION_CHOICES = (
+        ('shared_files', 'Shared Files Section (/shared) — Recommended'),
         ('mou_detail', 'Direct MOU Page (/mou/{id})'),
-        ('shared_files', 'Shared Files Repository (/shared)'),
-        ('login_redirect', 'Login with Redirect (/login?next=/mou/{id})'),
+        ('login_redirect', 'Login with Redirect (/login?next=/shared)'),
         ('custom', 'Custom Route Pattern'),
+    )
+
+    DOWNLOAD_CHOICES = (
+        ('direct_api', 'Direct File Download (/api/mous/shared/download/{token}/) — Recommended & Instant'),
+        ('portal_page', 'Portal Download Page (/shared/download/{token})'),
+        ('custom', 'Custom Download URL Pattern'),
     )
 
     portal_base_url = models.CharField(
         max_length=500,
-        default='http://localhost:5173',
+        default='https://legal.mccmrfip.in',
         help_text="Base URL for outgoing email links. Set this to your network IP (e.g. http://10.88.62.66:5173) or production domain (e.g. https://legal.mccmrfip.in) so recipients on other devices can access the portal."
+    )
+    download_link_type = models.CharField(
+        max_length=50,
+        choices=DOWNLOAD_CHOICES,
+        default='direct_api',
+        help_text="Direct File Download streams file directly to Downloads folder; Portal Download Page opens the portal UI."
+    )
+    custom_download_path = models.CharField(
+        max_length=500,
+        default='/api/mous/shared/download/{token}/',
+        blank=True,
+        help_text="Custom download path pattern (supports {token}, {mou_id})"
     )
     redirection_target = models.CharField(
         max_length=50,
         choices=REDIRECTION_CHOICES,
-        default='mou_detail',
+        default='shared_files',
         help_text="Where the email action button redirects the recipient."
     )
     custom_redirect_path = models.CharField(
         max_length=500,
-        default='/mou/{mou_id}',
+        default='/shared',
         blank=True,
         help_text="Custom path pattern (supports {mou_id}, {token}, {recipient_email})"
     )
+    always_require_login_redirect = models.BooleanField(
+        default=True,
+        help_text="When enabled, portal button routes recipients through /login?email={email}&next={target} so unauthenticated users never see a blank screen or permission error."
+    )
     mou_button_label = models.CharField(
         max_length=100,
-        default='MOVE TO MOU',
+        default='OPEN MOU PORTAL',
         help_text="Label for the primary portal navigation button in the email"
     )
     download_button_label = models.CharField(
