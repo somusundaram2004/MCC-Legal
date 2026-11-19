@@ -63,9 +63,9 @@ folders to add/
 # ------------------------------------------------------------------------------
 node_modules/
 frontend/node_modules/
-frontend/dist/
 frontend/build/
 frontend/.vite/
+frontend_dist.zip
 .eslintcache
 
 # ------------------------------------------------------------------------------

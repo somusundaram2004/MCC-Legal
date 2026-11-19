@@ -1,0 +1,1 @@
+import{nt as e,tt as t}from"./Box-A2e9WhU8.js";function n(t){return e(`MuiListItemText`,t)}var r=t(`MuiListItemText`,[`root`,`multiline`,`dense`,`inset`,`primary`,`secondary`]);export{r as n,n as t};
