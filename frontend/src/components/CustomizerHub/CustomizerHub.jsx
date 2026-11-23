@@ -230,7 +230,7 @@ const CustomizerHub = () => {
               onClick={() => handleSaveSection('info', info)}
               disabled={saving}
               startIcon={<SaveIcon />}
-              sx={{ backgroundColor: '#4F46E5', color: '#ffffff !important', px: 4, py: 1.2, borderRadius: '10px' }}
+              sx={{ backgroundColor: '#d4a82f', color: '#0b1a3a !important', border: '1px solid #b8892b', fontWeight: 700, px: 4, py: 1.2, borderRadius: '10px', '&:hover': { backgroundColor: '#e6c76a' } }}
             >
               Save Website Info
             </Button>
@@ -308,18 +308,18 @@ const CustomizerHub = () => {
                   startIcon={<RestartAltIcon />}
                   onClick={() => {
                     const defaultThemeObj = {
-                      primary_color: '#4F46E5',
-                      secondary_color: '#0EA5E9',
-                      accent_color: '#4338CA',
-                      bg_color: '#F8FAFC',
+                      primary_color: '#0b1a3a',
+                      secondary_color: '#d4a82f',
+                      accent_color: '#b8892b',
+                      bg_color: '#faf7f0',
                       card_color: '#FFFFFF',
-                      sidebar_color: '#1E1B4B',
-                      border_radius: 12,
+                      sidebar_color: '#0b1a3a',
+                      border_radius: 14,
                       mode: 'light'
                     };
                     setTheme(defaultThemeObj);
                     handleSaveSection('theme', defaultThemeObj);
-                    showCustomToast.success("Theme reset to factory defaults!");
+                    showCustomToast.success("Theme reset to Legal defaults!");
                   }}
                 >
                   Reset Default
@@ -329,7 +329,7 @@ const CustomizerHub = () => {
 
             <Grid container spacing={2}>
               {[
-                { name: 'Modern Blue', primary_color: '#3B82F6', secondary_color: '#60A5FA', accent_color: '#2563EB', bg_color: '#F8FAFC', card_color: '#FFFFFF', sidebar_color: '#1E293B', mode: 'light' },
+                { name: 'Legal Navy & Gold', primary_color: '#0b1a3a', secondary_color: '#d4a82f', accent_color: '#b8892b', bg_color: '#faf7f0', card_color: '#FFFFFF', sidebar_color: '#0b1a3a', mode: 'light' },
                 { name: 'Enterprise Gray', primary_color: '#475569', secondary_color: '#64748B', accent_color: '#334155', bg_color: '#F1F5F9', card_color: '#FFFFFF', sidebar_color: '#0F172A', mode: 'light' },
                 { name: 'Ocean', primary_color: '#0EA5E9', secondary_color: '#38BDF8', accent_color: '#0284C7', bg_color: '#F0F9FF', card_color: '#FFFFFF', sidebar_color: '#0C4A6E', mode: 'light' },
                 { name: 'Forest', primary_color: '#10B981', secondary_color: '#34D399', accent_color: '#059669', bg_color: '#ECFDF5', card_color: '#FFFFFF', sidebar_color: '#064E3B', mode: 'light' },
@@ -445,7 +445,7 @@ const CustomizerHub = () => {
                 onClick={() => handleSaveSection('theme', theme)}
                 disabled={saving}
                 startIcon={<SaveIcon />}
-                sx={{ backgroundColor: '#4F46E5', color: '#ffffff !important', px: 4, py: 1.2, borderRadius: '10px' }}
+                sx={{ backgroundColor: '#d4a82f', color: '#0b1a3a !important', border: '1px solid #b8892b', fontWeight: 700, px: 4, py: 1.2, borderRadius: '10px', '&:hover': { backgroundColor: '#e6c76a' } }}
               >
                 {saving ? 'Applying...' : 'Save Theme Configuration'}
               </Button>
@@ -497,7 +497,7 @@ const CustomizerHub = () => {
               onClick={() => handleSaveSection('login', login)}
               disabled={saving}
               startIcon={<SaveIcon />}
-              sx={{ backgroundColor: '#4F46E5', color: '#ffffff !important', px: 4, py: 1.2, borderRadius: '10px' }}
+              sx={{ backgroundColor: '#d4a82f', color: '#0b1a3a !important', border: '1px solid #b8892b', fontWeight: 700, px: 4, py: 1.2, borderRadius: '10px', '&:hover': { backgroundColor: '#e6c76a' } }}
             >
               Save Login Settings
             </Button>

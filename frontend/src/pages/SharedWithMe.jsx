@@ -265,12 +265,13 @@ const SharedWithMe = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.8 }}>
           <Avatar
             sx={{
-              background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-              color: '#FFFFFF',
+              background: 'linear-gradient(135deg, #0b1a3a 0%, #14305f 100%)',
+              color: 'var(--legal-gold, #d4a82f)',
+              border: '1.5px solid var(--legal-gold, #d4a82f)',
               width: 52,
               height: 52,
               borderRadius: '16px',
-              boxShadow: '0 8px 16px rgba(37,99,235,0.25)'
+              boxShadow: '0 8px 16px rgba(11,26,58,0.25)'
             }}
           >
             <ShareIcon />
@@ -311,8 +312,13 @@ const SharedWithMe = () => {
                 textTransform: 'none',
                 px: 2.5,
                 flex: { xs: '1 1 auto', sm: 'initial' },
-                background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-                boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)'
+                backgroundColor: 'var(--legal-gold, #d4a82f)',
+                color: 'var(--legal-navy, #0b1a3a)',
+                border: '1px solid var(--legal-gold-border, #b8892b)',
+                boxShadow: '0 4px 14px rgba(212, 168, 47, 0.35)',
+                '&:hover': {
+                  backgroundColor: '#e6c76a',
+                }
               }}
             >
               Share MOU Document

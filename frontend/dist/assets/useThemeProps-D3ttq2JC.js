@@ -1,0 +1,1 @@
+import{$ as e,et as t,it as n}from"./Box-CM064YD0.js";var r=t();function i(t){let{theme:n,name:r,props:i}=t;return!n||!n.components||!n.components[r]||!n.components[r].defaultProps?i:e(n.components[r].defaultProps,i)}function a(e){let{props:t,name:r,defaultTheme:a,themeId:o}=e,s=n(a);return o&&(s=s[o]||s),i({theme:s,name:r,props:t})}export{r as n,a as t};

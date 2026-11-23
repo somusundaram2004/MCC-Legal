@@ -11,7 +11,7 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
 import KeyIcon from '@mui/icons-material/Key';
-import CloudQueueIcon from '@mui/icons-material/CloudQueue';
+import GavelIcon from '@mui/icons-material/Gavel';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import ArrowRightAltIcon from '@mui/icons-material/ArrowRightAlt';
@@ -285,7 +285,7 @@ const Login = () => {
     <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default' }} className="animate-fade-in">
       <Grid container sx={{ width: '100%' }}>
 
-        {/* Left Side: Modern SVG Artwork Illustration Panel */}
+        {/* Left Side: Modern Legal SVG Artwork Illustration Panel */}
         <Grid
           xs={0}
           md={6}
@@ -294,7 +294,8 @@ const Login = () => {
             flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
-            background: 'linear-gradient(135deg, var(--indigo) 0%, var(--violet) 100%)',
+            background: 'linear-gradient(135deg, #0b1a3a 0%, #0f2044 50%, #14305f 100%)',
+            borderRight: '2px solid var(--legal-gold-border, #b8892b)',
             color: '#ffffff',
             p: 6,
             position: 'relative',
@@ -302,65 +303,78 @@ const Login = () => {
           }}
         >
           {/* Animated/Glowing background blur orbs */}
-          <Box sx={{ position: 'absolute', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(var(--violet-rgb), 0.5) 0%, rgba(var(--indigo-rgb), 0) 70%)', filter: 'blur(60px)', top: '-5%', left: '10%' }} />
-          <Box sx={{ position: 'absolute', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(16,185,129,0.3) 0%, rgba(16,185,129,0) 70%)', filter: 'blur(60px)', bottom: '5%', right: '10%' }} />
+          <Box sx={{ position: 'absolute', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(212,168,47,0.2) 0%, rgba(11,26,58,0) 70%)', filter: 'blur(60px)', top: '-5%', left: '10%' }} />
+          <Box sx={{ position: 'absolute', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,137,43,0.15) 0%, rgba(11,26,58,0) 70%)', filter: 'blur(60px)', bottom: '5%', right: '10%' }} />
 
           <Box sx={{ maxWidth: 460, textAlign: 'center', zIndex: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-              <Avatar sx={{ bgcolor: 'rgba(255, 255, 255, 0.12)', width: 64, height: 64 }}>
-                <CloudQueueIcon sx={{ color: '#ffffff', fontSize: 36 }} />
+              <Avatar sx={{
+                bgcolor: '#0b1a3a',
+                color: 'var(--legal-gold, #d4a82f)',
+                border: '2px solid var(--legal-gold-border, #b8892b)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                width: 68,
+                height: 68
+              }}>
+                <GavelIcon sx={{ fontSize: 36, transform: 'rotate(-25deg)' }} />
               </Avatar>
             </Box>
 
-            <Typography variant="h3" sx={{ fontWeight: 800, mb: 1, letterSpacing: '-0.5px' }}>
-              {loginCustomization?.left_heading || "MCC LEGAL Documents"}
+            <Typography variant="h3" sx={{
+              fontFamily: 'var(--legal-font-serif, "Fraunces", serif)',
+              fontWeight: 800,
+              mb: 1,
+              letterSpacing: '-0.5px',
+              color: '#ffffff'
+            }}>
+              {loginCustomization?.left_heading || "MCC LEGAL"}
             </Typography>
-            <Typography variant="subtitle1" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 5, fontWeight: 500 }}>
-              {loginCustomization?.left_subheading || "Professional Memorandum of Understanding Registry"}
+            <Typography variant="subtitle1" sx={{
+              fontFamily: 'var(--legal-font-sans, "Inter", sans-serif)',
+              color: 'var(--legal-gold-illustration, #e6c76a)',
+              mb: 4,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              fontSize: '0.82rem'
+            }}>
+              {loginCustomization?.left_subheading || "Documents & MOU Enterprise Hub"}
             </Typography>
 
-            {/* Custom SVG Illustration */}
-            <Box sx={{ my: 4, transform: 'scale(1.1)' }}>
-              <svg width="280" height="180" viewBox="0 0 280 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Floating file templates */}
-                <g style={{ filter: 'drop-shadow(0px 8px 16px rgba(0,0,0,0.15))' }}>
-                  <rect x="30" y="20" width="80" height="110" rx="8" fill="#ffffff" />
-                  <path d="M42 35H98" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" />
-                  <path d="M42 47H98" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M42 59H80" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M42 71H60" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
-                  <circle cx="88" cy="98" r="12" fill="#10b981" />
-                  <path d="M84 98L87 101L93 95" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </g>
-
-                <g style={{ filter: 'drop-shadow(0px 12px 24px rgba(0,0,0,0.2))' }}>
-                  <rect x="90" y="40" width="100" height="120" rx="8" fill="#ffffff" />
-                  <path d="M106 60H174" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" />
-                  <path d="M106 76H174" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M106 90H174" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M106 104H150" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
-
-                  {/* Decorative stamp on document */}
-                  <rect x="150" y="120" width="24" height="24" rx="4" fill="rgba(37, 99, 235, 0.1)" stroke="#2563eb" strokeWidth="1" />
-                  <circle cx="162" cy="132" r="6" fill="#2563eb" />
-                </g>
-
-                {/* Additional floating design details */}
-                <circle cx="215" cy="55" r="10" fill="rgba(255, 255, 255, 0.15)" />
-                <path d="M205 130L225 150" stroke="rgba(255, 255, 255, 0.2)" strokeWidth="3" strokeLinecap="round" />
-                <circle cx="230" cy="120" r="4" fill="#f59e0b" />
+            {/* Custom SVG Legal Scales & Courthouse Illustration */}
+            <Box sx={{ my: 3, display: 'flex', justifyContent: 'center' }}>
+              <svg width="260" height="180" viewBox="0 0 280 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                {/* Courthouse Pediment & Columns */}
+                <polygon points="140,25 40,65 240,65" stroke="#e6c76a" strokeWidth="2.5" fill="rgba(15,32,68,0.5)" />
+                <line x1="30" y1="65" x2="250" y2="65" stroke="#e6c76a" strokeWidth="3" />
+                <line x1="60" y1="65" x2="60" y2="155" stroke="#e6c76a" strokeWidth="2.5" />
+                <line x1="100" y1="65" x2="100" y2="155" stroke="#e6c76a" strokeWidth="2.5" />
+                <line x1="180" y1="65" x2="180" y2="155" stroke="#e6c76a" strokeWidth="2.5" />
+                <line x1="220" y1="65" x2="220" y2="155" stroke="#e6c76a" strokeWidth="2.5" />
+                <line x1="30" y1="155" x2="250" y2="155" stroke="#e6c76a" strokeWidth="3.5" />
+                <line x1="20" y1="165" x2="260" y2="165" stroke="#e6c76a" strokeWidth="3" />
+                {/* Scales of Justice */}
+                <line x1="140" y1="80" x2="140" y2="145" stroke="#d4a82f" strokeWidth="3" />
+                <line x1="95" y1="92" x2="185" y2="88" stroke="#d4a82f" strokeWidth="2.5" />
+                <circle cx="140" cy="78" r="4" fill="#d4a82f" />
+                <path d="M80,118 Q95,130 110,118 Z" fill="rgba(212,168,47,0.3)" stroke="#d4a82f" strokeWidth="2" />
+                <line x1="95" y1="92" x2="80" y2="118" stroke="#d4a82f" strokeWidth="1.2" />
+                <line x1="95" y1="92" x2="110" y2="118" stroke="#d4a82f" strokeWidth="1.2" />
+                <path d="M170,114 Q185,126 200,114 Z" fill="rgba(212,168,47,0.3)" stroke="#d4a82f" strokeWidth="2" />
+                <line x1="185" y1="88" x2="170" y2="114" stroke="#d4a82f" strokeWidth="1.2" />
+                <line x1="185" y1="88" x2="200" y2="114" stroke="#d4a82f" strokeWidth="1.2" />
               </svg>
             </Box>
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'flex-start', mt: 4, pl: 6 }}>
-              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600 }}>
-                <ArrowRightAltIcon /> {loginCustomization?.point_1 || "Fully-integrated document version control"}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'flex-start', mt: 3, pl: 4 }}>
+              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600, color: '#f8fafc' }}>
+                <ArrowRightAltIcon sx={{ color: 'var(--legal-gold, #d4a82f)' }} /> {loginCustomization?.point_1 || "Institutional Bilateral MOU Registry"}
               </Typography>
-              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600 }}>
-                <ArrowRightAltIcon /> {loginCustomization?.point_2 || "Granular user permission matrices"}
+              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600, color: '#f8fafc' }}>
+                <ArrowRightAltIcon sx={{ color: 'var(--legal-gold, #d4a82f)' }} /> {loginCustomization?.point_2 || "Role-Based Governance & Statutory Approvals"}
               </Typography>
-              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600 }}>
-                <ArrowRightAltIcon /> {loginCustomization?.point_3 || "Automated expiry warning system logs"}
+              <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, fontWeight: 600, color: '#f8fafc' }}>
+                <ArrowRightAltIcon sx={{ color: 'var(--legal-gold, #d4a82f)' }} /> {loginCustomization?.point_3 || "30-Day Expiry Tracking & Automated Auditing"}
               </Typography>
             </Box>
           </Box>
@@ -541,14 +555,17 @@ const Login = () => {
                   disabled={loading || googleLoading}
                   sx={{
                     py: 1.6,
-                    fontWeight: 700,
-                    fontSize: '0.98rem',
+                    fontWeight: 800,
+                    fontSize: '1rem',
                     borderRadius: '12px',
                     textTransform: 'none',
-                    bgcolor: 'primary.main',
-                    boxShadow: 'none',
+                    backgroundColor: 'var(--legal-gold, #d4a82f)',
+                    color: 'var(--legal-navy, #0b1a3a)',
+                    border: '1px solid var(--legal-gold-border, #b8892b)',
+                    boxShadow: '0 4px 14px rgba(212, 168, 47, 0.35)',
                     '&:hover': {
-                      bgcolor: 'primary.dark'
+                      backgroundColor: '#e6c76a',
+                      boxShadow: '0 6px 20px rgba(212, 168, 47, 0.45)',
                     }
                   }}
                   endIcon={!loading && <ArrowRightAltIcon />}

@@ -110,19 +110,26 @@ const SharedDownload = () => {
         {/* Banner */}
         <Box
           sx={{
-            background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 50%, #2563EB 100%)',
+            background: 'linear-gradient(135deg, #0b1a3a 0%, #0f2044 50%, #14305f 100%)',
             py: 4,
             px: 3,
-            color: '#FFFFFF'
+            color: '#FFFFFF',
+            borderBottom: '2px solid var(--legal-gold-border, #b8892b)',
           }}
         >
-          <Box sx={{ display: 'inline-flex', p: 1.5, borderRadius: '16px', bgcolor: 'rgba(255,255,255,0.12)', mb: 1.5 }}>
-            <GavelIcon sx={{ fontSize: 36, color: '#93C5FD' }} />
+          <Box sx={{ display: 'inline-flex', p: 1.5, borderRadius: '16px', bgcolor: 'rgba(212,168,47,0.15)', mb: 1.5, border: '1px solid var(--legal-gold-border, #b8892b)' }}>
+            <GavelIcon sx={{ fontSize: 36, color: 'var(--legal-gold, #d4a82f)' }} />
           </Box>
-          <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.5 }}>
+          <Typography variant="h5" sx={{
+            fontFamily: 'var(--legal-font-serif, "Fraunces", serif)',
+            fontWeight: 800,
+            letterSpacing: '-0.02em',
+            mb: 0.5,
+            color: '#ffffff'
+          }}>
             MCC LEGAL
           </Typography>
-          <Typography variant="caption" sx={{ textTransform: 'uppercase', letterSpacing: '2px', color: '#93C5FD', fontWeight: 700 }}>
+          <Typography variant="caption" sx={{ textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--legal-gold-illustration, #e6c76a)', fontWeight: 700 }}>
             Official MOU Document Download Service
           </Typography>
         </Box>

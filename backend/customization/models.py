@@ -25,16 +25,16 @@ def default_branding():
 
 def default_theme():
     return {
-        "primary_color": "#4F46E5",
-        "secondary_color": "#0EA5E9",
-        "accent_color": "#F59E0B",
+        "primary_color": "#0b1a3a",
+        "secondary_color": "#d4a82f",
+        "accent_color": "#b8892b",
         "success_color": "#10B981",
         "warning_color": "#F59E0B",
-        "danger_color": "#EF4444",
-        "info_color": "#3B82F6",
-        "bg_color": "#F8FAFC",
+        "danger_color": "#b91c1c",
+        "info_color": "#1f4380",
+        "bg_color": "#faf7f0",
         "card_color": "#FFFFFF",
-        "sidebar_color": "#0F172A",
+        "sidebar_color": "#0b1a3a",
         "navbar_color": "#FFFFFF",
         "button_style": "rounded",
         "border_radius": 12,

@@ -120,7 +120,7 @@ const LoadingScreen = ({ loading = true, message = "Loading module..." }) => {
                     style={{
                       width: '100%',
                       height: '100%',
-                      background: 'linear-gradient(90deg, #4F46E5, #7C3AED)',
+                      background: 'linear-gradient(90deg, #0b1a3a, #d4a82f)',
                       borderRadius: '999px',
                     }}
                   />

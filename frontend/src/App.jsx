@@ -35,6 +35,7 @@ const Register = lazy(() => import('./pages/Register'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const DynamicPageContainer = lazy(() => import('./pages/DynamicPageContainer'));
 const SharedDownload = lazy(() => import('./pages/SharedDownload'));
+import Forbidden403 from './pages/Forbidden403';
 
 // Dynamic Google OAuth Provider Wrapper
 const DynamicGoogleOAuthProvider = ({ children }) => {
@@ -92,6 +93,7 @@ function App() {
                     <Route path="/register/:token" element={<Register />} />
                     <Route path="/reset-password" element={<ResetPassword />} />
                     <Route path="/shared/download/:token" element={<SharedDownload />} />
+                    <Route path="/403" element={<Layout><Forbidden403 /></Layout>} />
 
                     {/* Protected Application Routes */}
                     <Route

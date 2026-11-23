@@ -1,1 +1,0 @@
-import{S as e,jt as t}from"./Box-A2e9WhU8.js";var n=t(),r=e((0,n.jsx)(`path`,{fillRule:`evenodd`,d:`M3 3v8h8V3zm6 6H5V5h4zm-6 4v8h8v-8zm6 6H5v-4h4zm4-16v8h8V3zm6 6h-4V5h4zm-6 4v8h8v-8zm6 6h-4v-4h4z`}),`GridView`),i=e((0,n.jsx)(`path`,{d:`M3 14h4v-4H3zm0 5h4v-4H3zM3 9h4V5H3zm5 5h13v-4H8zm0 5h13v-4H8zM8 5v4h13V5z`}),`ViewList`);export{r as n,i as t};

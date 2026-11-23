@@ -11,7 +11,7 @@ import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
 import KeyIcon from '@mui/icons-material/Key';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import CloudQueueIcon from '@mui/icons-material/CloudQueue';
+import GavelIcon from '@mui/icons-material/Gavel';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import api from '../services/api';
 import LottieAnimation from '../components/LottieAnimation';
@@ -116,8 +116,16 @@ const ResetPassword = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', p: 2 }}>
-      <Card sx={{ maxWidth: 460, width: '100%', borderRadius: '24px', boxShadow: '0 20px 60px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'var(--legal-cream-bg, #faf7f0)', p: 2 }}>
+      <Card sx={{
+        maxWidth: 480,
+        width: '100%',
+        borderRadius: '24px',
+        border: '1.5px solid var(--legal-gold-border, #b8892b)',
+        backgroundColor: 'var(--legal-cream-card, #ffffff)',
+        boxShadow: 'var(--legal-shadow-lg)',
+        overflow: 'hidden'
+      }}>
         <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
@@ -127,16 +135,27 @@ const ResetPassword = () => {
               ) : step === 2 ? (
                 <LottieAnimation type="email" size={48} loop={true} />
               ) : (
-                <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
-                  <LockIcon sx={{ color: '#fff' }} />
+                <Avatar sx={{
+                  bgcolor: 'var(--legal-navy, #0b1a3a)',
+                  color: 'var(--legal-gold, #d4a82f)',
+                  border: '1.5px solid var(--legal-gold-border, #b8892b)',
+                  width: 50,
+                  height: 50
+                }}>
+                  <GavelIcon sx={{ fontSize: 26, transform: 'rotate(-25deg)' }} />
                 </Avatar>
               )}
             </Box>
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.5px' }}>
+              <Typography variant="h5" sx={{
+                fontFamily: 'var(--legal-font-serif, "Fraunces", serif)',
+                fontWeight: 800,
+                color: 'var(--legal-navy, #0b1a3a)',
+                letterSpacing: '-0.5px'
+              }}>
                 {step === 1 ? 'Forgot Password?' : 'Reset Password'}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{ color: 'var(--legal-text-secondary, #475569)' }}>
                 {step === 1 ? 'Enter your registered email to receive a 6-digit OTP.' : 'Verify your OTP code and enter your new password.'}
               </Typography>
             </Box>

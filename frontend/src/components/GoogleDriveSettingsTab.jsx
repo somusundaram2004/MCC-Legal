@@ -482,8 +482,9 @@ const GoogleDriveSettingsTab = () => {
                 disabled={savingCreds}
                 startIcon={savingCreds ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
                 sx={{
-                  backgroundColor: '#4F46E5',
-                  color: '#ffffff !important',
+                  backgroundColor: '#d4a82f',
+                  color: '#0b1a3a !important',
+                  border: '1px solid #b8892b',
                   height: '56px',
                   px: 4,
                   borderRadius: '12px',
@@ -491,7 +492,7 @@ const GoogleDriveSettingsTab = () => {
                   fontWeight: 700,
                   flexShrink: 0,
                   boxShadow: 'none',
-                  '&:hover': { backgroundColor: '#4338CA', boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)' }
+                  '&:hover': { backgroundColor: '#e6c76a', boxShadow: '0 4px 12px rgba(212, 168, 47, 0.25)' }
                 }}
               >
                 {savingCreds ? 'Saving...' : 'Save Credentials'}

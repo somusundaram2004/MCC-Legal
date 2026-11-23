@@ -54,13 +54,23 @@ export const SiteCustomizationProvider = ({ children }) => {
 
   // Dynamic CSS Variables injection for instant theme application across all roles
   useEffect(() => {
+    const isLegacyBlue = (hex) => {
+      if (!hex) return true;
+      const h = hex.toLowerCase();
+      return ['#4f46e5', '#3b82f6', '#2563eb', '#1976d2', '#0ea5e9', '#7c3aed', '#1e40af', '#4338ca'].includes(h);
+    };
+
     const themeConfig = customization?.theme || {};
-    const primary = themeConfig.primary_color || '#4F46E5';
-    const secondary = themeConfig.secondary_color || '#0EA5E9';
-    const accent = themeConfig.accent_color || '#4338CA';
-    const sidebar = themeConfig.sidebar_color || '#1E1B4B';
-    const bg = themeConfig.bg_color || '#F8FAFC';
-    const card = themeConfig.card_color || '#FFFFFF';
+    const rawPrimary = themeConfig.primary_color;
+    const rawSecondary = themeConfig.secondary_color;
+    const rawAccent = themeConfig.accent_color;
+
+    const primary = isLegacyBlue(rawPrimary) ? '#0b1a3a' : rawPrimary;
+    const secondary = isLegacyBlue(rawSecondary) ? '#d4a82f' : rawSecondary;
+    const accent = isLegacyBlue(rawAccent) ? '#b8892b' : rawAccent;
+    const sidebar = '#0b1a3a';
+    const bg = '#faf7f0';
+    const card = '#FFFFFF';
 
     document.documentElement.style.setProperty('--indigo', primary);
     document.documentElement.style.setProperty('--violet', secondary);
@@ -75,10 +85,10 @@ export const SiteCustomizationProvider = ({ children }) => {
   // Dynamic MUI Theme based on Customizer colors & settings
   const dynamicMuiTheme = useMemo(() => {
     const themeConfig = customization?.theme || {};
-    const primaryColor = themeConfig.primary_color || '#4F46E5';
-    const secondaryColor = themeConfig.secondary_color || '#0EA5E9';
+    const primaryColor = '#0b1a3a';
+    const secondaryColor = '#d4a82f';
     const borderRadius = themeConfig.border_radius ?? 12;
-    const fontFamily = themeConfig.font_family || 'Inter, sans-serif';
+    const fontFamily = "'Inter', system-ui, sans-serif";
 
     return createTheme({
       palette: {

@@ -1248,15 +1248,20 @@ const FolderExplorer = ({ rootFolderId = null, customPageId = null }) => {
               </Button>
               <Button
                 variant="contained"
-                startIcon={<CloudIcon />}
+                startIcon={<CloudIcon sx={{ color: 'var(--legal-gold, #d4a82f)' }} />}
                 onClick={() => handleOpenDriveBrowser(null)}
                 sx={{
                   borderRadius: '10px',
                   textTransform: 'none',
                   fontWeight: 800,
                   flex: { xs: '1 1 calc(50% - 12px)', sm: 'initial' },
-                  background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
-                  color: '#FFF'
+                  backgroundColor: 'var(--legal-navy, #0b1a3a)',
+                  color: 'var(--legal-gold, #d4a82f)',
+                  border: '1.5px solid var(--legal-gold, #d4a82f)',
+                  boxShadow: '0 4px 12px rgba(11, 26, 58, 0.25)',
+                  '&:hover': {
+                    backgroundColor: 'var(--legal-navy-card, #14305f)',
+                  }
                 }}
               >
                 Import from Drive

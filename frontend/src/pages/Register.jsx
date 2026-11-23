@@ -13,7 +13,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import PhoneIcon from '@mui/icons-material/Phone';
 import BadgeIcon from '@mui/icons-material/Badge';
 import EmailIcon from '@mui/icons-material/Email';
-import CloudQueueIcon from '@mui/icons-material/CloudQueue';
+import GavelIcon from '@mui/icons-material/Gavel';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import BusinessIcon from '@mui/icons-material/Business';
@@ -269,7 +269,7 @@ const Register = () => {
     <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: 'background.default' }}>
       <Grid container sx={{ width: '100%' }}>
         
-        {/* Left Panel: Branding */}
+        {/* Left Panel: Legal Branding */}
         <Grid 
           xs={0} 
           md={6} 
@@ -278,39 +278,75 @@ const Register = () => {
             flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
-            background: 'linear-gradient(135deg, var(--indigo) 0%, var(--violet) 100%)',
+            background: 'linear-gradient(135deg, #0b1a3a 0%, #0f2044 50%, #14305f 100%)',
+            borderRight: '2px solid var(--legal-gold-border, #b8892b)',
             color: '#ffffff',
             p: 6,
             position: 'relative',
             overflow: 'hidden'
           }}
         >
-          <Box sx={{ position: 'absolute', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(var(--violet-rgb), 0.5) 0%, rgba(var(--indigo-rgb), 0) 70%)', filter: 'blur(60px)', top: '-5%', left: '10%' }} />
-          <Box sx={{ position: 'absolute', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(16,185,129,0.3) 0%, rgba(16,185,129,0) 70%)', filter: 'blur(60px)', bottom: '5%', right: '10%' }} />
+          <Box sx={{ position: 'absolute', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(212,168,47,0.2) 0%, rgba(11,26,58,0) 70%)', filter: 'blur(60px)', top: '-5%', left: '10%' }} />
+          <Box sx={{ position: 'absolute', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,137,43,0.15) 0%, rgba(11,26,58,0) 70%)', filter: 'blur(60px)', bottom: '5%', right: '10%' }} />
 
           <Box sx={{ maxWidth: 460, textAlign: 'center', zIndex: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-              <Avatar sx={{ bgcolor: 'rgba(255, 255, 255, 0.12)', width: 64, height: 64 }}>
-                <CloudQueueIcon sx={{ color: '#ffffff', fontSize: 36 }} />
+              <Avatar sx={{
+                bgcolor: '#0b1a3a',
+                color: 'var(--legal-gold, #d4a82f)',
+                border: '2px solid var(--legal-gold-border, #b8892b)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                width: 68,
+                height: 68
+              }}>
+                <GavelIcon sx={{ fontSize: 36, transform: 'rotate(-25deg)' }} />
               </Avatar>
             </Box>
             
-            <Typography variant="h3" sx={{ fontWeight: 800, mb: 1, letterSpacing: '-0.5px' }}>
-              MCC LEGAL DOCUMENT
+            <Typography variant="h3" sx={{
+              fontFamily: 'var(--legal-font-serif, "Fraunces", serif)',
+              fontWeight: 800,
+              mb: 1,
+              letterSpacing: '-0.5px',
+              color: '#ffffff'
+            }}>
+              MCC LEGAL
             </Typography>
-            <Typography variant="subtitle1" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 5, fontWeight: 500 }}>
-              Professional Legal Document Registry
+            <Typography variant="subtitle1" sx={{
+              fontFamily: 'var(--legal-font-sans, "Inter", sans-serif)',
+              color: 'var(--legal-gold-illustration, #e6c76a)',
+              mb: 4,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              fontSize: '0.82rem'
+            }}>
+              Documents &amp; MOU Enterprise Hub
             </Typography>
 
-            <Box sx={{ bgcolor: 'rgba(255,255,255,0.06)', p: 3, borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>INCLUDED ASSIGNMENTS</Typography>
-              <Typography variant="body2" sx={{ mb: 1 }}>
+            <Box sx={{
+              bgcolor: 'rgba(255,255,255,0.06)',
+              p: 3,
+              borderRadius: '16px',
+              border: '1px solid var(--legal-gold-border, #b8892b)',
+              textAlign: 'left'
+            }}>
+              <Typography variant="subtitle2" sx={{
+                fontWeight: 800,
+                mb: 1.2,
+                color: 'var(--legal-gold, #d4a82f)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                Official Account Registration
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 1, color: '#f8fafc' }}>
                 <strong>Stream:</strong> {invitation?.stream || (streamsList.find(s => s.id === selectedStream)?.name) || '—'}
               </Typography>
-              <Typography variant="body2" sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ mb: 1, color: '#f8fafc' }}>
                 <strong>Department:</strong> {invitation?.department || department || '—'}
               </Typography>
-              <Typography variant="body2">
+              <Typography variant="body2" sx={{ color: '#f8fafc' }}>
                 <strong>Role Level:</strong> {invitation?.system_role?.name || 'User'}
               </Typography>
             </Box>

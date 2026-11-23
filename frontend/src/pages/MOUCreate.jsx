@@ -383,7 +383,17 @@ const MOUCreate = () => {
               onClick={handleSubmit}
               disabled={loading}
               startIcon={<CheckCircleIcon />}
-              sx={{ borderRadius: '12px', fontWeight: 700, background: 'linear-gradient(135deg, var(--indigo) 0%, var(--violet) 100%)' }}
+              sx={{
+                borderRadius: '12px',
+                fontWeight: 800,
+                backgroundColor: 'var(--legal-gold, #d4a82f)',
+                color: 'var(--legal-navy, #0b1a3a)',
+                border: '1px solid var(--legal-gold-border, #b8892b)',
+                boxShadow: '0 4px 14px rgba(212, 168, 47, 0.35)',
+                '&:hover': {
+                  backgroundColor: '#e6c76a',
+                }
+              }}
             >
               {loading ? 'Creating...' : 'Submit & Share MOU'}
             </Button>

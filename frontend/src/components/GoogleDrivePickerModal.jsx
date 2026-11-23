@@ -193,14 +193,15 @@ const GoogleDrivePickerModal = ({
                 width: 48,
                 height: 48,
                 borderRadius: '14px',
-                background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
+                background: 'linear-gradient(135deg, #0b1a3a 0%, #14305f 100%)',
+                border: '1px solid #d4a82f',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 8px 16px rgba(14, 165, 233, 0.3)'
+                boxShadow: '0 8px 16px rgba(11, 26, 58, 0.25)'
               }}
             >
-              <CloudIcon sx={{ color: '#FFF', fontSize: '1.8rem' }} />
+              <CloudIcon sx={{ color: '#d4a82f', fontSize: '1.8rem' }} />
             </Paper>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 800, color: isDark ? '#F8FAFC' : '#0F172A', lineHeight: 1.2 }}>
@@ -214,7 +215,7 @@ const GoogleDrivePickerModal = ({
 
           {/* Location Badge Indicator */}
           <Chip
-            icon={<FolderIcon sx={{ color: '#0EA5E9 !important', fontSize: '1.1rem' }} />}
+            icon={<FolderIcon sx={{ color: '#d4a82f !important', fontSize: '1.1rem' }} />}
             label="My Drive"
             sx={{
               fontWeight: 800,
@@ -222,10 +223,10 @@ const GoogleDrivePickerModal = ({
               py: 2,
               px: 1,
               borderRadius: '12px',
-              bgcolor: isDark ? 'rgba(14, 165, 233, 0.15)' : '#E0F2FE',
-              color: isDark ? '#38BDF8' : '#0284C7',
+              bgcolor: isDark ? 'rgba(212, 168, 47, 0.15)' : '#f6f0e0',
+              color: isDark ? '#e6c76a' : '#b8892b',
               border: '1px solid',
-              borderColor: isDark ? 'rgba(14, 165, 233, 0.3)' : '#BAE6FD'
+              borderColor: isDark ? 'rgba(212, 168, 47, 0.3)' : '#dccb9a'
             }}
           />
         </Box>
@@ -660,12 +661,13 @@ const GoogleDrivePickerModal = ({
               fontWeight: 800,
               px: 3.5,
               py: 1.2,
-              background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
-              boxShadow: '0 4px 14px rgba(14, 165, 233, 0.4)',
-              color: '#FFF',
+              backgroundColor: 'var(--legal-gold, #d4a82f)',
+              color: 'var(--legal-navy, #0b1a3a)',
+              border: '1px solid var(--legal-gold-border, #b8892b)',
+              boxShadow: '0 4px 14px rgba(212, 168, 47, 0.35)',
               textTransform: 'none',
               '&:hover': {
-                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)'
+                backgroundColor: '#e6c76a',
               }
             }}
           >

@@ -61,12 +61,33 @@ def seed_data():
     )
 
     # 3. Associate permissions to roles
-    # Super Admin and Admin get all permissions
+    # Super Admin gets all permissions
+    RolePermission.objects.filter(role=super_admin_role).delete()
     for perm in db_permissions.values():
         RolePermission.objects.get_or_create(role=super_admin_role, permission=perm)
-        RolePermission.objects.get_or_create(role=admin_role, permission=perm)
+
+    # Admin gets department management permissions (no user management / system admin)
+    RolePermission.objects.filter(role=admin_role).delete()
+    admin_permissions = [
+        "view_folder",
+        "create_folder",
+        "rename_folder",
+        "delete_folder",
+        "create_nested_folder",
+        "upload_files",
+        "download_files",
+        "delete_files",
+        "replace_files",
+        "preview_files",
+        "view_notifications",
+        "view_dashboard"
+    ]
+    for codename in admin_permissions:
+        if codename in db_permissions:
+            RolePermission.objects.get_or_create(role=admin_role, permission=db_permissions[codename])
 
     # User gets specific default permissions
+    RolePermission.objects.filter(role=user_role).delete()
     user_permissions = [
         "view_folder",
         "upload_files",
@@ -79,34 +100,68 @@ def seed_data():
         if codename in db_permissions:
             RolePermission.objects.get_or_create(role=user_role, permission=db_permissions[codename])
 
-    # 4. Super Admin Credentials Only
-    email = "superadmin@college.edu"
-    password = "AdminPass123!"
+    # 4. Demo Accounts for all three roles
+    demo_accounts = [
+        {
+            "email": "superadmin@college.edu",
+            "password": "AdminPass123!",
+            "name": "Super Admin",
+            "role": super_admin_role,
+            "designation": "Super Administrator",
+            "department": "Principal Office",
+            "is_staff": True,
+            "is_superuser": True
+        },
+        {
+            "email": "admin@college.edu",
+            "password": "AdminPass123!",
+            "name": "Department Admin",
+            "role": admin_role,
+            "designation": "Department Administrator",
+            "department": "Academic Office",
+            "is_staff": False,
+            "is_superuser": False
+        },
+        {
+            "email": "user@college.edu",
+            "password": "UserPass123!",
+            "name": "Faculty User",
+            "role": user_role,
+            "designation": "Assistant Professor",
+            "department": "Academic Office",
+            "is_staff": False,
+            "is_superuser": False
+        }
+    ]
 
-    user_obj = User.objects.filter(email=email).first()
-    if not user_obj:
-        User.objects.create_user(
-            email=email,
-            password=password,
-            name="Super Admin",
-            role=super_admin_role,
-            designation="Super Administrator",
-            department="Principal Office",
-            is_staff=True,
-            is_superuser=True,
-            status="Active"
-        )
-        print(f"Created Super Admin account: {email}")
-    else:
-        user_obj.set_password(password)
-        user_obj.role = super_admin_role
-        user_obj.is_staff = True
-        user_obj.is_superuser = True
-        user_obj.status = "Active"
-        user_obj.save()
-        print(f"Updated Super Admin credentials: {email}")
+    for acc in demo_accounts:
+        user_obj = User.objects.filter(email=acc["email"]).first()
+        if not user_obj:
+            User.objects.create_user(
+                email=acc["email"],
+                password=acc["password"],
+                name=acc["name"],
+                role=acc["role"],
+                designation=acc["designation"],
+                department=acc["department"],
+                is_staff=acc["is_staff"],
+                is_superuser=acc["is_superuser"],
+                status="Active"
+            )
+            print(f"Created {acc['role'].name} account: {acc['email']}")
+        else:
+            user_obj.set_password(acc["password"])
+            user_obj.role = acc["role"]
+            user_obj.name = acc["name"]
+            user_obj.designation = acc["designation"]
+            user_obj.department = acc["department"]
+            user_obj.is_staff = acc["is_staff"]
+            user_obj.is_superuser = acc["is_superuser"]
+            user_obj.status = "Active"
+            user_obj.save()
+            print(f"Updated {acc['role'].name} account: {acc['email']}")
 
-    print("Minimal Super Admin seeding completed successfully.")
+    print("Demo accounts seeding completed successfully.")
 
 if __name__ == "__main__":
     seed_data()

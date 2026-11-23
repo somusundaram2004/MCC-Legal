@@ -34,36 +34,87 @@ class DashboardStatsView(APIView):
         except Exception:
             pass
 
-        # User counts
-        if role_name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]:
+        # Folder, File, and MOU querysets & counts scoped strictly by role
+        from mous.models import MOUShare
+
+        is_super = role_name == 'Super Admin' or getattr(user, 'is_superuser', False)
+        is_dept_admin = (role_name in ["Admin", "Lawyer / MOU Administrator"]) and not is_super
+        user_dept_name = getattr(user, 'department', '') or ''
+
+        if is_super:
             total_users = User.objects.count()
             active_users = User.objects.filter(status='Active').count()
-        else:
-            user_dept = getattr(user, 'department', None)
-            if user_dept:
-                total_users = User.objects.filter(department=user_dept).count()
-                active_users = User.objects.filter(department=user_dept, status='Active').count()
-            else:
-                total_users = 0
-                active_users = 0
-
-        # Folder, File and MOU querysets based on role (filtering out soft-deleted records)
-        if role_name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]:
+            department_users = total_users
             mous_qs = MOU.objects.all()
             folders_qs = Folder.objects.filter(is_deleted=False)
             files_qs = File.objects.filter(is_deleted=False)
+            shared_files_count = MOUShare.objects.count()
+            recycle_bin_count = Folder.objects.filter(is_deleted=True).count() + File.objects.filter(is_deleted=True).count()
+            recent_activities_qs = ActivityLog.objects.all().order_by('-created_at')[:8]
+        elif is_dept_admin:
+            total_users = User.objects.filter(department__iexact=user_dept_name).count() if user_dept_name else 1
+            active_users = User.objects.filter(department__iexact=user_dept_name, status='Active').count() if user_dept_name else 1
+            department_users = total_users
+            if user_dept_name:
+                mous_qs = MOU.objects.filter(
+                    Q(department_name__iexact=user_dept_name) |
+                    Q(department__name__iexact=user_dept_name) |
+                    Q(created_by__department__iexact=user_dept_name) |
+                    Q(created_by=user)
+                ).distinct()
+                folders_qs = Folder.objects.filter(is_deleted=False).filter(
+                    Q(name__icontains=user_dept_name) |
+                    Q(created_by__department__iexact=user_dept_name) |
+                    Q(created_by=user)
+                ).distinct()
+                files_qs = File.objects.filter(is_deleted=False).filter(
+                    Q(uploaded_by__department__iexact=user_dept_name) |
+                    Q(folder__in=folders_qs) |
+                    Q(uploaded_by=user)
+                ).distinct()
+                shared_files_count = MOUShare.objects.filter(
+                    Q(department__name__iexact=user_dept_name) |
+                    Q(shared_by__department__iexact=user_dept_name) |
+                    Q(shared_by=user)
+                ).distinct().count()
+                recycle_bin_count = (
+                    Folder.objects.filter(is_deleted=True).filter(
+                        Q(created_by__department__iexact=user_dept_name) |
+                        Q(deleted_by__department__iexact=user_dept_name) |
+                        Q(name__icontains=user_dept_name)
+                    ).count() +
+                    File.objects.filter(is_deleted=True).filter(
+                        Q(uploaded_by__department__iexact=user_dept_name) |
+                        Q(deleted_by__department__iexact=user_dept_name)
+                    ).count()
+                )
+                recent_activities_qs = ActivityLog.objects.filter(
+                    Q(user__department__iexact=user_dept_name) |
+                    Q(module__icontains=user_dept_name)
+                ).order_by('-created_at')[:8]
+            else:
+                mous_qs = MOU.objects.filter(created_by=user)
+                folders_qs = Folder.objects.filter(is_deleted=False, created_by=user)
+                files_qs = File.objects.filter(is_deleted=False, uploaded_by=user)
+                shared_files_count = MOUShare.objects.filter(shared_by=user).count()
+                recycle_bin_count = Folder.objects.filter(is_deleted=True, deleted_by=user).count() + File.objects.filter(is_deleted=True, deleted_by=user).count()
+                recent_activities_qs = ActivityLog.objects.filter(user=user).order_by('-created_at')[:8]
         else:
             # Standard User
+            total_users = User.objects.filter(department__iexact=user_dept_name).count() if user_dept_name else 0
+            active_users = User.objects.filter(department__iexact=user_dept_name, status='Active').count() if user_dept_name else 0
+            department_users = total_users
             all_folders = Folder.objects.filter(is_deleted=False)
             accessible_ids = [f.id for f in all_folders if f.has_access(user)]
             folders_qs = Folder.objects.filter(id__in=accessible_ids, is_deleted=False)
             files_qs = File.objects.filter(folder_id__in=accessible_ids, is_deleted=False)
-            
-            user_dept_name = getattr(user, 'department', '') or ''
             mous_filters = Q(created_by=user) | Q(shares__user=user)
             if user_dept_name:
                 mous_filters |= Q(department_name__iexact=user_dept_name) | Q(department__name__iexact=user_dept_name) | Q(shares__department__name=user_dept_name)
             mous_qs = MOU.objects.filter(mous_filters).distinct()
+            shared_files_count = MOUShare.objects.filter(Q(user=user) | Q(recipient_email__iexact=user.email)).count()
+            recycle_bin_count = 0
+            recent_activities_qs = ActivityLog.objects.filter(user=user).order_by('-created_at')[:8]
 
         total_folders = folders_qs.count()
         total_files = files_qs.count()
@@ -74,19 +125,26 @@ class DashboardStatsView(APIView):
         my_recent_files = my_files_qs.order_by('-created_at')[:5]
         my_recent_files_serializer = FileSerializer(my_recent_files, many=True, context={'request': request})
 
+        # User specific approvals & expiries
+        my_pending_approvals = MOU.objects.filter(created_by=user, status__in=['Pending Verification', 'Pending Review']).count()
+        today = datetime.date.today()
+        my_expiring_mous = MOU.objects.filter(
+            created_by=user,
+            status__in=['Active', 'Signed', 'Renewed'],
+            expiry_date__gte=today,
+            expiry_date__lte=today + datetime.timedelta(days=30)
+        ).count()
+
         # Recent uploads
         recent_files = files_qs.order_by('-created_at')[:5]
         recent_files_serializer = FileSerializer(recent_files, many=True, context={'request': request})
 
-        # Recent activities (Admins & Super Admins)
-        activities_data = []
-        is_admin = role_name in ["Super Admin", "Admin", "Lawyer / MOU Administrator"]
-        if is_admin:
-            recent_activities = ActivityLog.objects.all().order_by('-created_at')[:6]
-            recent_activities_serializer = ActivityLogSerializer(recent_activities, many=True)
-            activities_data = recent_activities_serializer.data
+        # Recent activities (Role Scoped)
+        recent_activities_serializer = ActivityLogSerializer(recent_activities_qs, many=True)
+        activities_data = recent_activities_serializer.data
 
         # Latest notifications
+        unread_notifications_count = Notification.objects.filter(user=user, is_read=False).count()
         latest_notifications = Notification.objects.filter(user=user, is_read=False).order_by('-created_at')[:5]
         notifications_serializer = NotificationSerializer(latest_notifications, many=True)
 
@@ -272,15 +330,40 @@ class DashboardStatsView(APIView):
                 'Expiring': expiring_cnt
             })
 
+        # List of expiring MOUs for the Alert Banner
+        expiring_mous_list = []
+        for m in mous_qs.filter(
+            status__in=['Active', 'Signed', 'Renewed', 'Expiring Soon'],
+            expiry_date__gte=today,
+            expiry_date__lte=today + datetime.timedelta(days=30)
+        ).order_by('expiry_date')[:6]:
+            expiring_mous_list.append({
+                'id': m.id,
+                'title': m.title or f"MOU #{m.id}",
+                'department': m.department_name or (m.department.name if m.department else 'General'),
+                'expiry_date': m.expiry_date.isoformat() if m.expiry_date else None,
+                'days_left': max(0, (m.expiry_date - today).days) if m.expiry_date else 0
+            })
+
         return Response({
             "total_users": total_users,
             "active_users": active_users,
+            "department_users": department_users,
             "total_folders": total_folders,
+            "department_folders": total_folders,
             "total_files": total_files,
             "my_files_count": my_files_count,
+            "my_documents": my_files_count,
+            "shared_with_me": shared_files_count,
+            "shared_files": shared_files_count,
+            "recycle_bin_count": recycle_bin_count,
+            "unread_notifications": unread_notifications_count,
+            "my_pending_approvals": my_pending_approvals,
+            "my_expiring_mous": my_expiring_mous,
             "active_mous": active_mous,
             "pending_approval": pending_approval,
             "expiring_30_days": expiring_30,
+            "expiring_mous_list": expiring_mous_list,
             "distribution_data": mou_distribution_data,
             "trend_data": trend_months,
             "recent_uploads": recent_files_serializer.data,

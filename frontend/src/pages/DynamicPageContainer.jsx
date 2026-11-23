@@ -268,7 +268,7 @@ const DynamicPageContainer = () => {
       {/* Module Statistics Bar - 4 Card Row */}
       <Grid container spacing={2.5} sx={{ mb: 3 }}>
         {[
-          { title: 'TOTAL REPOSITORIES', count: items.length, icon: <FolderSpecialIcon />, color: '#3B82F6', label: 'Assigned folders' },
+          { title: 'TOTAL REPOSITORIES', count: items.length, icon: <FolderSpecialIcon />, color: 'var(--legal-navy, #0b1a3a)', label: 'Assigned folders' },
           { title: 'FILTERED ITEMS', count: filteredItems.length, icon: <CheckCircleIcon />, color: '#10B981', label: 'Matching current criteria' },
           { title: 'DEPARTMENTS SCOPE', count: uniqueDepartments.length || 1, icon: <PeopleIcon />, color: '#8B5CF6', label: 'Access permissions' },
           { title: 'STORAGE MODE', count: pageConfig?.google_drive_folder_id ? 'Google Drive' : 'Local Storage', isString: true, icon: <CloudIcon />, color: '#F59E0B', label: 'Primary cloud destination' },

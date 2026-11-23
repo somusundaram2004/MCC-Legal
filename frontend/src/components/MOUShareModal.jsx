@@ -356,8 +356,9 @@ const MOUShareModal = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-              color: '#FFFFFF'
+              background: 'linear-gradient(135deg, #0b1a3a 0%, #14305f 100%)',
+              color: 'var(--legal-gold, #d4a82f)',
+              border: '1.5px solid var(--legal-gold, #d4a82f)'
             }}
           >
             <ShareIcon fontSize="small" />
@@ -509,7 +510,7 @@ const MOUShareModal = ({
                   fontWeight: 700,
                   textTransform: 'none',
                   px: 2,
-                  ...(shareMode === 'email' ? { bgcolor: '#2563EB' } : {})
+                  ...(shareMode === 'email' ? { bgcolor: '#d4a82f', color: '#0b1a3a', border: '1px solid #b8892b', '&:hover': { bgcolor: '#e6c76a' } } : {})
                 }}
               >
                 Email Recipient Sharing
@@ -710,9 +711,15 @@ const MOUShareModal = ({
           startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : <ShareIcon />}
           sx={{
             borderRadius: '10px',
-            fontWeight: 700,
+            fontWeight: 800,
             px: 3,
-            background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)'
+            backgroundColor: 'var(--legal-gold, #d4a82f)',
+            color: 'var(--legal-navy, #0b1a3a)',
+            border: '1px solid var(--legal-gold-border, #b8892b)',
+            boxShadow: '0 4px 12px rgba(212, 168, 47, 0.3)',
+            '&:hover': {
+              backgroundColor: '#e6c76a',
+            }
           }}
         >
           {submitting ? 'Sharing & Sending...' : 'Send Email & Share MOU'}

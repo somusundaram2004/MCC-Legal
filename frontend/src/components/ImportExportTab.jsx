@@ -717,12 +717,13 @@ const ImportExportTab = () => {
                         fontWeight: 800,
                         py: 1.4,
                         fontSize: '0.85rem',
-                        color: '#FFFFFF !important',
-                        background: 'linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%)',
-                        boxShadow: '0 6px 16px -3px rgba(14, 165, 233, 0.4)',
+                        color: 'var(--legal-navy, #0b1a3a) !important',
+                        backgroundColor: 'var(--legal-gold, #d4a82f)',
+                        border: '1px solid var(--legal-gold-border, #b8892b)',
+                        boxShadow: '0 6px 16px -3px rgba(212, 168, 47, 0.4)',
                         '&:hover': {
-                          background: 'linear-gradient(135deg, #0284C7 0%, #1D4ED8 100%)',
-                          boxShadow: '0 8px 20px -3px rgba(14, 165, 233, 0.55)'
+                          backgroundColor: '#e6c76a',
+                          boxShadow: '0 8px 20px -3px rgba(212, 168, 47, 0.55)'
                         },
                         '&.Mui-disabled': {
                           background: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
@@ -990,8 +991,13 @@ const ImportExportTab = () => {
                       borderRadius: '10px',
                       textTransform: 'none',
                       fontWeight: 800,
-                      background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
-                      color: '#FFF'
+                      backgroundColor: 'var(--legal-navy, #0b1a3a)',
+                      color: 'var(--legal-gold, #d4a82f)',
+                      border: '1.5px solid var(--legal-gold, #d4a82f)',
+                      boxShadow: '0 4px 12px rgba(11, 26, 58, 0.25)',
+                      '&:hover': {
+                        backgroundColor: 'var(--legal-navy-card, #14305f)',
+                      }
                     }}
                   >
                     Import from Google Drive

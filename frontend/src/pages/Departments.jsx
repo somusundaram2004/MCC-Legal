@@ -474,7 +474,7 @@ const Departments = () => {
                 '&.Mui-selected': {
                   bgcolor: 'primary.main',
                   color: '#FFFFFF',
-                  boxShadow: '0 2px 8px rgba(79, 70, 229, 0.3)'
+                  boxShadow: '0 2px 8px rgba(11, 26, 58, 0.3)'
                 }
               }
             }}
@@ -516,15 +516,17 @@ const Departments = () => {
             onClick={() => navigate('/mou/create')}
             sx={{ 
               borderRadius: '12px', 
-              fontWeight: 700, 
+              fontWeight: 800, 
               py: 1,
               px: 2.2,
               width: { xs: '100%', sm: 'auto' },
-              background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)',
+              backgroundColor: 'var(--legal-gold, #d4a82f)',
+              color: 'var(--legal-navy, #0b1a3a)',
+              border: '1px solid var(--legal-gold-border, #b8892b)',
+              boxShadow: '0 4px 14px rgba(212, 168, 47, 0.35)',
               '&:hover': {
-                background: 'linear-gradient(135deg, #4338CA 0%, #6D28D9 100%)',
-                boxShadow: '0 6px 20px rgba(79, 70, 229, 0.45)',
+                backgroundColor: '#e6c76a',
+                boxShadow: '0 6px 20px rgba(212, 168, 47, 0.45)',
               }
             }}
           >
@@ -534,10 +536,20 @@ const Departments = () => {
           {/* Create Category Button */}
           <Button
             variant="outlined"
-            color="primary"
             startIcon={<AddIcon />}
             onClick={() => setOpen(true)}
-            sx={{ borderRadius: '12px', fontWeight: 700, py: 1, width: { xs: '100%', sm: 'auto' } }}
+            sx={{
+              borderRadius: '12px',
+              fontWeight: 700,
+              py: 1,
+              width: { xs: '100%', sm: 'auto' },
+              borderColor: 'var(--legal-gold-border, #b8892b)',
+              color: 'var(--legal-navy, #0b1a3a)',
+              '&:hover': {
+                borderColor: 'var(--legal-gold, #d4a82f)',
+                backgroundColor: 'var(--legal-cream-tint, #f6f0e0)',
+              }
+            }}
           >
             Create Category
           </Button>
@@ -580,7 +592,8 @@ const Departments = () => {
           <AnimatePresence>
             {filteredDepts.map((dept) => {
               const stats = getDeptStats(dept);
-              const folderColor = dept.color || '#3B82F6';
+              const isLegacyFolderBlue = (c) => !c || c === '#3B82F6' || c === '#4F46E5' || c === '#2563EB' || c === '#0EA5E9' || c === '#0284C7' || c === '#1D4ED8';
+              const folderColor = isLegacyFolderBlue(dept.color) ? '#14305f' : dept.color;
               const streamStr = String(dept.stream_name || dept.stream?.name || '').toLowerCase();
               const isAided = streamStr.includes('aided');
               const isSFS = streamStr.includes('sfs') || streamStr.includes('self-financed');
@@ -697,11 +710,11 @@ const Departments = () => {
                                   height: 22,
                                   borderRadius: '6px',
                                   bgcolor: isAided
-                                    ? 'rgba(14, 165, 233, 0.12)'
+                                    ? 'rgba(212, 168, 47, 0.14)'
                                     : isSFS
-                                    ? 'rgba(139, 92, 246, 0.12)'
+                                    ? 'rgba(11, 26, 58, 0.08)'
                                     : 'rgba(100, 116, 139, 0.12)',
-                                  color: isAided ? '#0284C7' : isSFS ? '#7C3AED' : '#475569',
+                                  color: isAided ? '#b8892b' : isSFS ? '#0b1a3a' : '#475569',
                                   border: 'none'
                                 }}
                               />

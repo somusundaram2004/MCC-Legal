@@ -76,8 +76,9 @@ const DownloadTrackingModal = ({ open, onClose, shareId }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
-              color: '#FFFFFF'
+              background: 'linear-gradient(135deg, #0b1a3a 0%, #14305f 100%)',
+              border: '1px solid #d4a82f',
+              color: '#d4a82f'
             }}
           >
             <CloudDownloadIcon fontSize="small" />
@@ -128,7 +129,7 @@ const DownloadTrackingModal = ({ open, onClose, shareId }) => {
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
                     Total Downloads
                   </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5, color: '#0EA5E9' }}>
+                  <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5, color: '#d4a82f' }}>
                     {trackingData.download_count}
                   </Typography>
                 </Paper>
@@ -178,7 +179,7 @@ const DownloadTrackingModal = ({ open, onClose, shareId }) => {
                 <Grid xs={12} sm={6}>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     <Typography color="text.secondary" sx={{ minWidth: 120 }}>Recipient Email:</Typography>
-                    <Typography sx={{ fontWeight: 700, color: '#2563EB' }}>
+                    <Typography sx={{ fontWeight: 700, color: '#0b1a3a' }}>
                       {trackingData.recipient_email || '—'}
                     </Typography>
                   </Box>
@@ -228,7 +229,7 @@ const DownloadTrackingModal = ({ open, onClose, shareId }) => {
             {/* Detailed Download Event Logs Table */}
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <DevicesIcon fontSize="small" sx={{ color: '#0EA5E9' }} /> Download Activity Audit Logs ({trackingData.download_logs?.length || 0})
+                <DevicesIcon fontSize="small" sx={{ color: '#d4a82f' }} /> Download Activity Audit Logs ({trackingData.download_logs?.length || 0})
               </Typography>
               {(!trackingData.download_logs || trackingData.download_logs.length === 0) ? (
                 <Alert severity="info" sx={{ borderRadius: '12px' }}>
@@ -252,7 +253,7 @@ const DownloadTrackingModal = ({ open, onClose, shareId }) => {
                           <TableCell sx={{ fontWeight: 700 }}>
                             {formatDate(log.downloaded_at)}
                           </TableCell>
-                          <TableCell sx={{ color: '#2563EB', fontWeight: 600 }}>
+                          <TableCell sx={{ color: '#0b1a3a', fontWeight: 600 }}>
                             {log.recipient_email || 'Verified Link'}
                           </TableCell>
                           <TableCell>

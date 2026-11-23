@@ -167,8 +167,8 @@ const ActivityLog = () => {
       {/* Audit Highlights Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
-          { title: 'Total Recorded Operations', count: totalLogs, label: 'Immutable System Log', color: '#4F46E5', icon: <HistoryIcon /> },
-          { title: 'Active System Users', count: uniqueUsers, label: 'Logged operations', color: '#3B82F6', icon: <PeopleIcon /> },
+          { title: 'Total Recorded Operations', count: totalLogs, label: 'Immutable System Log', color: 'var(--legal-navy, #0b1a3a)', icon: <HistoryIcon /> },
+          { title: 'Active System Users', count: uniqueUsers, label: 'Logged operations', color: 'var(--legal-gold, #d4a82f)', icon: <PeopleIcon /> },
           { title: 'Security & Auth Events', count: securityEvents, label: 'Logins & Deletions', color: '#F59E0B', icon: <SecurityIcon /> },
         ].map((item) => (
           <Grid xs={12} sm={4} key={item.title}>

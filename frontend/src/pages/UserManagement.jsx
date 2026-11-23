@@ -1812,12 +1812,13 @@ const UserManagement = () => {
               sx={{
                 borderRadius: '10px', fontWeight: 700, px: 4,
                 fontFamily: 'Inter, system-ui, sans-serif',
-                background: 'linear-gradient(135deg, var(--indigo), var(--violet))',
-                boxShadow: '0 4px 14px rgba(var(--violet-rgb), 0.35)',
+                backgroundColor: 'var(--legal-gold, #d4a82f)',
+                color: 'var(--legal-navy, #0b1a3a)',
+                border: '1px solid var(--legal-gold-border, #b8892b)',
+                boxShadow: '0 4px 14px rgba(212, 168, 47, 0.35)',
                 '&:hover': {
-                  background: 'linear-gradient(135deg, var(--indigo), var(--violet))',
-                  filter: 'brightness(90%)',
-                  boxShadow: '0 6px 20px rgba(var(--violet-rgb), 0.5)',
+                  backgroundColor: '#e6c76a',
+                  boxShadow: '0 6px 20px rgba(212, 168, 47, 0.45)',
                   transform: 'translateY(-1px)',
                 },
                 transition: 'all 0.18s ease',

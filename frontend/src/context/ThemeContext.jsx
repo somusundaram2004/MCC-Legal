@@ -11,12 +11,24 @@ const getLS = (key, fallback) => {
   try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
 };
 
+const isLegacyBlue = (hex) => {
+  if (!hex) return false;
+  const h = hex.toLowerCase();
+  return ['#4f46e5', '#3b82f6', '#2563eb', '#1976d2', '#0ea5e9', '#7c3aed', '#1e40af'].includes(h);
+};
+
 export const ThemeModeProvider = ({ children }) => {
   const [mode, setMode] = useState(() => getLS('theme_mode', 'light'));
-  const [primaryColor, setPrimaryColor] = useState(() => getLS('app_primary_color', '#4F46E5'));
-  const [secondaryColor, setSecondaryColor] = useState(() => getLS('app_secondary_color', '#7C3AED'));
-  const [fontFamily, setFontFamily] = useState(() => getLS('app_font_family', "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif"));
-  const [borderRadius, setBorderRadius] = useState(() => parseInt(getLS('app_border_radius', '14')));
+  const [primaryColor, setPrimaryColor] = useState(() => {
+    const saved = getLS('app_primary_color', '#0b1a3a');
+    return isLegacyBlue(saved) ? '#0b1a3a' : saved;
+  });
+  const [secondaryColor, setSecondaryColor] = useState(() => {
+    const saved = getLS('app_secondary_color', '#d4a82f');
+    return isLegacyBlue(saved) ? '#d4a82f' : saved;
+  });
+  const [fontFamily, setFontFamily] = useState(() => getLS('app_font_family', "'Inter', system-ui, sans-serif"));
+  const [borderRadius, setBorderRadius] = useState(() => parseInt(getLS('app_border_radius', '16')));
 
   const siteCustomization = useSiteCustomization();
   const dbTheme = siteCustomization?.theme || {};
@@ -29,11 +41,13 @@ export const ThemeModeProvider = ({ children }) => {
     }
     const localPrimary = localStorage.getItem('app_primary_color');
     if (!localPrimary && dbTheme.primary_color) {
-      setPrimaryColor(dbTheme.primary_color);
+      const p = isLegacyBlue(dbTheme.primary_color) ? '#0b1a3a' : dbTheme.primary_color;
+      setPrimaryColor(p);
     }
     const localSecondary = localStorage.getItem('app_secondary_color');
     if (!localSecondary && dbTheme.secondary_color) {
-      setSecondaryColor(dbTheme.secondary_color);
+      const s = isLegacyBlue(dbTheme.secondary_color) ? '#d4a82f' : dbTheme.secondary_color;
+      setSecondaryColor(s);
     }
     const localRadius = localStorage.getItem('app_border_radius');
     if (!localRadius && dbTheme.border_radius !== undefined) {
@@ -117,15 +131,15 @@ export const ThemeModeProvider = ({ children }) => {
         error:    { main: '#F43F5E', light: '#FFE4E6', dark: '#BE123C' },
         info:     { main: '#F97316', light: '#FFEDD5', dark: '#C2410C' },
         background: {
-          default: isDark ? '#0F1117' : '#FAFAFA',
-          paper:   isDark ? '#1A1D27' : '#FFFFFF',
+          default: isDark ? '#071021' : '#faf7f0',
+          paper:   isDark ? '#0d1e40' : '#ffffff',
         },
         text: {
           primary:   isDark ? '#F1F5F9' : '#0F172A',
-          secondary: isDark ? '#94A3B8' : '#64748B',
-          disabled:  isDark ? '#475569' : '#CBD5E1',
+          secondary: isDark ? '#94A3B8' : '#475569',
+          disabled:  isDark ? '#475569' : '#94A3B8',
         },
-        divider: isDark ? '#2D3148' : '#E8ECF0',
+        divider: isDark ? '#1f3863' : '#dccb9a',
         mou: {
           draft:    '#94A3B8',
           active:   '#10B981',
@@ -183,21 +197,73 @@ export const ThemeModeProvider = ({ children }) => {
         MuiButton: {
           styleOverrides: {
             root: {
-              borderRadius: `${Math.max(radius - 2, 6)}px`,
+              borderRadius: `${Math.max(radius - 2, 8)}px`,
               padding: '8px 20px',
               transition: 'all 0.18s cubic-bezier(0.22,1,0.36,1)',
               boxShadow: 'none',
+              fontWeight: 700,
+              textTransform: 'none',
               '&:active': { transform: 'scale(0.97)' },
               '&:hover': { boxShadow: 'none', transform: 'translateY(-1px)' },
             },
             contained: {
-              background: `linear-gradient(135deg, ${primary} 0%, ${secondary} 100%)`,
+              backgroundColor: 'var(--legal-gold, #d4a82f)',
+              color: 'var(--legal-navy, #0b1a3a)',
+              border: '1px solid var(--legal-gold-border, #b8892b)',
+              fontWeight: 800,
+              boxShadow: '0 4px 12px rgba(212, 168, 47, 0.25)',
               '&:hover': {
-                background: `linear-gradient(135deg, ${darken(primary, 20)} 0%, ${darken(secondary, 20)} 100%)`,
+                backgroundColor: '#e6c76a',
+                boxShadow: '0 6px 16px rgba(212, 168, 47, 0.35)',
               },
             },
-            containedError: { background: '#F43F5E', '&:hover': { background: '#BE123C' } },
-            containedSuccess: { background: '#10B981', '&:hover': { background: '#059669' } },
+            containedPrimary: {
+              backgroundColor: 'var(--legal-gold, #d4a82f)',
+              color: 'var(--legal-navy, #0b1a3a)',
+              border: '1px solid var(--legal-gold-border, #b8892b)',
+              fontWeight: 800,
+              boxShadow: '0 4px 12px rgba(212, 168, 47, 0.25)',
+              '&:hover': {
+                backgroundColor: '#e6c76a',
+                boxShadow: '0 6px 16px rgba(212, 168, 47, 0.35)',
+              },
+            },
+            containedSecondary: {
+              backgroundColor: 'var(--legal-navy, #0b1a3a)',
+              color: 'var(--legal-gold, #d4a82f)',
+              border: '1.5px solid var(--legal-gold, #d4a82f)',
+              fontWeight: 800,
+              '&:hover': {
+                backgroundColor: '#14305f',
+              },
+            },
+            outlined: {
+              borderColor: 'var(--legal-gold-border, #b8892b)',
+              color: 'var(--legal-navy, #0b1a3a)',
+              fontWeight: 700,
+              '&:hover': {
+                borderColor: 'var(--legal-gold, #d4a82f)',
+                backgroundColor: 'var(--legal-cream-tint, #f6f0e0)',
+              },
+            },
+            outlinedPrimary: {
+              borderColor: 'var(--legal-gold-border, #b8892b)',
+              color: 'var(--legal-navy, #0b1a3a)',
+              fontWeight: 700,
+              '&:hover': {
+                borderColor: 'var(--legal-gold, #d4a82f)',
+                backgroundColor: 'var(--legal-cream-tint, #f6f0e0)',
+              },
+            },
+            textPrimary: {
+              color: 'var(--legal-navy, #0b1a3a)',
+              fontWeight: 700,
+              '&:hover': {
+                backgroundColor: 'var(--legal-cream-tint, #f6f0e0)',
+              },
+            },
+            containedError: { background: '#b91c1c', color: '#fff', '&:hover': { background: '#991b1b' } },
+            containedSuccess: { background: '#10B981', color: '#fff', '&:hover': { background: '#059669' } },
           },
         },
 

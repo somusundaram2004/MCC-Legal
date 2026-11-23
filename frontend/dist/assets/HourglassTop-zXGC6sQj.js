@@ -1,0 +1,1 @@
+import{At as e,S as t}from"./Box-CM064YD0.js";var n=t((0,e().jsx)(`path`,{d:`m6 2 .01 6L10 12l-3.99 4.01L6 22h12v-6l-4-4 4-3.99V2zm10 14.5V20H8v-3.5l4-4z`}),`HourglassTop`);export{n as t};
