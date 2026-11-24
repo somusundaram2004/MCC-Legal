@@ -439,40 +439,46 @@ class GoogleDriveViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['patch'], url_path='update-credentials')
     def update_credentials(self, request):
-        client_id = request.data.get('client_id', '').strip()
-        client_secret = request.data.get('client_secret', '').strip()
-        root_folder_id = request.data.get('root_folder_id', '').strip()
+        try:
+            client_id = str(request.data.get('client_id') or '').strip()
+            client_secret = str(request.data.get('client_secret') or '').strip()
+            root_folder_id = str(request.data.get('root_folder_id') or '').strip()
 
-        setting = GoogleDriveSetting.objects.filter(is_active=True).first() or GoogleDriveSetting.objects.first()
-        clean_secret = sanitize_secret(client_secret)
-        if not setting:
-            setting = GoogleDriveSetting.objects.create(
-                client_id=client_id,
-                client_secret=clean_secret,
-                root_folder_id=root_folder_id,
-                connection_status='Disconnected',
-                default_upload_folder='Root Repository'
-            )
-        else:
-            if client_id:
-                setting.client_id = client_id
-            if client_secret and client_secret != '••••••••':
-                setting.client_secret = clean_secret
-            if root_folder_id:
-                if 'drive.google.com' in root_folder_id:
-                    import re
-                    match = re.search(r'folders/([a-zA-Z0-9_-]+)', root_folder_id)
-                    if match:
-                        root_folder_id = match.group(1)
-                setting.root_folder_id = root_folder_id
-            setting.save()
+            setting = GoogleDriveSetting.objects.filter(is_active=True).first() or GoogleDriveSetting.objects.first()
+            clean_secret = sanitize_secret(client_secret)
+            if not setting:
+                setting = GoogleDriveSetting.objects.create(
+                    client_id=client_id,
+                    client_secret=clean_secret,
+                    root_folder_id=root_folder_id,
+                    connection_status='Disconnected',
+                    default_upload_folder='Root Repository'
+                )
+            else:
+                if client_id:
+                    setting.client_id = client_id
+                if client_secret and client_secret != '••••••••':
+                    setting.client_secret = clean_secret
+                if root_folder_id:
+                    if 'drive.google.com' in root_folder_id:
+                        import re
+                        match = re.search(r'folders/([a-zA-Z0-9_-]+)', root_folder_id)
+                        if match:
+                            root_folder_id = match.group(1)
+                    setting.root_folder_id = root_folder_id
+                setting.save()
 
-        log_activity(request.user, "Updated Google Drive OAuth Client credentials", "drive")
-        return Response({
-            "detail": "Google Drive OAuth credentials updated successfully",
-            "client_id": setting.client_id,
-            "root_folder_id": setting.root_folder_id
-        })
+            log_activity(request.user, "Updated Google Drive OAuth Client credentials", "drive")
+            return Response({
+                "detail": "Google Drive OAuth credentials updated successfully",
+                "client_id": setting.client_id,
+                "root_folder_id": setting.root_folder_id
+            })
+        except Exception as e:
+            logger.error(f"Failed to update Google Drive credentials: {e}", exc_info=True)
+            return Response({
+                "detail": f"Failed to update credentials: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'], url_path='hierarchy-status')
     def hierarchy_status(self, request):

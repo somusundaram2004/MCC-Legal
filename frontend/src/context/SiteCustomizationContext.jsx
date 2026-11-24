@@ -42,13 +42,17 @@ export const SiteCustomizationProvider = ({ children }) => {
     styleTag.innerHTML = custom_css || '';
 
     // Inject Custom JS
-    if (custom_js) {
+    if (custom_js && typeof custom_js === 'string' && custom_js.trim()) {
       let scriptTag = document.getElementById('custom-admin-js');
       if (scriptTag) scriptTag.remove();
-      scriptTag = document.createElement('script');
-      scriptTag.id = 'custom-admin-js';
-      scriptTag.innerHTML = `try { ${custom_js} } catch(e) { console.error('Custom JS Error:', e); }`;
-      document.body.appendChild(scriptTag);
+      try {
+        scriptTag = document.createElement('script');
+        scriptTag.id = 'custom-admin-js';
+        scriptTag.textContent = `\ntry {\n${custom_js}\n} catch(e) {\n  console.error('Custom JS Error:', e);\n}\n`;
+        document.body.appendChild(scriptTag);
+      } catch (err) {
+        console.warn('Failed to inject custom JS safely:', err);
+      }
     }
   }, [customization?.custom_code]);
 
