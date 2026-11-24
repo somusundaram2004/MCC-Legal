@@ -104,8 +104,10 @@ const MOUShareModal = ({
   // Sharing Mode: 'email' or 'department'
   const [shareMode, setShareMode] = useState('email');
 
-  // Email Sharing Fields
+  // Email Sharing Fields (Supports Multiple Recipients & CC)
   const [recipientEmail, setRecipientEmail] = useState('');
+  const [ccEmails, setCcEmails] = useState('');
+  const [showCc, setShowCc] = useState(false);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState('standard');
   const [emailSubject, setEmailSubject] = useState('');
   const [customMessage, setCustomMessage] = useState('');
@@ -193,7 +195,7 @@ const MOUShareModal = ({
     }
   }, [selectedTemplateKey, selectedMou, templates]);
 
-  // Check recipient email existence debounced
+  // Check recipient email existence debounced (takes primary email if multiple entered)
   useEffect(() => {
     if (!recipientEmail || !recipientEmail.includes('@') || !recipientEmail.includes('.')) {
       setUserLookupStatus(null);
@@ -201,9 +203,14 @@ const MOUShareModal = ({
     }
     const timer = setTimeout(async () => {
       try {
-        const res = await api.get(`/api/users/?search=${encodeURIComponent(recipientEmail.trim())}`);
+        const firstEmail = recipientEmail.split(/[,;\s\n]+/)[0]?.trim();
+        if (!firstEmail || !firstEmail.includes('@') || !firstEmail.includes('.')) {
+          setUserLookupStatus(null);
+          return;
+        }
+        const res = await api.get(`/api/users/?search=${encodeURIComponent(firstEmail)}`);
         const found = (res.data?.results || res.data || []).some(
-          (u) => u.email?.toLowerCase() === recipientEmail.trim().toLowerCase()
+          (u) => u.email?.toLowerCase() === firstEmail.toLowerCase()
         );
         setUserLookupStatus(found ? 'found' : 'invite_needed');
       } catch {
@@ -233,15 +240,34 @@ const MOUShareModal = ({
       return;
     }
 
+    const splitEmails = (str) => (str || '')
+      .split(/[,;\s\n]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => Boolean(e));
+
+    let parsedRecipients = [];
+    let parsedCc = [];
+
     if (shareMode === 'email') {
-      if (!recipientEmail || !recipientEmail.trim()) {
-        setError('Please enter a valid recipient email address.');
+      parsedRecipients = splitEmails(recipientEmail);
+      if (parsedRecipients.length === 0) {
+        setError('Please enter at least one recipient email address.');
         return;
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(recipientEmail.trim())) {
-        setError('Please enter a valid email address (e.g. partner@example.com).');
-        return;
+      for (const email of parsedRecipients) {
+        if (!emailRegex.test(email)) {
+          setError(`Invalid recipient email address format: "${email}". Please enter valid email(s).`);
+          return;
+        }
+      }
+
+      parsedCc = splitEmails(ccEmails);
+      for (const email of parsedCc) {
+        if (!emailRegex.test(email)) {
+          setError(`Invalid CC email address format: "${email}". Please enter valid email(s).`);
+          return;
+        }
       }
     } else {
       if (!selectedDept) {
@@ -255,6 +281,9 @@ const MOUShareModal = ({
 
     try {
       const expiresAt = calculateExpiryDate();
+      const displayTarget = shareMode === 'email'
+        ? `${parsedRecipients.join(', ')}${parsedCc.length > 0 ? ` (CC: ${parsedCc.join(', ')})` : ''}`
+        : selectedDept;
 
       if (initialFile) {
         const payload = {
@@ -267,7 +296,10 @@ const MOUShareModal = ({
         };
 
         if (shareMode === 'email') {
-          payload.recipient_email = recipientEmail.trim().toLowerCase();
+          payload.recipient_email = parsedRecipients.join(', ');
+          if (parsedCc.length > 0) {
+            payload.cc_emails = parsedCc.join(', ');
+          }
         } else {
           payload.department_name = selectedDept;
         }
@@ -276,9 +308,11 @@ const MOUShareModal = ({
         if (shareMode === 'email' && res?.email_sent === false) {
           showCustomToast.warning(`File "${initialFile.name}" added to Shared Files, but the email delivery failed. Please verify SMTP settings.`);
         } else {
-          showCustomToast.success(`File "${initialFile.name}" shared with ${shareMode === 'email' ? recipientEmail : selectedDept}`);
+          showCustomToast.success(`File "${initialFile.name}" shared with ${displayTarget}`);
         }
         setRecipientEmail('');
+        setCcEmails('');
+        setShowCc(false);
         setSelectedDept('');
         onShareSuccess(res);
         onClose();
@@ -299,7 +333,10 @@ const MOUShareModal = ({
       };
 
       if (shareMode === 'email') {
-        payload.recipient_email = recipientEmail.trim().toLowerCase();
+        payload.recipient_email = parsedRecipients.join(', ');
+        if (parsedCc.length > 0) {
+          payload.cc_emails = parsedCc.join(', ');
+        }
       } else {
         payload.department_name = selectedDept;
       }
@@ -309,13 +346,15 @@ const MOUShareModal = ({
       if (shareMode === 'email' && res?.email_sent === false) {
         showCustomToast.warning(`MOU added to Shared Files, but notification email delivery failed. Please verify SMTP settings.`);
       } else if (res?.created) {
-        showCustomToast.success(`MOU shared with ${shareMode === 'email' ? recipientEmail : selectedDept}`);
+        showCustomToast.success(`MOU shared with ${displayTarget}`);
       } else {
-        showCustomToast.success(`Updated sharing permissions for ${shareMode === 'email' ? recipientEmail : selectedDept}`);
+        showCustomToast.success(`Updated sharing permissions for ${displayTarget}`);
       }
 
       // Reset form
       setRecipientEmail('');
+      setCcEmails('');
+      setShowCc(false);
       setSelectedDept('');
       onShareSuccess(res);
       onClose();
@@ -539,8 +578,8 @@ const MOUShareModal = ({
                 <TextField
                   fullWidth
                   size="small"
-                  label="Recipient Email Address"
-                  placeholder="e.g. partner@example.com or faculty@mcc.edu"
+                  label="Recipient Email Address(es)"
+                  placeholder="e.g. partner@example.com, colleague@mcc.edu"
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
                   slotProps={{
@@ -550,32 +589,56 @@ const MOUShareModal = ({
                           <EmailIcon fontSize="small" sx={{ color: 'text.secondary' }} />
                         </InputAdornment>
                       ),
-                      endAdornment: userLookupStatus && (
+                      endAdornment: (
                         <InputAdornment position="end">
-                          {userLookupStatus === 'found' ? (
-                            <Tooltip title="Registered portal account found. File will appear immediately in their Shared Files.">
-                              <Chip
-                                icon={<CheckCircleIcon sx={{ '&&': { color: '#16A34A' } }} />}
-                                label="Verified User"
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                            {!showCc && !ccEmails && (
+                              <Button
                                 size="small"
-                                sx={{ bgcolor: 'rgba(22,163,74,0.1)', color: '#16A34A', fontWeight: 700 }}
-                              />
-                            </Tooltip>
-                          ) : (
-                            <Tooltip title="No account yet. A secure registration invitation will be linked so they can sign up and access their Shared Files.">
-                              <Chip
-                                icon={<PersonIcon sx={{ '&&': { color: '#2563EB' } }} />}
-                                label="New Recipient"
-                                size="small"
-                                sx={{ bgcolor: 'rgba(37,99,235,0.1)', color: '#2563EB', fontWeight: 700 }}
-                              />
-                            </Tooltip>
-                          )}
+                                onClick={() => setShowCc(true)}
+                                sx={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  minWidth: 0,
+                                  px: 1,
+                                  py: 0.2,
+                                  borderRadius: '6px',
+                                  textTransform: 'none',
+                                  color: '#2563EB',
+                                  bgcolor: 'rgba(37,99,235,0.08)',
+                                  '&:hover': { bgcolor: 'rgba(37,99,235,0.18)' }
+                                }}
+                              >
+                                + CC
+                              </Button>
+                            )}
+                            {userLookupStatus && (
+                              userLookupStatus === 'found' ? (
+                                <Tooltip title="Registered portal account found. File will appear immediately in their Shared Files.">
+                                  <Chip
+                                    icon={<CheckCircleIcon sx={{ '&&': { color: '#16A34A' } }} />}
+                                    label="Verified"
+                                    size="small"
+                                    sx={{ bgcolor: 'rgba(22,163,74,0.1)', color: '#16A34A', fontWeight: 700, height: 24 }}
+                                  />
+                                </Tooltip>
+                              ) : (
+                                <Tooltip title="New recipient. An account registration invitation will be linked so they can sign up and access their Shared Files.">
+                                  <Chip
+                                    icon={<PersonIcon sx={{ '&&': { color: '#2563EB' } }} />}
+                                    label="New"
+                                    size="small"
+                                    sx={{ bgcolor: 'rgba(37,99,235,0.1)', color: '#2563EB', fontWeight: 700, height: 24 }}
+                                  />
+                                </Tooltip>
+                              )
+                            )}
+                          </Box>
                         </InputAdornment>
                       )
                     }
                   }}
-                  helperText="Recipient will receive DOWNLOAD MOU and MOVE TO MOU action buttons."
+                  helperText="Send to multiple recipients by separating emails with commas or semicolons."
                 />
               </Grid>
 
@@ -603,6 +666,43 @@ const MOUShareModal = ({
                   </Select>
                 </FormControl>
               </Grid>
+
+              {/* Mode 1 - CC Recipients Field */}
+              {(showCc || ccEmails) && (
+                <Grid xs={12}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="CC (Carbon Copy) — Optional"
+                    placeholder="e.g. legal-cell@mcc.edu, hod@mcc.edu (separate multiple with commas)"
+                    value={ccEmails}
+                    onChange={(e) => setCcEmails(e.target.value)}
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <EmailIcon fontSize="small" sx={{ color: '#2563EB' }} />
+                          </InputAdornment>
+                        ),
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <Tooltip title="Remove CC field">
+                              <IconButton
+                                size="small"
+                                onClick={() => { setCcEmails(''); setShowCc(false); }}
+                                sx={{ p: 0.5 }}
+                              >
+                                <CloseIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </InputAdornment>
+                        )
+                      }
+                    }}
+                    helperText="CC recipients will be carbon-copied on the email and receive view access in their portal."
+                  />
+                </Grid>
+              )}
 
               {/* Email Subject Line (Editable) */}
               <Grid xs={12}>

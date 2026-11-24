@@ -58,6 +58,7 @@ const TemplateDetail = () => {
   // Email Dialog state
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailRecipient, setEmailRecipient] = useState('');
+  const [emailCc, setEmailCc] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [emailSending, setEmailSending] = useState(false);
@@ -169,6 +170,7 @@ const TemplateDetail = () => {
   const handleOpenEmail = (doc) => {
     setSelectedDocForEmail(doc);
     setEmailRecipient('');
+    setEmailCc('');
     setEmailSubject(`Attached Template: ${doc.document_name}`);
     setEmailBody(`Dear user,\n\nPlease find the attached template document: ${doc.document_name} v${doc.version}.\n\nBest regards,\nLegal Document Management System`);
     setEmailOpen(true);
@@ -182,6 +184,7 @@ const TemplateDetail = () => {
     try {
       await sendTemplateDocumentEmail(selectedDocForEmail.id, {
         recipient_email: emailRecipient.trim(),
+        cc_emails: emailCc.trim(),
         subject: emailSubject.trim(),
         body: emailBody.trim()
       });
@@ -584,12 +587,23 @@ const TemplateDetail = () => {
               
               <TextField
                 required
-                label="Recipient Email"
-                placeholder="e.g. user@example.com"
-                type="email"
+                label="Recipient Email(s)"
+                placeholder="e.g. user1@example.com, user2@example.com"
+                type="text"
                 value={emailRecipient}
                 onChange={(e) => setEmailRecipient(e.target.value)}
                 fullWidth
+                helperText="Separate multiple recipient emails with commas or semicolons."
+              />
+
+              <TextField
+                label="CC (Carbon Copy) — Optional"
+                placeholder="e.g. legal@mcc.edu, hod@mcc.edu"
+                type="text"
+                value={emailCc}
+                onChange={(e) => setEmailCc(e.target.value)}
+                fullWidth
+                helperText="Optional CC email addresses separated by commas."
               />
 
               <TextField

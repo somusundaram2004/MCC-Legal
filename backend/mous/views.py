@@ -557,15 +557,19 @@ class MOUShareView(APIView):
     def post(self, request, pk):
         mou = get_object_or_404(MOU, id=pk)
         department_name = request.data.get('department_name')
-        raw_email = request.data.get('user_email') or request.data.get('recipient_email')
-        recipient_email = raw_email.strip().lower() if raw_email else None
+        raw_email = request.data.get('user_email') or request.data.get('recipient_email') or request.data.get('recipient_emails')
+        raw_cc = request.data.get('cc_email') or request.data.get('cc_emails') or request.data.get('cc')
         permission = request.data.get('permission', 'View Only')
         template_key = request.data.get('email_template') or request.data.get('template_key', 'standard')
         email_subject = request.data.get('email_subject')
         custom_message = request.data.get('custom_message') or request.data.get('message')
         expires_at_val = request.data.get('expires_at')
 
-        if not department_name and not recipient_email:
+        from services.email_service import parse_email_list
+        recipient_list = parse_email_list(raw_email)
+        cc_list = [e for e in parse_email_list(raw_cc) if e not in recipient_list]
+
+        if not department_name and not recipient_list:
             return Response({"detail": "Please provide a recipient email address or select a department."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Resolve department folder if department sharing
@@ -586,172 +590,232 @@ class MOUShareView(APIView):
                 except Exception as drive_err:
                     logger.warning(f"Could not create Google Drive folder for {dept_folder.name}: {drive_err}")
 
-        # Resolve target user if email provided
-        target_user = None
-        temp_password = None
-        if recipient_email:
-            target_user = User.objects.filter(email__iexact=recipient_email).first()
-
-            # If recipient has no account, auto-register them and generate a simple temporary password
-            if not target_user:
-                try:
-                    import random
-                    from roles.models import Role
-
-                    # Simple 6-digit random password, e.g. Mcc@492817
-                    rand_digits = ''.join(random.choices('0123456789', k=6))
-                    temp_password = f"Mcc@{rand_digits}"
-
-                    # Clean human name from email handle
-                    raw_handle = recipient_email.split('@')[0]
-                    clean_name = raw_handle.replace('.', ' ').replace('_', ' ').replace('-', ' ').title()
-
-                    default_role = Role.objects.filter(name='User').first() or Role.objects.first()
-                    target_dept = department_name or (mou.department_name if mou else '') or 'External Partner'
-
-                    target_user = User.objects.create_user(
-                        email=recipient_email.lower().strip(),
-                        password=temp_password,
-                        name=clean_name or 'Partner User',
-                        role=default_role,
-                        department=target_dept,
-                        status='Active',
-                        is_active=True
-                    )
-                    logger.info(f"Auto-registered user account for share recipient: {recipient_email}")
-                except Exception as reg_err:
-                    logger.error(f"Failed to auto-register user for {recipient_email}: {reg_err}", exc_info=True)
-
         # Resolve document file reference
         shared_file = mou.signed_mou or mou.original_mou or (mou.documents.first().file if mou.documents.exists() else None)
         doc_version = (shared_file.version_number if (shared_file and hasattr(shared_file, 'version_number')) else mou.version_number) or 1
 
+        primary_share = None
+        created_any = False
+        primary_temp_password = None
+
         with transaction.atomic():
-            # Check whether recipient already has access to the document
-            existing_share = None
-            if recipient_email:
-                q = Q(recipient_email__iexact=recipient_email)
+            now_iso = timezone.now().isoformat()
+
+            # 1. Process Department Sharing if requested
+            if dept_folder:
+                existing_share = MOUShare.objects.filter(mou=mou, department=dept_folder).first()
+                if existing_share:
+                    existing_share.permission = permission
+                    existing_share.shared_by = request.user
+                    existing_share.shared_file = shared_file
+                    existing_share.document_version = doc_version
+                    existing_share.email_template = template_key
+                    if email_subject:
+                        existing_share.email_subject = email_subject
+                    if custom_message:
+                        existing_share.custom_message = custom_message
+                    if expires_at_val:
+                        existing_share.expires_at = expires_at_val
+                    existing_share.access_status = 'Active'
+                    history = list(existing_share.sharing_history or [])
+                    history.append({
+                        'action': 'Department Share Updated',
+                        'shared_by': request.user.name or request.user.email,
+                        'shared_at': now_iso,
+                        'permission': permission,
+                        'department': dept_folder.name
+                    })
+                    existing_share.sharing_history = history
+                    existing_share.save()
+                    primary_share = existing_share
+                else:
+                    primary_share = MOUShare.objects.create(
+                        mou=mou,
+                        department=dept_folder,
+                        shared_by=request.user,
+                        permission=permission,
+                        status='Shared',
+                        shared_file=shared_file,
+                        document_version=doc_version,
+                        email_template=template_key,
+                        email_subject=email_subject,
+                        custom_message=custom_message,
+                        access_status='Active',
+                        expires_at=expires_at_val,
+                        sharing_history=[{
+                            'action': 'Initial Department Share',
+                            'shared_by': request.user.name or request.user.email,
+                            'shared_at': now_iso,
+                            'permission': permission,
+                            'department': dept_folder.name
+                        }]
+                    )
+                    created_any = True
+
+                if mou.department:
+                    from folders.models import Folder
+                    from services import drive_service
+                    sub_folder, sf_created = Folder.objects.get_or_create(
+                        name="Department Submission",
+                        parent=mou.department,
+                        defaults={'created_by': request.user}
+                    )
+                    if sf_created or not sub_folder.google_folder_id:
+                        try:
+                            google_id = drive_service.create_folder(sub_folder.name, mou.department.google_folder_id)
+                            sub_folder.google_folder_id = google_id
+                            sub_folder.save(update_fields=['google_folder_id'])
+                        except Exception:
+                            pass
+
+            # 2. Process Email Recipients (Primary + CC)
+            all_target_tuples = [(em, permission, 'to') for em in recipient_list] + [(em, 'View Only', 'cc') for em in cc_list]
+
+            for target_email, perm, r_type in all_target_tuples:
+                target_user = User.objects.filter(email__iexact=target_email).first()
+                temp_password = None
+
+                if not target_user:
+                    try:
+                        import random
+                        from roles.models import Role
+
+                        rand_digits = ''.join(random.choices('0123456789', k=6))
+                        temp_password = f"Mcc@{rand_digits}"
+
+                        raw_handle = target_email.split('@')[0]
+                        clean_name = raw_handle.replace('.', ' ').replace('_', ' ').replace('-', ' ').title()
+
+                        default_role = Role.objects.filter(name='User').first() or Role.objects.first()
+                        target_dept = department_name or (mou.department_name if mou else '') or 'External Partner'
+
+                        target_user = User.objects.create_user(
+                            email=target_email,
+                            password=temp_password,
+                            name=clean_name or 'Partner User',
+                            role=default_role,
+                            department=target_dept,
+                            status='Active',
+                            is_active=True
+                        )
+                        logger.info(f"Auto-registered user account for share recipient: {target_email}")
+                    except Exception as reg_err:
+                        logger.error(f"Failed to auto-register user for {target_email}: {reg_err}", exc_info=True)
+
+                if r_type == 'to' and not primary_temp_password and temp_password:
+                    primary_temp_password = temp_password
+
+                q = Q(recipient_email__iexact=target_email)
                 if target_user:
                     q |= Q(user=target_user)
                 existing_share = MOUShare.objects.filter(mou=mou).filter(q).first()
-            elif dept_folder:
-                existing_share = MOUShare.objects.filter(mou=mou, department=dept_folder).first()
 
-            now_iso = timezone.now().isoformat()
+                if existing_share:
+                    existing_share.permission = perm
+                    existing_share.shared_by = request.user
+                    existing_share.shared_file = shared_file
+                    existing_share.document_version = doc_version
+                    existing_share.email_template = template_key
+                    if email_subject:
+                        existing_share.email_subject = email_subject
+                    if custom_message:
+                        existing_share.custom_message = custom_message
+                    if expires_at_val:
+                        existing_share.expires_at = expires_at_val
+                    existing_share.access_status = 'Active'
 
-            if existing_share:
-                # Recipient already has the file: do not create duplicate. Update info & history.
-                existing_share.permission = permission
-                existing_share.shared_by = request.user
-                existing_share.shared_file = shared_file
-                existing_share.document_version = doc_version
-                existing_share.email_template = template_key
-                if email_subject:
-                    existing_share.email_subject = email_subject
-                if custom_message:
-                    existing_share.custom_message = custom_message
-                if expires_at_val:
-                    existing_share.expires_at = expires_at_val
-                existing_share.access_status = 'Active'
+                    history = list(existing_share.sharing_history or [])
+                    history.append({
+                        'action': 'Share Updated & Resent',
+                        'shared_by': request.user.name or request.user.email,
+                        'shared_at': now_iso,
+                        'permission': perm,
+                        'role_in_mail': r_type,
+                        'template': template_key,
+                        'cc': cc_list
+                    })
+                    existing_share.sharing_history = history
+                    existing_share.save()
+                    if r_type == 'to' and not primary_share:
+                        primary_share = existing_share
+                else:
+                    new_share = MOUShare.objects.create(
+                        mou=mou,
+                        department=dept_folder,
+                        user=target_user,
+                        recipient_email=target_email,
+                        shared_by=request.user,
+                        permission=perm,
+                        status='Shared',
+                        shared_file=shared_file,
+                        document_version=doc_version,
+                        email_template=template_key,
+                        email_subject=email_subject,
+                        custom_message=custom_message,
+                        access_status='Active',
+                        expires_at=expires_at_val,
+                        sharing_history=[{
+                            'action': f'Initial Share ({r_type.upper()})',
+                            'shared_by': request.user.name or request.user.email,
+                            'shared_at': now_iso,
+                            'permission': perm,
+                            'recipient': target_email,
+                            'template': template_key,
+                            'cc': cc_list
+                        }]
+                    )
+                    created_any = True
+                    if r_type == 'to' and not primary_share:
+                        primary_share = new_share
 
-                history = list(existing_share.sharing_history or [])
-                history.append({
-                    'action': 'Share Updated & Resent',
-                    'shared_by': request.user.name or request.user.email,
-                    'shared_at': now_iso,
-                    'permission': permission,
-                    'template': template_key
-                })
-                existing_share.sharing_history = history
-                existing_share.save()
-                share = existing_share
-                created = False
-            else:
-                # Recipient does not have the file: create new sharing record
-                history_initial = [{
-                    'action': 'Initial Share',
-                    'shared_by': request.user.name or request.user.email,
-                    'shared_at': now_iso,
-                    'permission': permission,
-                    'recipient': recipient_email or (dept_folder.name if dept_folder else ''),
-                    'template': template_key
-                }]
-                share = MOUShare.objects.create(
-                    mou=mou,
-                    department=dept_folder,
-                    user=target_user,
-                    recipient_email=recipient_email or (target_user.email if target_user else None),
-                    shared_by=request.user,
-                    permission=permission,
-                    status='Shared',
-                    shared_file=shared_file,
-                    document_version=doc_version,
-                    email_template=template_key,
-                    email_subject=email_subject,
-                    custom_message=custom_message,
-                    access_status='Active',
-                    expires_at=expires_at_val,
-                    sharing_history=history_initial
-                )
-                created = True
+                # Notify registered users in-app
+                if target_user:
+                    send_notification(
+                        target_user,
+                        "MOU Shared With You",
+                        f"MOU '{mou.title}' has been shared with you with permission '{perm}'."
+                    )
 
-            # If department share, ensure "Department Submission" folder exists under MOU folder
-            if dept_folder and mou.department:
-                from folders.models import Folder
-                from services import drive_service
-                sub_folder_name = "Department Submission"
-                sub_folder, sf_created = Folder.objects.get_or_create(
-                    name=sub_folder_name,
-                    parent=mou.department,
-                    defaults={'created_by': request.user}
-                )
-                if sf_created or not sub_folder.google_folder_id:
-                    try:
-                        google_id = drive_service.create_folder(sub_folder.name, mou.department.google_folder_id)
-                        sub_folder.google_folder_id = google_id
-                        sub_folder.save(update_fields=['google_folder_id'])
-                    except Exception:
-                        pass
-
-        # Send email if recipient email provided
+        # Send email if primary recipients provided
         email_sent = False
-        target_display = recipient_email or (dept_folder.name if dept_folder else "Recipient")
-        if recipient_email:
+        target_display = ", ".join(recipient_list) if recipient_list else (dept_folder.name if dept_folder else "Recipient")
+        if cc_list:
+            target_display += f" (CC: {', '.join(cc_list)})"
+
+        if recipient_list and primary_share:
             email_sent = send_mou_share_email(
-                share,
+                primary_share,
                 email_template_key=template_key,
                 custom_subject=email_subject,
                 custom_message=custom_message,
                 sender_name=request.user.name or request.user.email,
-                temp_password=temp_password,
-                request=request
+                temp_password=primary_temp_password,
+                request=request,
+                cc_emails=cc_list,
+                extra_recipients=recipient_list[1:]
             )
 
         # Log & Notify
-        action_desc = "Shared" if created else "Updated share for"
+        action_desc = "Shared" if created_any else "Updated share for"
         log_activity(
             request.user,
             f"{action_desc} MOU '{mou.title}' with {target_display} ({permission})",
             module="MOUs",
             ip_address=request.META.get('REMOTE_ADDR')
         )
-        if target_user:
-            send_notification(
-                target_user,
-                "MOU Shared With You",
-                f"MOU '{mou.title}' has been shared with you with permission '{permission}'."
-            )
 
-        detail_msg = "MOU shared successfully." if created else "Sharing record updated and email sent."
-        if recipient_email and not email_sent:
-            detail_msg = f"Document access granted in Shared Files, but the notification email could not be delivered to {recipient_email}. Please check SMTP configuration."
+        detail_msg = f"MOU shared successfully with {target_display}." if created_any else f"Sharing record updated and email sent to {target_display}."
+        if recipient_list and not email_sent:
+            detail_msg = f"Document access granted in Shared Files, but the notification email could not be delivered to {target_display}. Please check SMTP configuration."
 
         return Response({
             "detail": detail_msg,
-            "created": created,
+            "created": created_any,
             "email_sent": email_sent,
-            "share": MOUShareSerializer(share, context={'request': request}).data
-        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+            "recipients": recipient_list,
+            "cc": cc_list,
+            "share": MOUShareSerializer(primary_share, context={'request': request}).data if primary_share else None
+        }, status=status.HTTP_201_CREATED if created_any else status.HTTP_200_OK)
 
 
 class MOUShareFileView(APIView):
@@ -860,6 +924,9 @@ class MOUShareResendView(APIView):
         template_key = request.data.get('email_template') or share.email_template or 'standard'
         custom_subject = request.data.get('email_subject') or share.email_subject
         custom_message = request.data.get('custom_message') or share.custom_message
+        raw_cc = request.data.get('cc_email') or request.data.get('cc_emails') or request.data.get('cc')
+        from services.email_service import parse_email_list
+        cc_list = parse_email_list(raw_cc)
 
         email_sent = send_mou_share_email(
             share,
@@ -867,7 +934,8 @@ class MOUShareResendView(APIView):
             custom_subject=custom_subject,
             custom_message=custom_message,
             sender_name=request.user.name or request.user.email,
-            request=request
+            request=request,
+            cc_emails=cc_list
         )
 
         history = list(share.sharing_history or [])
@@ -2115,12 +2183,17 @@ class TemplateDocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='send-email')
     def send_email(self, request, pk=None):
         doc = self.get_object()
-        recipient_email = request.data.get('recipient_email')
+        raw_email = request.data.get('recipient_email') or request.data.get('recipient_emails')
+        raw_cc = request.data.get('cc_email') or request.data.get('cc_emails') or request.data.get('cc')
         subject = request.data.get('subject') or f"Attached Document: {doc.document_name}"
         body = request.data.get('body') or f"Please find the attached document: {doc.document_name}."
 
-        if not recipient_email:
-            return Response({"detail": "recipient_email is required."}, status=status.HTTP_400_BAD_REQUEST)
+        from services.email_service import parse_email_list
+        recipient_list = parse_email_list(raw_email)
+        cc_list = [e for e in parse_email_list(raw_cc) if e not in recipient_list]
+
+        if not recipient_list:
+            return Response({"detail": "Please provide at least one recipient email address."}, status=status.HTTP_400_BAD_REQUEST)
 
         # 1. Retrieve the file bytes
         import os
@@ -2169,7 +2242,8 @@ class TemplateDocumentViewSet(viewsets.ModelViewSet):
                 subject=subject,
                 body=body,
                 from_email=from_email,
-                to=[recipient_email],
+                to=recipient_list,
+                cc=cc_list if cc_list else None,
                 connection=connection
             )
             # Attach PDF
@@ -2177,8 +2251,11 @@ class TemplateDocumentViewSet(viewsets.ModelViewSet):
             msg.send()
             
             # Log activity
-            log_activity(request.user, f"Emailed template document '{doc.document_name}' to {recipient_email}", module="Templates")
-            return Response({"detail": f"Email sent successfully to {recipient_email}."})
+            target_desc = ", ".join(recipient_list)
+            if cc_list:
+                target_desc += f" (CC: {', '.join(cc_list)})"
+            log_activity(request.user, f"Emailed template document '{doc.document_name}' to {target_desc}", module="Templates")
+            return Response({"detail": f"Email sent successfully to {target_desc}."})
         except Exception as e:
             return Response({"detail": f"Failed to send email: {str(e)}"}, status=500)
 

@@ -8,6 +8,33 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def parse_email_list(raw_input):
+    """
+    Parses comma, semicolon, space, or newline separated emails, or a list/tuple of emails,
+    returning a deduplicated list of lowercase, valid email strings.
+    """
+    if not raw_input:
+        return []
+    if isinstance(raw_input, (list, tuple, set)):
+        items = list(raw_input)
+    elif isinstance(raw_input, str):
+        import re
+        items = re.split(r'[,;\s\n]+', raw_input)
+    else:
+        items = [str(raw_input)]
+
+    valid_emails = []
+    seen = set()
+    for item in items:
+        if not item:
+            continue
+        clean = item.strip().lower()
+        if clean and '@' in clean and '.' in clean:
+            if clean not in seen:
+                seen.add(clean)
+                valid_emails.append(clean)
+    return valid_emails
+
 def send_invitation_email(email, invite_url, expires_at):
     """
     Renders and sends a professional HTML invitation email using Django SMTP configurations.
@@ -334,20 +361,36 @@ SHARE_EMAIL_TEMPLATES = {
 }
 
 
-def send_mou_share_email(share, email_template_key='standard', custom_subject=None, custom_message=None, sender_name=None, temp_password=None, request=None):
+def send_mou_share_email(share, email_template_key='standard', custom_subject=None, custom_message=None, sender_name=None, temp_password=None, request=None, cc_emails=None, extra_recipients=None):
     """
     Renders and sends a high-contrast, professional HTML email for MOU document sharing
-    with two distinct action buttons:
+    with support for multiple recipients and CC recipients:
     1. DOWNLOAD MOU (Direct secure download to device Downloads folder)
     2. MOVE TO MOU (Redirects to MCC Legal portal / MOU details with highlighting)
     Also includes auto-generated temporary credentials if a new user account was registered.
     """
     try:
         mou = share.mou
-        recipient_email = share.recipient_email or (share.user.email if share.user else None)
-        if not recipient_email:
+        primary_recipient = share.recipient_email or (share.user.email if share.user else None)
+        all_recipients = []
+        if primary_recipient:
+            all_recipients.append(primary_recipient.strip().lower())
+        if extra_recipients:
+            for em in parse_email_list(extra_recipients):
+                if em not in all_recipients:
+                    all_recipients.append(em)
+
+        if not all_recipients:
             logger.warning(f"send_mou_share_email: No recipient email on MOUShare ID {share.id}")
             return False
+
+        cc_list = []
+        if cc_emails:
+            for em in parse_email_list(cc_emails):
+                if em not in all_recipients and em not in cc_list:
+                    cc_list.append(em)
+
+        recipient_email = all_recipients[0]
 
         if not sender_name:
             sender_name = "Legal Administrator"
@@ -362,7 +405,7 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
             '{mou_number}': mou.mou_number,
             '{partner_organization}': mou.partner_organization or 'Partner Institution',
             '{sender_name}': sender_name,
-            '{recipient_email}': recipient_email,
+            '{recipient_email}': ", ".join(all_recipients),
         }
 
         from users.models import EmailNotificationSetting
@@ -384,6 +427,13 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
         # Highest priority: Super Admin configured Portal Base URL in Settings
         configured_base = email_config.portal_base_url.strip().rstrip('/') if (email_config and email_config.portal_base_url) else None
         
+        request_origin = None
+        if request:
+            try:
+                request_origin = request.build_absolute_uri('/')[:-1]
+            except Exception:
+                pass
+
         if configured_base:
             frontend_url = configured_base
         elif request_origin:
@@ -528,6 +578,26 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
         version_label = f"v{share.document_version}"
         expiry_info = mou.expiry_date.strftime('%B %d, %Y') if mou.expiry_date else 'No Expiry Date'
 
+        recipients_row = ""
+        if len(all_recipients) > 1:
+            recipients_display = ", ".join(all_recipients)
+            recipients_row = f"""
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748B; font-weight: 600;">Recipients:</td>
+                      <td style="padding: 6px 0; color: #0F172A; font-weight: 600;">{recipients_display}</td>
+                    </tr>
+            """
+
+        cc_row = ""
+        if cc_list:
+            cc_display = ", ".join(cc_list)
+            cc_row = f"""
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748B; font-weight: 600;">CC:</td>
+                      <td style="padding: 6px 0; color: #2563EB; font-weight: 600;">{cc_display}</td>
+                    </tr>
+            """
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -599,6 +669,8 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
                       <td style="padding: 6px 0; color: #64748B; font-weight: 600;">Shared By:</td>
                       <td style="padding: 6px 0; color: #0F172A;">{sender_name} ({sender_email_display})</td>
                     </tr>
+                    {recipients_row}
+                    {cc_row}
                   </table>
                 </div>
 
@@ -657,11 +729,14 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
         </html>
         """
 
+        cc_text_line = f"CC: {', '.join(cc_list)}\n" if cc_list else ""
         text_content = (
             f"MCC LEGAL - MOU DOCUMENT SHARING\n\n"
             f"Document: {mou.title} ({mou.mou_number})\n"
             f"Partner: {mou.partner_organization or 'MCC Partner'}\n"
-            f"Shared By: {sender_name} ({sender_email_display})\n\n"
+            f"Shared By: {sender_name} ({sender_email_display})\n"
+            f"Recipient(s): {', '.join(all_recipients)}\n"
+            f"{cc_text_line}"
             f"{raw_body}\n"
             f"{credentials_text}\n"
             f"Actions:\n"
@@ -693,13 +768,14 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
             subject=subject,
             body=text_content,
             from_email=from_email,
-            to=[recipient_email],
+            to=all_recipients,
+            cc=cc_list if cc_list else None,
             connection=connection
         )
         msg.attach_alternative(html_content, "text/html")
         msg.send()
 
-        logger.info(f"MOU share email successfully sent to {recipient_email} for MOU '{mou.title}'")
+        logger.info(f"MOU share email successfully sent to {all_recipients} (CC: {cc_list}) for MOU '{mou.title}'")
         return True
     except Exception as e:
         logger.error(f"Error sending MOU share email to {getattr(share, 'recipient_email', 'unknown')}: {e}", exc_info=True)
