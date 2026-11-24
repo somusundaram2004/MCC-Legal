@@ -18,42 +18,52 @@ import { shareMOU, shareFileDirect, getShareTemplates, getMOUs } from '../servic
 import { showCustomToast } from '../utils/customToast';
 
 const BUILD_DEFAULT_MESSAGE = (fileName) =>
-`mou repository has been created to track the status of the mous 
+`Dear Colleague,
 
-pfa "${fileName || 'file name'}"
+The MCC Legal MOU Repository has been established to systematically monitor and maintain the operational lifecycle and compliance status of institutional Memoranda of Understanding.
 
-kindly update the status of the attached:
-1. is it been signed ?
-2. if yes , update the date .
-3. beneficiary / operationactivity  under this mou 
-4. if signed ,kindly upload the signed mou in the repository for record 
+Please find attached for your review and records:
+"${fileName || 'file name'}"
 
-thank you 
-regards 
-Dr selvi g 
-legalcoordinator`;
+Kindly review the attached agreement and provide an updated status on the following:
+1. Has this Memorandum of Understanding (MOU) been officially signed?
+2. If yes, kindly confirm the execution / signing date.
+3. Detail the key beneficiaries and operational activities conducted under this MOU.
+4. If signed, kindly upload the executed / signed copy into the MCC Legal Repository for institutional records.
+
+Thank you for your prompt attention and cooperation.
+
+Warm regards,
+Dr. Selvi G
+Legal Coordinator
+Madras Christian College (MCC)`;
 
 const PREDEFINED_TEMPLATES = [
   {
     id: 'standard',
     name: 'MOU Status & Signature Tracking',
     category: 'MOU Repository Status',
-    subject: 'Status Update: {mou_title}',
+    subject: 'Action Required: MOU Status Update & Signature Tracking - {mou_title}',
     description: 'Track MOU signing status, execution date, beneficiary activity, and signed record.',
-    body: `mou repository has been created to track the status of the mous 
+    body: `Dear Colleague,
 
-pfa "{mou_title}"
+The MCC Legal MOU Repository has been established to systematically monitor and maintain the operational lifecycle and compliance status of institutional Memoranda of Understanding.
 
-kindly update the status of the attached:
-1. is it been signed ?
-2. if yes , update the date .
-3. beneficiary / operationactivity  under this mou 
-4. if signed ,kindly upload the signed mou in the repository for record 
+Please find attached for your review and records:
+"{mou_title}"
 
-thank you 
-regards 
-Dr selvi g 
-legalcoordinator`
+Kindly review the attached agreement and provide an updated status on the following:
+1. Has this Memorandum of Understanding (MOU) been officially signed?
+2. If yes, kindly confirm the execution / signing date.
+3. Detail the key beneficiaries and operational activities conducted under this MOU.
+4. If signed, kindly upload the executed / signed copy into the MCC Legal Repository for institutional records.
+
+Thank you for your prompt attention and cooperation.
+
+Warm regards,
+Dr. Selvi G
+Legal Coordinator
+Madras Christian College (MCC)`
   },
   {
     id: 'review_and_sign',
@@ -663,15 +673,15 @@ const MOUShareModal = ({
                 <TextField
                   fullWidth
                   size="small"
-                  label="Recipient Email Address(es)"
-                  placeholder="e.g. somusuraj72@gmail.com, paulrenine9487@gmail.com, partner@mcc.edu"
+                  label="Primary Recipients (Action Required — To)"
+                  placeholder="e.g. somusuraj72@gmail.com, partner@mcc.edu, hod@mcc.edu"
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
                   slotProps={{
                     input: {
                       startAdornment: (
                         <InputAdornment position="start">
-                          <EmailIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                          <EmailIcon fontSize="small" sx={{ color: '#2563EB' }} />
                         </InputAdornment>
                       ),
                       endAdornment: (
@@ -723,7 +733,7 @@ const MOUShareModal = ({
                       )
                     }
                   }}
-                  helperText="Enter one or multiple recipient emails separated by commas or semicolons (no limit)."
+                  helperText="Primary recipients will receive individual emails with their own login credentials and the 4-point action checklist."
                 />
 
                 {/* Recipient Chips Preview */}
@@ -731,9 +741,9 @@ const MOUShareModal = ({
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1, alignItems: 'center' }}>
                     <Chip
                       size="small"
-                      label={`${recipientChips.length} Recipient${recipientChips.length > 1 ? 's' : ''}`}
+                      label={`${recipientChips.length} Primary (Action Required)`}
                       sx={{
-                        bgcolor: 'rgba(37,99,235,0.1)',
+                        bgcolor: 'rgba(37,99,235,0.12)',
                         color: '#1D4ED8',
                         fontWeight: 800,
                         height: 24,
@@ -744,7 +754,8 @@ const MOUShareModal = ({
                     {recipientChips.map((em) => (
                       <Chip
                         key={em}
-                        label={em}
+                        icon={<PersonIcon sx={{ fontSize: '15px !important', color: '#2563EB !important' }} />}
+                        label={`To: ${em}`}
                         size="small"
                         onDelete={() => handleRemoveRecipient(em)}
                         sx={{
@@ -767,7 +778,7 @@ const MOUShareModal = ({
                   <TextField
                     fullWidth
                     size="small"
-                    label="CC (Carbon Copy) — Optional"
+                    label="CC Recipients (For Information & Reference Only — Carbon Copy)"
                     placeholder="e.g. legal-cell@mcc.edu, hod@mcc.edu, supervisor@domain.com"
                     value={ccEmails}
                     onChange={(e) => setCcEmails(e.target.value)}
@@ -775,7 +786,7 @@ const MOUShareModal = ({
                       input: {
                         startAdornment: (
                           <InputAdornment position="start">
-                            <EmailIcon fontSize="small" sx={{ color: '#2563EB' }} />
+                            <EmailIcon fontSize="small" sx={{ color: '#D97706' }} />
                           </InputAdornment>
                         ),
                         endAdornment: (
@@ -793,7 +804,7 @@ const MOUShareModal = ({
                         )
                       }
                     }}
-                    helperText="CC recipients will be carbon-copied on the email notification and receive view access in their portal."
+                    helperText="CC recipients receive separate view-only portal access and an informational copy (no action required)."
                   />
 
                   {/* CC Chips Preview */}
@@ -801,7 +812,7 @@ const MOUShareModal = ({
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1, alignItems: 'center' }}>
                       <Chip
                         size="small"
-                        label={`${ccChips.length} CC`}
+                        label={`${ccChips.length} CC (Info & Reference)`}
                         sx={{
                           bgcolor: '#FEF3C7',
                           color: '#92400E',
@@ -814,7 +825,8 @@ const MOUShareModal = ({
                       {ccChips.map((em) => (
                         <Chip
                           key={em}
-                          label={em}
+                          icon={<EmailIcon sx={{ fontSize: '15px !important', color: '#D97706 !important' }} />}
+                          label={`CC: ${em}`}
                           size="small"
                           onDelete={() => handleRemoveCc(em)}
                           sx={{
@@ -831,6 +843,47 @@ const MOUShareModal = ({
                   )}
                 </Grid>
               )}
+
+              {/* Distinction Summary Banner Between TO and CC */}
+              <Grid size={12}>
+                <Box
+                  sx={{
+                    p: 1.4,
+                    borderRadius: '12px',
+                    bgcolor: 'action.hover',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    display: 'flex',
+                    gap: 2,
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip
+                      size="small"
+                      label="TO: Primary Action"
+                      sx={{ bgcolor: '#EFF6FF', color: '#1D4ED8', fontWeight: 800, height: 22, fontSize: '0.72rem', border: '1px solid #BFDBFE' }}
+                    />
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                      {recipientChips.length > 0 ? `${recipientChips.length} recipient(s) receive separate personal logins & action checklist` : 'Add primary action recipients'}
+                    </Typography>
+                  </Box>
+                  {ccChips.length > 0 && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Chip
+                        size="small"
+                        label="CC: Info & Reference"
+                        sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 800, height: 22, fontSize: '0.72rem', border: '1px solid #FDE68A' }}
+                      />
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                        {ccChips.length} CC recipient(s) receive view-only access & informational copy
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Grid>
 
               {/* Template Selector (50% desktop, side-by-side with Access Permission) */}
               <Grid size={{ xs: 12, md: 6 }}>
@@ -997,9 +1050,15 @@ const MOUShareModal = ({
         >
           {submitting
             ? 'Sharing & Sending...'
-            : (recipientChips.length > 1
-                ? `Send Email to ${recipientChips.length} Recipients & Share MOU`
-                : 'Send Email & Share MOU'
+            : (recipientChips.length > 1 && ccChips.length > 0
+                ? `Send Separate Emails (${recipientChips.length} To, ${ccChips.length} CC) & Share MOU`
+                : (recipientChips.length > 1
+                    ? `Send Separate Emails to ${recipientChips.length} Recipients & Share MOU`
+                    : (ccChips.length > 0
+                        ? `Send Email & Share MOU (+${ccChips.length} CC)`
+                        : 'Send Email & Share MOU'
+                      )
+                  )
               )
           }
         </Button>

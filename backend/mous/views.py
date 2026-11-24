@@ -670,6 +670,7 @@ class MOUShareView(APIView):
 
             # 2. Process Email Recipients (Primary + CC)
             all_target_tuples = [(em, permission, 'to') for em in recipient_list] + [(em, 'View Only', 'cc') for em in cc_list]
+            shares_to_notify = []
 
             for target_email, perm, r_type in all_target_tuples:
                 target_user = User.objects.filter(email__iexact=target_email).first()
@@ -699,6 +700,29 @@ class MOUShareView(APIView):
                             is_active=True
                         )
                         logger.info(f"Auto-registered user account for share recipient: {target_email}")
+
+                        try:
+                            from users.models import UserInvitation
+                            from users.invitation_services import TokenService
+                            now_time = timezone.now()
+                            invite_expires = now_time + timedelta(days=7)
+                            signed_token = TokenService.generate_token(
+                                email=target_email,
+                                stream='',
+                                department=target_dept,
+                                role_id=default_role.id if default_role else 3,
+                                expires_at=invite_expires
+                            )
+                            UserInvitation.objects.create(
+                                email=target_email,
+                                system_role=default_role,
+                                department=target_dept,
+                                token=signed_token,
+                                expires_at=invite_expires,
+                                created_by=request.user
+                            )
+                        except Exception as inv_err:
+                            logger.warning(f"Could not record UserInvitation for {target_email}: {inv_err}")
                     except Exception as reg_err:
                         logger.error(f"Failed to auto-register user for {target_email}: {reg_err}", exc_info=True)
 
@@ -736,6 +760,7 @@ class MOUShareView(APIView):
                     })
                     existing_share.sharing_history = history
                     existing_share.save()
+                    target_share = existing_share
                     if r_type == 'to' and not primary_share:
                         primary_share = existing_share
                 else:
@@ -765,6 +790,7 @@ class MOUShareView(APIView):
                         }]
                     )
                     created_any = True
+                    target_share = new_share
                     if r_type == 'to' and not primary_share:
                         primary_share = new_share
 
@@ -776,24 +802,39 @@ class MOUShareView(APIView):
                         f"MOU '{mou.title}' has been shared with you with permission '{perm}'."
                     )
 
-        # Send email if primary recipients provided
+                shares_to_notify.append({
+                    'share': target_share,
+                    'email': target_email,
+                    'role_type': r_type,
+                    'temp_password': temp_password,
+                    'user': target_user
+                })
+
+        # Send separate, personalized emails to each recipient (never cross-leaking temporary passwords)
         email_sent = False
         target_display = ", ".join(recipient_list) if recipient_list else (dept_folder.name if dept_folder else "Recipient")
         if cc_list:
             target_display += f" (CC: {', '.join(cc_list)})"
 
-        if recipient_list and primary_share:
-            email_sent = send_mou_share_email(
-                primary_share,
-                email_template_key=template_key,
-                custom_subject=email_subject,
-                custom_message=custom_message,
-                sender_name=request.user.name or request.user.email,
-                temp_password=primary_temp_password,
-                request=request,
-                cc_emails=cc_list,
-                extra_recipients=recipient_list[1:]
-            )
+        if shares_to_notify:
+            sent_count = 0
+            for item in shares_to_notify:
+                ok = send_mou_share_email(
+                    item['share'],
+                    email_template_key=template_key,
+                    custom_subject=email_subject,
+                    custom_message=custom_message,
+                    sender_name=request.user.name or request.user.email,
+                    temp_password=item['temp_password'],
+                    request=request,
+                    role_type=item['role_type'],
+                    all_to_recipients=recipient_list,
+                    all_cc_recipients=cc_list,
+                    target_recipient_email=item['email']
+                )
+                if ok:
+                    sent_count += 1
+            email_sent = (sent_count > 0)
 
         # Log & Notify
         action_desc = "Shared" if created_any else "Updated share for"

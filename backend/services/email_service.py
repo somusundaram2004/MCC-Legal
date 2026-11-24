@@ -299,20 +299,23 @@ SHARE_EMAIL_TEMPLATES = {
         'id': 'standard',
         'name': 'MOU Status & Signature Tracking',
         'category': 'MOU Repository Status',
-        'subject': 'Status Update: {mou_title}',
+        'subject': 'Action Required: MOU Status Update & Signature Tracking - {mou_title}',
         'description': 'Track MOU status, signature confirmation, execution date, and signed upload.',
         'body': (
-            "mou repository has been created to track the status of the mous \n\n"
-            "pfa \"{mou_title}\"\n\n"
-            "kindly update the status of the attached:\n"
-            "1. is it been signed ?\n"
-            "2. if yes , update the date .\n"
-            "3. beneficiary / operationactivity  under this mou \n"
-            "4. if signed ,kindly upload the signed mou in the repository for record \n\n"
-            "thank you \n"
-            "regards \n"
-            "Dr selvi g \n"
-            "legalcoordinator"
+            "Dear Colleague,\n\n"
+            "The MCC Legal MOU Repository has been established to systematically monitor and maintain the operational lifecycle and compliance status of institutional Memoranda of Understanding.\n\n"
+            "Please find attached for your review and records:\n"
+            "\"{file_name}\"\n\n"
+            "Kindly review the attached agreement and provide an updated status on the following:\n"
+            "1. Has this Memorandum of Understanding (MOU) been officially signed?\n"
+            "2. If yes, kindly confirm the execution / signing date.\n"
+            "3. Detail the key beneficiaries and operational activities conducted under this MOU.\n"
+            "4. If signed, kindly upload the executed / signed copy into the MCC Legal Repository for institutional records.\n\n"
+            "Thank you for your prompt attention and cooperation.\n\n"
+            "Warm regards,\n"
+            "Dr. Selvi G\n"
+            "Legal Coordinator\n"
+            "Madras Christian College (MCC)"
         )
     },
     'review_and_sign': {
@@ -366,36 +369,56 @@ SHARE_EMAIL_TEMPLATES = {
 }
 
 
-def send_mou_share_email(share, email_template_key='standard', custom_subject=None, custom_message=None, sender_name=None, temp_password=None, request=None, cc_emails=None, extra_recipients=None):
+def send_mou_share_email(
+    share,
+    email_template_key='standard',
+    custom_subject=None,
+    custom_message=None,
+    sender_name=None,
+    temp_password=None,
+    request=None,
+    cc_emails=None,
+    extra_recipients=None,
+    role_type='to',
+    all_to_recipients=None,
+    all_cc_recipients=None,
+    target_recipient_email=None
+):
     """
-    Renders and sends a high-contrast, professional HTML email for MOU document sharing
-    with support for multiple recipients and CC recipients:
-    1. DOWNLOAD MOU (Direct secure download to device Downloads folder)
-    2. MOVE TO MOU (Redirects to MCC Legal portal / MOU details with highlighting)
-    Also includes auto-generated temporary credentials if a new user account was registered.
+    Renders and sends a high-contrast, professional HTML email for MOU document sharing.
+    Sends individual, personalized emails to each recipient with their OWN specific login
+    credentials and download access token. Never leaks temporary credentials between recipients.
+    Clearly distinguishes Primary Action Recipients (To) from Carbon Copy (CC) reference copies.
     """
     try:
         mou = share.mou
-        primary_recipient = share.recipient_email or (share.user.email if share.user else None)
-        all_recipients = []
-        if primary_recipient:
-            all_recipients.append(primary_recipient.strip().lower())
-        if extra_recipients:
-            for em in parse_email_list(extra_recipients):
-                if em not in all_recipients:
-                    all_recipients.append(em)
+        recipient_email = (
+            target_recipient_email
+            or share.recipient_email
+            or (share.user.email if share.user else None)
+            or ''
+        ).strip().lower()
 
-        if not all_recipients:
+        if not recipient_email:
             logger.warning(f"send_mou_share_email: No recipient email on MOUShare ID {share.id}")
             return False
 
-        cc_list = []
-        if cc_emails:
-            for em in parse_email_list(cc_emails):
-                if em not in all_recipients and em not in cc_list:
-                    cc_list.append(em)
+        # Determine all primary and CC recipients for transparent specification table
+        if all_to_recipients:
+            to_list = parse_email_list(all_to_recipients)
+        else:
+            to_list = [recipient_email]
+            if extra_recipients:
+                for em in parse_email_list(extra_recipients):
+                    if em not in to_list:
+                        to_list.append(em)
 
-        recipient_email = all_recipients[0]
+        if all_cc_recipients:
+            cc_list = parse_email_list(all_cc_recipients)
+        elif cc_emails:
+            cc_list = parse_email_list(cc_emails)
+        else:
+            cc_list = []
 
         if not sender_name:
             sender_name = "Legal Administrator"
@@ -415,16 +438,27 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
             '{mou_number}': mou.mou_number,
             '{partner_organization}': mou.partner_organization or 'Partner Institution',
             '{sender_name}': sender_name,
-            '{recipient_email}': ", ".join(all_recipients),
+            '{recipient_email}': recipient_email,
         }
 
         from users.models import EmailNotificationSetting
         email_config = EmailNotificationSetting.get_setting()
 
-        subject_template = custom_subject or (email_config.default_subject if email_config else None) or tmpl['subject']
-        subject = subject_template
+        base_subject = custom_subject or (email_config.default_subject if email_config else None) or tmpl['subject']
         for k, v in replacements.items():
-            subject = subject.replace(k, str(v))
+            base_subject = base_subject.replace(k, str(v))
+
+        # Distinct subject lines for CC vs Primary Action recipients
+        if role_type == 'cc':
+            if '[cc' not in base_subject.lower():
+                subject = f"[CC: For Information] {base_subject}"
+            else:
+                subject = base_subject
+        else:
+            if not base_subject.lower().startswith('action required') and not base_subject.lower().startswith('[cc'):
+                subject = f"Action Required: {base_subject}"
+            else:
+                subject = base_subject
 
         raw_body_template = custom_message or (email_config.default_body if email_config else None) or tmpl['body']
         raw_body = raw_body_template
@@ -437,7 +471,6 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
         ])
 
         # Determine base frontend URL:
-        # Highest priority: Super Admin configured Portal Base URL in Settings
         configured_base = email_config.portal_base_url.strip().rstrip('/') if (email_config and email_config.portal_base_url) else None
         
         request_origin = None
@@ -467,7 +500,7 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
                 cpath = '/' + cpath
             download_url = f"{frontend_url}{cpath}"
         else:
-            # direct_api: Direct secure stream download to recipient device Downloads folder (instant, zero blank-page risk)
+            # direct_api: Direct secure stream download to recipient device Downloads folder
             download_url = f"{frontend_url}/api/mous/shared/download/{token}/"
 
         # Resolve destination path based on Super Admin email redirection configuration
@@ -516,7 +549,7 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
                     🎉 Your MCC Legal Account Has Been Created
                   </div>
                   <p style="margin: 0 0 14px 0; font-size: 13px; color: #15803D; line-height: 1.5;">
-                    An account has been automatically provisioned for your email so you can sign in to review, sign, and access institutional agreements:
+                    An account has been automatically provisioned for your email address so you can access and track institutional documents:
                   </p>
                   <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-size: 14px; background: #FFFFFF; border-radius: 10px; border: 1px solid #BBF7D0; border-collapse: collapse;">
                     <tr>
@@ -538,11 +571,28 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
                 </div>
             """
             credentials_text = (
-                f"\n\nYOUR MCC LEGAL ACCOUNT CREDENTIALS:\n"
+                f"\n\nYOUR PERSONAL MCC LEGAL ACCOUNT CREDENTIALS:\n"
                 f"- Portal Login: {login_url}\n"
                 f"- Registered Email: {recipient_email}\n"
                 f"- Temporary Password: {temp_password}\n"
                 f"(Use these credentials to sign in anytime at {login_url})\n\n"
+            )
+        else:
+            credentials_html = f"""
+                <!-- Existing Account Notification -->
+                <div style="background-color: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+                  <div style="font-size: 13px; font-weight: 800; color: #334155; margin-bottom: 4px;">
+                    🔐 Registered Portal Account Found
+                  </div>
+                  <p style="margin: 0; font-size: 13px; color: #64748B; line-height: 1.5;">
+                    This document has been linked to your registered MCC Legal account (<strong>{recipient_email}</strong>). Sign in with your existing password at <a href="{login_url}" style="color: #2563EB; font-weight: 700; text-decoration: underline;">{login_url}</a> to view and manage your Shared Files.
+                  </p>
+                </div>
+            """
+            credentials_text = (
+                f"\n\nPORTAL ACCOUNT ACCESS:\n"
+                f"This document is accessible under your registered MCC Legal account ({recipient_email}).\n"
+                f"Sign in at: {login_url}\n\n"
             )
 
         if has_account:
@@ -564,7 +614,6 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
             ).order_by('-created_at').first()
 
             if not invite:
-                # Cancel old expired invitations
                 UserInvitation.objects.filter(email__iexact=recipient_email, is_used=False).update(is_cancelled=True)
                 default_role = Role.objects.filter(name='User').first() or Role.objects.first()
                 invite_expires = now + timedelta(days=7)
@@ -591,12 +640,40 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
         version_label = f"v{share.document_version}"
         expiry_info = mou.expiry_date.strftime('%B %d, %Y') if mou.expiry_date else 'No Expiry Date'
 
+        # Role indicator and badges distinguishing To vs CC
+        if role_type == 'cc':
+            role_badge_html = '<span style="background-color: #FEF3C7; color: #92400E; padding: 3px 9px; border-radius: 6px; font-size: 12px; font-weight: 700;">Carbon Copy (CC) &bull; For Information Only</span>'
+            role_banner_html = f"""
+                <!-- Carbon Copy Notice Banner -->
+                <div style="background-color: #FFFBEB; border: 1.5px solid #FCD34D; border-left: 6px solid #D97706; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+                  <div style="font-size: 13px; font-weight: 800; color: #B45309; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                    📋 Carbon Copy (CC) &bull; For Information &amp; Institutional Records
+                  </div>
+                  <p style="margin: 0; font-size: 13px; color: #92400E; line-height: 1.5;">
+                    You have been carbon-copied (CC) on this document transmission for institutional awareness and record-keeping. <strong>No action is required from you.</strong> The primary recipient(s) have been requested to review and complete the status verification.
+                  </p>
+                </div>
+            """
+        else:
+            role_badge_html = '<span style="background-color: #EFF6FF; color: #1D4ED8; padding: 3px 9px; border-radius: 6px; font-size: 12px; font-weight: 700;">Primary Recipient &bull; Action Required</span>'
+            role_banner_html = f"""
+                <!-- Primary Action Recipient Notice Banner -->
+                <div style="background-color: #EFF6FF; border: 1.5px solid #BFDBFE; border-left: 6px solid #2563EB; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+                  <div style="font-size: 13px; font-weight: 800; color: #1D4ED8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                    ⚡ Action Required &bull; Primary Document Recipient
+                  </div>
+                  <p style="margin: 0; font-size: 13px; color: #1E40AF; line-height: 1.5;">
+                    You have been designated as a primary recipient for this document. Please review the attached agreement and provide the status updates for the 4-point compliance checklist below in the repository.
+                  </p>
+                </div>
+            """
+
         recipients_row = ""
-        if len(all_recipients) > 1:
-            recipients_display = ", ".join(all_recipients)
+        if len(to_list) > 1:
+            recipients_display = ", ".join(to_list)
             recipients_row = f"""
                     <tr>
-                      <td style="padding: 6px 0; color: #64748B; font-weight: 600;">Recipients:</td>
+                      <td style="padding: 6px 0; color: #64748B; font-weight: 600;">Primary Recipients (To):</td>
                       <td style="padding: 6px 0; color: #0F172A; font-weight: 600;">{recipients_display}</td>
                     </tr>
             """
@@ -606,8 +683,8 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
             cc_display = ", ".join(cc_list)
             cc_row = f"""
                     <tr>
-                      <td style="padding: 6px 0; color: #64748B; font-weight: 600;">CC:</td>
-                      <td style="padding: 6px 0; color: #2563EB; font-weight: 600;">{cc_display}</td>
+                      <td style="padding: 6px 0; color: #64748B; font-weight: 600;">Carbon Copy (CC):</td>
+                      <td style="padding: 6px 0; color: #D97706; font-weight: 600;">{cc_display}</td>
                     </tr>
             """
 
@@ -628,7 +705,7 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
                   MCC LEGAL
                 </div>
                 <div style="font-size: 13px; font-weight: 700; color: #93C5FD; text-transform: uppercase; letter-spacing: 2px;">
-                  Enterprise Document Hub &bull; Document Sharing
+                  Enterprise Document Hub &bull; Document Transmission
                 </div>
               </td>
             </tr>
@@ -643,6 +720,9 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
                   {mou.title}
                 </h1>
 
+                <!-- Role Notice Banner -->
+                {role_banner_html}
+
                 <!-- Message Body -->
                 <div style="background-color: #F8FAFC; border-left: 4px solid #2563EB; padding: 18px 20px; border-radius: 0 12px 12px 0; margin-bottom: 26px;">
                   {formatted_paragraphs}
@@ -651,11 +731,19 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
                 <!-- Document Information Card -->
                 <div style="background: #FFFFFF; border-radius: 14px; border: 1px solid #E2E8F0; padding: 20px; margin-bottom: 30px; box-shadow: 0 2px 6px rgba(0,0,0,0.02);">
                   <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #64748B; margin-bottom: 14px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
-                    Document Specifications
+                    Document Specifications &amp; Transmission Details
                   </div>
                   <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-size: 14px;">
                     <tr>
-                      <td style="padding: 6px 0; color: #64748B; width: 40%; font-weight: 600;">MOU Reference:</td>
+                      <td style="padding: 6px 0; color: #64748B; width: 40%; font-weight: 600;">Transmission Role:</td>
+                      <td style="padding: 6px 0;">{role_badge_html}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748B; font-weight: 600;">This Copy Sent To:</td>
+                      <td style="padding: 6px 0; color: #0F172A; font-weight: 700;">{recipient_email}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748B; font-weight: 600;">MOU Reference:</td>
                       <td style="padding: 6px 0; color: #0F172A; font-weight: 700;">{mou.mou_number}</td>
                     </tr>
                     <tr>
@@ -742,14 +830,15 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
         </html>
         """
 
-        cc_text_line = f"CC: {', '.join(cc_list)}\n" if cc_list else ""
         text_content = (
             f"MCC LEGAL - MOU DOCUMENT SHARING\n\n"
             f"Document: {mou.title} ({mou.mou_number})\n"
+            f"Role: {'Carbon Copy (CC)' if role_type == 'cc' else 'Primary Recipient (Action Required)'}\n"
+            f"Delivered To: {recipient_email}\n"
             f"Partner: {mou.partner_organization or 'MCC Partner'}\n"
             f"Shared By: {sender_name} ({sender_email_display})\n"
-            f"Recipient(s): {', '.join(all_recipients)}\n"
-            f"{cc_text_line}"
+            f"Primary Recipients: {', '.join(to_list)}\n"
+            f"{f'Carbon Copy (CC): {chr(44).join(cc_list)}' if cc_list else ''}\n\n"
             f"{raw_body}\n"
             f"{credentials_text}\n"
             f"Actions:\n"
@@ -781,14 +870,56 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
             subject=subject,
             body=text_content,
             from_email=from_email,
-            to=all_recipients,
-            cc=cc_list if cc_list else None,
+            to=[recipient_email],
             connection=connection
         )
         msg.attach_alternative(html_content, "text/html")
         msg.send()
 
-        logger.info(f"MOU share email successfully sent to {all_recipients} (CC: {cc_list}) for MOU '{mou.title}'")
+        logger.info(f"MOU share email successfully sent to {recipient_email} (role: {role_type}) for MOU '{mou.title}'")
+
+        # If legacy call passed extra recipients or CC without views doing the loop, deliver to them too
+        if not target_recipient_email:
+            if extra_recipients:
+                for extra_em in parse_email_list(extra_recipients):
+                    if extra_em != recipient_email:
+                        try:
+                            send_mou_share_email(
+                                share,
+                                email_template_key=email_template_key,
+                                custom_subject=custom_subject,
+                                custom_message=custom_message,
+                                sender_name=sender_name,
+                                temp_password=None,
+                                request=request,
+                                role_type='to',
+                                all_to_recipients=to_list,
+                                all_cc_recipients=cc_list,
+                                target_recipient_email=extra_em
+                            )
+                        except Exception as extra_err:
+                            logger.error(f"Error delivering extra recipient email to {extra_em}: {extra_err}")
+
+            if cc_emails:
+                for cc_em in parse_email_list(cc_emails):
+                    if cc_em != recipient_email:
+                        try:
+                            send_mou_share_email(
+                                share,
+                                email_template_key=email_template_key,
+                                custom_subject=custom_subject,
+                                custom_message=custom_message,
+                                sender_name=sender_name,
+                                temp_password=None,
+                                request=request,
+                                role_type='cc',
+                                all_to_recipients=to_list,
+                                all_cc_recipients=cc_list,
+                                target_recipient_email=cc_em
+                            )
+                        except Exception as cc_err:
+                            logger.error(f"Error delivering CC email to {cc_em}: {cc_err}")
+
         return True
     except Exception as e:
         logger.error(f"Error sending MOU share email to {getattr(share, 'recipient_email', 'unknown')}: {e}", exc_info=True)
