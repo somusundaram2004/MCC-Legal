@@ -297,17 +297,22 @@ def send_welcome_user_email(user, temp_password):
 SHARE_EMAIL_TEMPLATES = {
     'standard': {
         'id': 'standard',
-        'name': 'Standard MOU Document Sharing',
-        'category': 'General Notice',
-        'subject': 'Shared MOU: {mou_title} ({mou_number})',
-        'description': 'Official notification sharing the MOU document for review, reference, and collaboration.',
+        'name': 'MOU Status & Signature Tracking',
+        'category': 'MOU Repository Status',
+        'subject': 'Status Update: {mou_title}',
+        'description': 'Track MOU status, signature confirmation, execution date, and signed upload.',
         'body': (
-            "Dear Colleague / Partner,\n\n"
-            "You have been granted access to the official Memorandum of Understanding: {mou_title} ({mou_number}) "
-            "between Madras Christian College (MCC) and {partner_organization}.\n\n"
-            "This document is immediately available in your MCC Legal Shared Files portal. "
-            "You may download the document to your device or open the portal to inspect complete institutional records.\n\n"
-            "Regards,\n{sender_name}\nMCC Legal Cell"
+            "mou repository has been created to track the status of the mous \n\n"
+            "pfa \"{mou_title}\"\n\n"
+            "kindly update the status of the attached:\n"
+            "1. is it been signed ?\n"
+            "2. if yes , update the date .\n"
+            "3. beneficiary / operationactivity  under this mou \n"
+            "4. if signed ,kindly upload the signed mou in the repository for record \n\n"
+            "thank you \n"
+            "regards \n"
+            "Dr selvi g \n"
+            "legalcoordinator"
         )
     },
     'review_and_sign': {
@@ -400,8 +405,13 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
 
         tmpl = SHARE_EMAIL_TEMPLATES.get(email_template_key, SHARE_EMAIL_TEMPLATES['standard'])
 
+        doc_name = (share.shared_file.name if (share.shared_file and hasattr(share.shared_file, 'name')) else mou.title) or 'MOU Document'
+
         replacements = {
-            '{mou_title}': mou.title,
+            '{mou_title}': doc_name,
+            '{file_name}': doc_name,
+            '"file name "': f'"{doc_name}"',
+            '"file name"': f'"{doc_name}"',
             '{mou_number}': mou.mou_number,
             '{partner_organization}': mou.partner_organization or 'Partner Institution',
             '{sender_name}': sender_name,
@@ -421,7 +431,10 @@ def send_mou_share_email(share, email_template_key='standard', custom_subject=No
         for k, v in replacements.items():
             raw_body = raw_body.replace(k, str(v))
 
-        formatted_paragraphs = "".join([f'<p style="margin: 0 0 16px 0; line-height: 1.6; font-size: 15px; color: #334155;">{line.strip()}</p>' for line in raw_body.split('\n') if line.strip()])
+        formatted_paragraphs = "".join([
+            f'<p style="margin: 0 0 {"14px" if not line.strip() else "4px"}; line-height: 1.6; font-size: 15px; color: #334155;">{line.strip() if line.strip() else "&nbsp;"}</p>'
+            for line in raw_body.split('\n')
+        ])
 
         # Determine base frontend URL:
         # Highest priority: Super Admin configured Portal Base URL in Settings

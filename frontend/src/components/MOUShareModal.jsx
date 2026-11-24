@@ -17,22 +17,43 @@ import api from '../services/api';
 import { shareMOU, shareFileDirect, getShareTemplates, getMOUs } from '../services/mouApi';
 import { showCustomToast } from '../utils/customToast';
 
+const BUILD_DEFAULT_MESSAGE = (fileName) =>
+`mou repository has been created to track the status of the mous 
+
+pfa "${fileName || 'file name'}"
+
+kindly update the status of the attached:
+1. is it been signed ?
+2. if yes , update the date .
+3. beneficiary / operationactivity  under this mou 
+4. if signed ,kindly upload the signed mou in the repository for record 
+
+thank you 
+regards 
+Dr selvi g 
+legalcoordinator`;
+
 const PREDEFINED_TEMPLATES = [
   {
     id: 'standard',
-    name: 'Standard MOU Document Sharing',
-    category: 'General Notice',
-    subject: 'Shared MOU: {mou_title} ({mou_number})',
-    description: 'Official notification sharing the MOU document for review, reference, and collaboration.',
-    body: `Dear Colleague / Partner,
+    name: 'MOU Status & Signature Tracking',
+    category: 'MOU Repository Status',
+    subject: 'Status Update: {mou_title}',
+    description: 'Track MOU signing status, execution date, beneficiary activity, and signed record.',
+    body: `mou repository has been created to track the status of the mous 
 
-You have been granted access to the official Memorandum of Understanding: {mou_title} ({mou_number}) between Madras Christian College (MCC) and {partner_organization}.
+pfa "{mou_title}"
 
-This document is immediately available in your MCC Legal Shared Files portal. You may download the document to your device or open the portal to inspect complete institutional records.
+kindly update the status of the attached:
+1. is it been signed ?
+2. if yes , update the date .
+3. beneficiary / operationactivity  under this mou 
+4. if signed ,kindly upload the signed mou in the repository for record 
 
-Regards,
-{sender_name}
-MCC Legal Cell`
+thank you 
+regards 
+Dr selvi g 
+legalcoordinator`
   },
   {
     id: 'review_and_sign',
@@ -125,12 +146,41 @@ const MOUShareModal = ({
   const [error, setError] = useState(null);
   const [userLookupStatus, setUserLookupStatus] = useState(null); // 'found', 'invite_needed', null
 
+  // Helpers to parse email lists for visual chips
+  const getParsedEmailChips = (str) => {
+    if (!str) return [];
+    return str
+      .split(/[,;\s\n]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => Boolean(e) && e.includes('@') && e.includes('.'));
+  };
+
+  const recipientChips = getParsedEmailChips(recipientEmail);
+  const ccChips = getParsedEmailChips(ccEmails);
+
+  const handleRemoveRecipient = (emailToRemove) => {
+    const list = (recipientEmail || '')
+      .split(/[,;\s\n]+/)
+      .map((e) => e.trim())
+      .filter((e) => Boolean(e) && e.toLowerCase() !== emailToRemove.toLowerCase());
+    setRecipientEmail(list.join(', '));
+  };
+
+  const handleRemoveCc = (emailToRemove) => {
+    const list = (ccEmails || '')
+      .split(/[,;\s\n]+/)
+      .map((e) => e.trim())
+      .filter((e) => Boolean(e) && e.toLowerCase() !== emailToRemove.toLowerCase());
+    setCcEmails(list.join(', '));
+  };
+
   // Fetch available MOUs if none passed and no file passed
   useEffect(() => {
     if (open) {
       if (initialFile) {
-        setEmailSubject(`Shared File: ${initialFile.name}`);
-        setCustomMessage(`Dear Colleague / Partner,\n\nYou have been granted access to the file: "${initialFile.name}".\n\nYou can download this document directly or open the portal to access institutional records.\n\nRegards,\nMCC Legal Team`);
+        const fileName = initialFile.name || 'MOU Document';
+        setEmailSubject(`Shared File: ${fileName}`);
+        setCustomMessage(BUILD_DEFAULT_MESSAGE(fileName));
       } else if (!initialMou) {
         setLoadingMous(true);
         getMOUs()
@@ -139,6 +189,9 @@ const MOUShareModal = ({
             if (data && data.length > 0 && !selectedMouId) {
               setSelectedMouId(data[0].id);
               setSelectedMou(data[0]);
+              const docTitle = data[0].title || 'MOU Document';
+              setEmailSubject(`Status Update: ${docTitle}`);
+              setCustomMessage(BUILD_DEFAULT_MESSAGE(docTitle));
             }
           })
           .catch((err) => console.error('Failed to load MOUs:', err))
@@ -146,6 +199,9 @@ const MOUShareModal = ({
       } else {
         setSelectedMou(initialMou);
         setSelectedMouId(initialMou.id);
+        const docTitle = initialMou.title || 'MOU Document';
+        setEmailSubject(`Status Update: ${docTitle}`);
+        setCustomMessage(BUILD_DEFAULT_MESSAGE(docTitle));
       }
 
       // Fetch predefined templates from API or fallback
@@ -175,25 +231,29 @@ const MOUShareModal = ({
   // Apply template defaults when template or selectedMou changes
   useEffect(() => {
     const tmpl = templates.find((t) => t.id === selectedTemplateKey) || templates[0];
-    if (tmpl && selectedMou) {
-      const title = selectedMou.title || 'MOU Document';
-      const num = selectedMou.mou_number || 'MOU-REF';
-      const partner = selectedMou.partner_organization || 'Academic / Corporate Partner';
+    if (tmpl) {
+      const docName = initialFile?.name || selectedMou?.title || 'MOU Document';
+      const num = selectedMou?.mou_number || 'MOU-REF';
+      const partner = selectedMou?.partner_organization || 'Academic / Corporate Partner';
       
-      let subj = tmpl.subject || `Shared MOU: ${title}`;
-      subj = subj.replace('{mou_title}', title)
+      let subj = tmpl.subject || (initialFile ? `Shared File: ${docName}` : `Status Update: ${docName}`);
+      subj = subj.replace('{mou_title}', docName)
                  .replace('{mou_number}', num)
-                 .replace('{partner_organization}', partner);
+                 .replace('{partner_organization}', partner)
+                 .replace('{file_name}', docName);
       setEmailSubject(subj);
 
       let msg = tmpl.body || '';
-      msg = msg.replace('{mou_title}', title)
+      msg = msg.replace('{mou_title}', docName)
                .replace('{mou_number}', num)
                .replace('{partner_organization}', partner)
-               .replace('{sender_name}', 'Legal Cell Administrator');
+               .replace('{file_name}', docName)
+               .replace('"file name "', `"${docName}"`)
+               .replace('"file name"', `"${docName}"`)
+               .replace('{sender_name}', 'Dr. Selvi G');
       setCustomMessage(msg);
     }
-  }, [selectedTemplateKey, selectedMou, templates]);
+  }, [selectedTemplateKey, selectedMou, initialFile, templates]);
 
   // Check recipient email existence debounced (takes primary email if multiple entered)
   useEffect(() => {
@@ -221,7 +281,31 @@ const MOUShareModal = ({
   }, [recipientEmail]);
 
   const handleTemplateChange = (e) => {
-    setSelectedTemplateKey(e.target.value);
+    const key = e.target.value;
+    setSelectedTemplateKey(key);
+    const tmpl = templates.find((t) => t.id === key) || templates[0];
+    if (tmpl) {
+      const docName = initialFile?.name || selectedMou?.title || 'MOU Document';
+      const num = selectedMou?.mou_number || 'MOU-REF';
+      const partner = selectedMou?.partner_organization || 'Academic / Corporate Partner';
+
+      let subj = tmpl.subject || (initialFile ? `Shared File: ${docName}` : `Status Update: ${docName}`);
+      subj = subj.replace('{mou_title}', docName)
+                 .replace('{mou_number}', num)
+                 .replace('{partner_organization}', partner)
+                 .replace('{file_name}', docName);
+      setEmailSubject(subj);
+
+      let msg = tmpl.body || '';
+      msg = msg.replace('{mou_title}', docName)
+               .replace('{mou_number}', num)
+               .replace('{partner_organization}', partner)
+               .replace('{file_name}', docName)
+               .replace('"file name "', `"${docName}"`)
+               .replace('"file name"', `"${docName}"`)
+               .replace('{sender_name}', 'Dr. Selvi G');
+      setCustomMessage(msg);
+    }
   };
 
   const calculateExpiryDate = () => {
@@ -423,10 +507,10 @@ const MOUShareModal = ({
           </Alert>
         )}
 
-        <Grid container spacing={2.5}>
+        <Grid container spacing={2.2}>
           {/* File Overview Card (if file passed directly) */}
           {initialFile && (
-            <Grid xs={12}>
+            <Grid size={12}>
               <Box
                 sx={{
                   p: 1.8,
@@ -464,7 +548,7 @@ const MOUShareModal = ({
 
           {/* Target MOU Selector (if not preselected and not a direct file) */}
           {!initialMou && !initialFile && (
-            <Grid xs={12}>
+            <Grid size={12}>
               <FormControl fullWidth size="small">
                 <InputLabel>Target MOU Document</InputLabel>
                 <Select
@@ -495,7 +579,7 @@ const MOUShareModal = ({
 
           {/* MOU Overview Card */}
           {selectedMou && !initialFile && (
-            <Grid xs={12}>
+            <Grid size={12}>
               <Box
                 sx={{
                   p: 1.8,
@@ -537,7 +621,7 @@ const MOUShareModal = ({
           )}
 
           {/* Sharing Channel Mode Buttons */}
-          <Grid xs={12}>
+          <Grid size={12}>
             <Box sx={{ display: 'flex', gap: 1.5 }}>
               <Button
                 variant={shareMode === 'email' ? 'contained' : 'outlined'}
@@ -571,15 +655,16 @@ const MOUShareModal = ({
             </Box>
           </Grid>
 
-          {/* Mode 1: Recipient Email Input */}
+          {/* Mode 1: Recipient Email Input & Email Settings */}
           {shareMode === 'email' ? (
             <>
-              <Grid xs={12} md={7}>
+              {/* Recipient Email Address(es) - Full Width */}
+              <Grid size={12}>
                 <TextField
                   fullWidth
                   size="small"
                   label="Recipient Email Address(es)"
-                  placeholder="e.g. partner@example.com, colleague@mcc.edu"
+                  placeholder="e.g. somusuraj72@gmail.com, paulrenine9487@gmail.com, partner@mcc.edu"
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
                   slotProps={{
@@ -638,43 +723,52 @@ const MOUShareModal = ({
                       )
                     }
                   }}
-                  helperText="Send to multiple recipients by separating emails with commas or semicolons."
+                  helperText="Enter one or multiple recipient emails separated by commas or semicolons (no limit)."
                 />
-              </Grid>
 
-              {/* Template Selector */}
-              <Grid xs={12} md={5}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Predefined Email Template</InputLabel>
-                  <Select
-                    value={selectedTemplateKey}
-                    label="Predefined Email Template"
-                    onChange={handleTemplateChange}
-                  >
-                    {templates.map((t) => (
-                      <MenuItem key={t.id} value={t.id}>
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                            {t.name}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {t.category}
-                          </Typography>
-                        </Box>
-                      </MenuItem>
+                {/* Recipient Chips Preview */}
+                {recipientChips.length > 0 && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1, alignItems: 'center' }}>
+                    <Chip
+                      size="small"
+                      label={`${recipientChips.length} Recipient${recipientChips.length > 1 ? 's' : ''}`}
+                      sx={{
+                        bgcolor: 'rgba(37,99,235,0.1)',
+                        color: '#1D4ED8',
+                        fontWeight: 800,
+                        height: 24,
+                        fontSize: '0.72rem',
+                        border: '1px solid #BFDBFE'
+                      }}
+                    />
+                    {recipientChips.map((em) => (
+                      <Chip
+                        key={em}
+                        label={em}
+                        size="small"
+                        onDelete={() => handleRemoveRecipient(em)}
+                        sx={{
+                          bgcolor: 'rgba(37,99,235,0.06)',
+                          color: '#1E40AF',
+                          fontWeight: 600,
+                          height: 24,
+                          fontSize: '0.75rem',
+                          border: '1px solid rgba(37,99,235,0.2)'
+                        }}
+                      />
                     ))}
-                  </Select>
-                </FormControl>
+                  </Box>
+                )}
               </Grid>
 
-              {/* Mode 1 - CC Recipients Field */}
+              {/* CC Recipients Field - Full Width */}
               {(showCc || ccEmails) && (
-                <Grid xs={12}>
+                <Grid size={12}>
                   <TextField
                     fullWidth
                     size="small"
                     label="CC (Carbon Copy) — Optional"
-                    placeholder="e.g. legal-cell@mcc.edu, hod@mcc.edu (separate multiple with commas)"
+                    placeholder="e.g. legal-cell@mcc.edu, hod@mcc.edu, supervisor@domain.com"
                     value={ccEmails}
                     onChange={(e) => setCcEmails(e.target.value)}
                     slotProps={{
@@ -699,13 +793,89 @@ const MOUShareModal = ({
                         )
                       }
                     }}
-                    helperText="CC recipients will be carbon-copied on the email and receive view access in their portal."
+                    helperText="CC recipients will be carbon-copied on the email notification and receive view access in their portal."
                   />
+
+                  {/* CC Chips Preview */}
+                  {ccChips.length > 0 && (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1, alignItems: 'center' }}>
+                      <Chip
+                        size="small"
+                        label={`${ccChips.length} CC`}
+                        sx={{
+                          bgcolor: '#FEF3C7',
+                          color: '#92400E',
+                          fontWeight: 800,
+                          height: 24,
+                          fontSize: '0.72rem',
+                          border: '1px solid #FDE68A'
+                        }}
+                      />
+                      {ccChips.map((em) => (
+                        <Chip
+                          key={em}
+                          label={em}
+                          size="small"
+                          onDelete={() => handleRemoveCc(em)}
+                          sx={{
+                            bgcolor: 'rgba(212,168,47,0.1)',
+                            color: '#855b00',
+                            fontWeight: 600,
+                            height: 24,
+                            fontSize: '0.75rem',
+                            border: '1px solid rgba(212,168,47,0.3)'
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  )}
                 </Grid>
               )}
 
-              {/* Email Subject Line (Editable) */}
-              <Grid xs={12}>
+              {/* Template Selector (50% desktop, side-by-side with Access Permission) */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Predefined Email Template</InputLabel>
+                  <Select
+                    value={selectedTemplateKey}
+                    label="Predefined Email Template"
+                    onChange={handleTemplateChange}
+                  >
+                    {templates.map((t) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            {t.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {t.category}
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Permission Rights (50% desktop, side-by-side with Template Selector) */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Access Permission</InputLabel>
+                  <Select
+                    value={permission}
+                    label="Access Permission"
+                    onChange={(e) => setPermission(e.target.value)}
+                  >
+                    <MenuItem value="View Only">View Only (Preview &amp; Download)</MenuItem>
+                    <MenuItem value="Upload Only">Upload Only (Submit Scanned MOU)</MenuItem>
+                    <MenuItem value="Edit">Edit (Modify &amp; Collaborate)</MenuItem>
+                    <MenuItem value="Full Access">Full Access (All Operations)</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Email Subject Line (Editable) - Full Width */}
+              <Grid size={12}>
                 <TextField
                   fullWidth
                   size="small"
@@ -715,59 +885,62 @@ const MOUShareModal = ({
                 />
               </Grid>
 
-              {/* Email Content Body (Editable) */}
-              <Grid xs={12}>
+              {/* Email Content Body (Editable) - Full Width */}
+              <Grid size={12}>
                 <TextField
                   fullWidth
                   multiline
-                  rows={4}
+                  minRows={7}
+                  maxRows={12}
                   size="small"
                   label="Email Message Content (Editable)"
                   value={customMessage}
                   onChange={(e) => setCustomMessage(e.target.value)}
-                  helperText="You can customize greeting, notes, or specific compliance instructions."
+                  helperText="Editable email message body delivered to all recipients."
                 />
               </Grid>
             </>
           ) : (
             /* Mode 2: Department Selection */
-            <Grid xs={12}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Target Department</InputLabel>
-                <Select
-                  value={selectedDept}
-                  label="Target Department"
-                  onChange={(e) => setSelectedDept(e.target.value)}
-                >
-                  {departments.map((d) => (
-                    <MenuItem key={d.id || d.name} value={d.name}>
-                      {d.name} {d.category ? `(${d.category.name || d.category})` : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+            <>
+              <Grid size={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Target Department</InputLabel>
+                  <Select
+                    value={selectedDept}
+                    label="Target Department"
+                    onChange={(e) => setSelectedDept(e.target.value)}
+                  >
+                    {departments.map((d) => (
+                      <MenuItem key={d.id || d.name} value={d.name}>
+                        {d.name} {d.category ? `(${d.category.name || d.category})` : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Department Mode Permission Rights */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Access Permission</InputLabel>
+                  <Select
+                    value={permission}
+                    label="Access Permission"
+                    onChange={(e) => setPermission(e.target.value)}
+                  >
+                    <MenuItem value="View Only">View Only (Preview &amp; Download)</MenuItem>
+                    <MenuItem value="Upload Only">Upload Only (Submit Scanned MOU)</MenuItem>
+                    <MenuItem value="Edit">Edit (Modify &amp; Collaborate)</MenuItem>
+                    <MenuItem value="Full Access">Full Access (All Operations)</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </>
           )}
 
-          {/* Permission Rights */}
-          <Grid xs={12} md={6}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Access Permission</InputLabel>
-              <Select
-                value={permission}
-                label="Access Permission"
-                onChange={(e) => setPermission(e.target.value)}
-              >
-                <MenuItem value="View Only">View Only (Preview & Download)</MenuItem>
-                <MenuItem value="Upload Only">Upload Only (Submit Scanned MOU)</MenuItem>
-                <MenuItem value="Edit">Edit (Modify & Collaborate)</MenuItem>
-                <MenuItem value="Full Access">Full Access (All Operations)</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-
           {/* Expiration Settings */}
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: (shareMode === 'department' && expiryOption !== 'custom') ? 6 : (expiryOption === 'custom' ? 6 : 12) }}>
             <FormControl fullWidth size="small">
               <InputLabel>Access Expiration</InputLabel>
               <Select
@@ -779,18 +952,18 @@ const MOUShareModal = ({
                 <MenuItem value="7">Expires in 7 Days</MenuItem>
                 <MenuItem value="14">Expires in 14 Days</MenuItem>
                 <MenuItem value="30">Expires in 30 Days</MenuItem>
-                <MenuItem value="custom">Custom Date & Time</MenuItem>
+                <MenuItem value="custom">Custom Date &amp; Time</MenuItem>
               </Select>
             </FormControl>
           </Grid>
 
           {expiryOption === 'custom' && (
-            <Grid xs={12}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <TextField
                 fullWidth
                 size="small"
                 type="datetime-local"
-                label="Expiration Date & Time"
+                label="Expiration Date &amp; Time"
                 slotProps={{ inputLabel: { shrink: true } }}
                 value={customExpiryDate}
                 onChange={(e) => setCustomExpiryDate(e.target.value)}
@@ -822,7 +995,13 @@ const MOUShareModal = ({
             }
           }}
         >
-          {submitting ? 'Sharing & Sending...' : 'Send Email & Share MOU'}
+          {submitting
+            ? 'Sharing & Sending...'
+            : (recipientChips.length > 1
+                ? `Send Email to ${recipientChips.length} Recipients & Share MOU`
+                : 'Send Email & Share MOU'
+              )
+          }
         </Button>
       </DialogActions>
     </Dialog>
